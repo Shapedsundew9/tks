@@ -8,12 +8,12 @@ This document captures vital component-level designs, library evaluation tasks, 
 
 * **ID:** TB-1
 * **Title:** Bare Git Repository Direct ODB Ingestion, Document Path Tree Mapping, Dedicated Actor Task, and Volume Backup Synchronization
-* **Origin:** LD-8, iteration 1; LD-5, iteration 2; LD-12, iteration 3; LD-3, iteration 4; LD-1, LD-2, iteration 5
+* **Origin:** LD-8, iteration 1; LD-5, iteration 2; LD-12, iteration 3; LD-3, iteration 4; LD-1, LD-2, iteration 5; LD-8, iteration 6
 * **Status:** Active
 * **Description/Tactical Details:**
   1. **Low-Level ODB Direct Writes & Commit-Tree Graph:** In the Git document adapter module (`src/storage/git/`), configure the `git2` crate to interact with a bare Git repository (`git init --bare`). Implement direct object-database (ODB) writes via `git_blob_create_from_buffer` for raw document streams and construct standard tree and commit objects directly within the ODB backend targeting a dedicated specifications branch (`refs/heads/specs`). This bypasses the Git working tree and index (`.git/index`), completely eliminating index lock collisions (`.git/index.lock`) during concurrent document ingestion calls.
   2. **Document Path/Slug Tree Structure (`doc_path`):** When constructing the Git tree object in the ODB for a new or updated document, the adapter places the blob at its persistent document path/slug (`doc_path`, e.g. `specs/vision.md`). Storing documents under stable paths across successive revisions guarantees that standard Git history tracking works out-of-the-box (`git log specs/vision.md`, `git diff HEAD~1 specs/vision.md`), preserves document revision history across commits, and enables the decomposition pipeline to correlate prior active AST blocks and source byte spans on re-ingestion.
-  3. **Dedicated Background Git Actor Task (Channel-Based Isolation):** To eliminate async reactor starvation and thread-safety hazards with non-`Sync` C pointers in `git2::Repository`, encapsulate all bare Git operations within a dedicated background actor thread (`src/storage/git/actor.rs`). The Git actor exclusively owns the `git2::Repository` handle and receives work requests over a bounded Tokio mpsc channel (`tokio::sync::mpsc::Sender<GitCommand>`). The actor executes blocking libgit2 C calls sequentially off the Tokio async worker pool and returns results via `tokio::sync::oneshot` channels. This guarantees linear serialization on `refs/heads/specs` without `.lock` collisions (`GIT_ELOCKED`), prevents Tokio worker thread starvation, and eliminates Rust `Send`/`Sync` boundary conflicts.
+  3. **Dedicated Background Git Actor Task (Channel-Based Isolation & Panic Recovery):** To eliminate async reactor starvation and thread-safety hazards with non-`Sync` C pointers in `git2::Repository`, encapsulate all bare Git operations within a dedicated background actor thread (`src/storage/git/actor.rs`). The Git actor exclusively owns the `git2::Repository` handle and receives work requests over a bounded Tokio mpsc channel (`tokio::sync::mpsc::Sender<GitCommand>`). The actor executes blocking libgit2 C calls sequentially off the Tokio async worker pool and returns results via `tokio::sync::oneshot` channels. The actor encapsulates its sequential command execution loop inside an internal panic recovery handler (`std::panic::catch_unwind`), catching transient libgit2 C-binding panics and returning structured error responses over the caller's oneshot channel without dropping the underlying `Receiver<GitCommand>` or disconnecting caller `Sender` clones held across the gateway and workers. This guarantees linear serialization on `refs/heads/specs` without `.lock` collisions (`GIT_ELOCKED`), prevents Tokio worker thread starvation, eliminates Rust `Send`/`Sync` boundary conflicts, and prevents permanent `SendError` channel breaks.
   4. **Dedicated Storage Volume Binding:** In `docker-compose.yml` and container deployment manifests, configure a dedicated, persistent filesystem volume mount for the bare Git repository co-located with the PostgreSQL persistent data volume, ensuring Git blob storage persists across container recreation and redeployment cycles.
   5. **Point-in-Time Backup & Restore Synchronization:** Author operational shell scripts in `scripts/` to orchestrate coordinated point-in-time backups: trigger a PostgreSQL WAL checkpoint / `pg_dump` and execute a simultaneous snapshot of the bare Git repository object database (`objects/` and `refs/`), preventing referential drift between PostgreSQL blob hash columns and underlying Git blobs.
 
@@ -88,9 +88,37 @@ This document captures vital component-level designs, library evaluation tasks, 
 
 * **ID:** TB-6
 * **Title:** Context Envelope Vector Neighbor Query Resolution and Embedding Fallback (`src/storage/envelope.rs`)
-* **Origin:** LD-9, iteration 5
+* **Origin:** LD-9, iteration 5; LD-11, iteration 6
 * **Status:** Active
 * **Description/Tactical Details:**
   1. **Target Node Query Vector Resolution:** In `src/storage/envelope.rs`, implement query vector resolution for vector neighbor retrieval in `get_context_envelope(target_node_id, depth)`. When allocating slots for vector neighbor ranking, the repository queries `node_embeddings` for `target_node_id` (`SELECT embedding FROM node_embeddings WHERE node_id = $1`) to serve as the reference query vector for similarity search against other active nodes.
-  2. **Pending Embedding Graceful Fallback:** If `target_node_id` has no embedding record in `node_embeddings` (because asynchronous embedding generation in `embedding_queue` is still pending, throttled by backoff, or external embedding API is disabled), the repository layer must gracefully skip vector similarity search.
-  3. **Dynamic Quota Reallocation:** When vector neighbor search is skipped, reallocate the full 40-node context envelope budget to deterministic topological recursive CTE traversal. This ensures external agents always receive a rich, bounded context envelope of ancestor requirements and sibling constraints without failing, waiting on external APIs, or timing out.
+  2. **Ancestor Requirement Embedding Fallback for Newly Elaborated Tasks:** If `target_node_id` lacks an embedding record in `node_embeddings` (e.g. for a newly created or elaborated execution task, since candidate tasks do not enqueue embeddings until active and newly claimed tasks may have embeddings pending in `embedding_queue`), resolve the reference query vector from its immediate parent requirement node:
+
+     ```sql
+     SELECT embedding FROM node_embeddings
+     WHERE node_id = (
+         SELECT to_node_id FROM graph_edges
+         WHERE from_node_id = $1 AND edge_type IN ('FULFILLS', 'CONSTRAINED_BY')
+         LIMIT 1
+     );
+     ```
+
+     This allows newly created tasks to immediately benefit from vector-enriched cross-cutting governance constraints without requiring synchronous embedding calculation.
+  3. **Pending Embedding Graceful Fallback:** If both `target_node_id` and its parent requirement node lack an embedding in `node_embeddings` (because asynchronous embedding generation is pending, throttled by backoff, or external embedding API is disabled), the repository layer must gracefully skip vector similarity search.
+  4. **Dynamic Quota Reallocation:** When vector neighbor search is skipped, reallocate the full 40-node context envelope budget to deterministic topological recursive CTE traversal. This ensures external agents always receive a rich, bounded context envelope of ancestor requirements and sibling constraints without failing, waiting on external APIs, or timing out.
+
+---
+
+## TB-7
+
+* **ID:** TB-7
+* **Title:** Canonical Node Key Lexical Extraction, Polymorphic Identifier Resolution (`Uuid` vs `node_key`), and Document Revision Reconciliation
+* **Origin:** LD-2, LD-5, iteration 6
+* **Status:** Active
+* **Description/Tactical Details:**
+  1. **Canonical Node Key Extraction & Ingestion Tagging:** In `src/ingest/parser.rs`, extend the deterministic RFC 2119 keyword scanner (TB-2) to extract human-readable canonical identifiers (`REQ-*`, `INV-*`, `DR-*`, `C-*`, `TASK-*`) from section headings and block labels, populating `graph_nodes.node_key VARCHAR(64)` during mechanical decomposition.
+  2. **Polymorphic Identifier Resolution:** In `src/storage/envelope.rs` and MCP tool handlers (`get_context_envelope`, `query_requirements`, `propose_node_mutation`), implement polymorphic resolution supporting both UUID and string `node_key`: inspect input string; if valid UUID syntax, query `WHERE id = $1::uuid`; otherwise, query `WHERE node_key = $1` utilizing the partial unique index `idx_graph_nodes_node_key_active`.
+  3. **AST Revision Diffing & In-Place Span Re-Anchoring:** In the document decomposition worker (`src/worker/decomp.rs` / `src/ingest/reconcile.rs`), on re-ingestion of a document at persistent `doc_path`, compare extracted CommonMark AST structural blocks against existing active nodes anchored to that `doc_path` (matched by `node_key` or content hash):
+     * *Span-Only Shift:* If the text content is identical and only byte offsets shifted due to edits elsewhere in the document, update `source_spans` (`doc_hash`, `byte_start`, `byte_end`) in-place without generating replacement nodes.
+     * *Modified Content:* Generate candidate draft nodes linking to previous active node IDs. Upon staging approval (`POST /api/v1/staging/approve`), supersede replaced active nodes (`lifecycle_state = 'SUPERSEDED'`), supersede conflicting active edges, and trigger an automated dependency sweep transitioning child tasks to `NEEDS_REVERIFICATION`.
+     * *Deleted Content:* Any active nodes previously anchored to `doc_path` missing from the approved revision are transitioned to `SUPERSEDED`.
