@@ -1,1 +1,1 @@
-.shared/ai/core/prompts/phase-plan.prompt.md
+../../.shared/ai/core/prompts/phase-plan.prompt.md
