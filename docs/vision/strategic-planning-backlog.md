@@ -14,6 +14,8 @@ This backlog is specifically organized around the **"Start Small"**, **"Constrai
 - Reach self-hosting as early as possible so the system defines, tracks, and governs its own ongoing development.
 - Maximize mechanical processes (e.g. streaming CommonMark AST parsing) to handle the initial 80%+ of document decomposition, minimizing costly LLM output token generation.
 - Enforce strict lifecycle distinction between editable drafts and locked approved requirements, utilizing draft event compaction to eliminate audit ledger bloat.
+- Strictly reject premature abstractions (distributed databases, distributed consensus, complex OAuth 2.1) during early phases in favor of single-engine PostgreSQL, pre-shared keys, and HMAC tokens.
+- Hold Phase 3 and Phase 4 execution as strictly contingent on empirical validation of foundational hypotheses (H-1, H-4) and successful Phase 1 dogfooding adoption.
 
 ---
 
@@ -69,7 +71,10 @@ flowchart LR
      - *Stage 1 (Mechanical Parsing):* Streaming CommonMark AST decomposition (`pulldown-cmark`) segmenting text along heading boundaries, tables, and lists, extracting exact source character offsets (`char_start`, `char_end`) with zero token cost and deterministic RFC 2119 keyword tagging.
      - *Stage 2 (Targeted Semantic Classification):* Selective LLM invocation on candidate chunks returning compact classification tuples without echoing source text.
      - Candidate nodes staged relationally via `job_id UUID REFERENCES ingestion_jobs(job_id)`.
-  4. **Read-Only MCP Server & Identity Scaffolding:** Unified Axum server hosting REST and MCP over HTTP/SSE, paired with a lightweight stdio streaming proxy (`tks mcp-stdio`). Tool `get_context_envelope` implements strict guardrails (depth $\le 3$, node budget $\le 40$, 250ms statement timeout, and priority pruning).
+  4. **Read-Only MCP Server, Identity Scaffolding & Terminal Review CLI:** Unified Axum server hosting REST and MCP over HTTP/SSE, paired with a lightweight stdio streaming proxy (`tks mcp-stdio`). Tool `get_context_envelope` implements strict guardrails (depth $\le 3$, node budget $\le 40$, 250ms statement timeout, and priority pruning). To eliminate human review friction during Phase 1 dogfooding and de-risk Kill Condition #1 prior to the Phase 3 web portal, the `tks` CLI provides a lightweight terminal-native staging review workflow:
+     - `tks staging list <job_id>`: Displays candidate requirements in formatted tabular/tree hierarchy.
+     - `tks staging inspect <node_id>`: Displays candidate node text side-by-side with its exact source document byte span.
+     - `tks staging approve <job_id>`: Submits batch approval (`POST /api/v1/staging/approve`) and triggers graph materialization.
 - **Dogfooding Milestone (Gate 1):** Ingest the project's own `vision.md` and `strategic-planning-backlog.md` into the Phase 1 substrate, verifying that atomic requirements and constraints can be queried via MCP.
 
 ### Phase 2: Bounded Agent Mutation & Per-Node Governance
@@ -176,8 +181,8 @@ flowchart TD
   1. Submit a multi-page Markdown specification (e.g., `vision.md`) to `POST /api/v1/documents/ingest`.
   2. Verify that the document is committed to the bare Git repository ODB, yielding a verifiable commit SHA and blob hash with a named reference `refs/tks/blobs/<blob_hash>`.
   3. Verify that the background worker decomposes the document: CommonMark AST parsing (`pulldown-cmark`) mechanically extracts $\ge 10$ distinct requirement chunks with exact byte offsets, and targeted semantic classification tags candidate nodes.
-  4. Verify candidate nodes are accessible via `GET /api/v1/documents/ingest/{job_id}` through relational join.
-  5. Human reviewer approves the staged draft nodes via `POST /api/v1/staging/approve`.
+  4. Verify candidate nodes are accessible via `GET /api/v1/documents/ingest/{job_id}` through relational join, and inspectable via `tks staging list <job_id>` and `tks staging inspect <node_id>`.
+  5. Human reviewer inspects candidate nodes in their document span context and approves the staged draft nodes via `tks staging approve <job_id>` (executing `POST /api/v1/staging/approve`).
   6. Connect an MCP client (e.g., Claude Code or test harness) and invoke:
 
      ```json
@@ -235,11 +240,13 @@ flowchart TD
 - **Experimental Setup & Scoping:**
   - Throwaway prototype testable in days, requiring zero production database setup.
   - In-memory graph representation with a hand-curated requirement tree (~50–100 nodes) modeling a realistic modular software component with explicit hierarchical constraints and sibling invariants.
+  - Test tasks must rigorously avoid localized algorithmic routines (e.g., implementing an isolated helper function), where standard code-level tools and LSP already achieve high success.
+  - Synthetic coding tasks must specifically target **cross-cutting architectural invariants and non-local contracts** (e.g., multi-service authentication token propagation, subsystem error handling hierarchies, and state machine transitions across component boundaries) where requirement-intent provenance is hypothesized to provide decisive leverage.
   - Standard commodity embedding model (e.g., `text-embedding-3-small`) and LLM coding agent (e.g., Claude 3.5 Sonnet / GPT-4o).
 - **Evaluation Conditions:**
   - *Condition A (Competent Multi-Tool Agentic Baseline):* External agent equipped with standard code-level tooling (file read/grep, AST-based symbol navigation, and semantic search over flat documentation) operating without topological requirement graph context.
   - *Condition B (Topological Context Envelope):* The same agent provided with a graph-bounded context envelope (target task + ancestor requirements + sibling architectural constraints and non-functional rules).
-- **Measurement:** Rate of invariant violations (missed architectural contracts, violated interfaces, dropped non-functional constraints) across $\ge 20$ controlled synthetic coding tasks.
+- **Measurement:** Rate of invariant violations (missed architectural contracts, violated interfaces, dropped non-functional constraints across component boundaries) across $\ge 20$ controlled synthetic coding tasks.
 - **Decision Thresholds:**
   - $\ge 30\%$ reduction in constraint violations provides strong directional greenlight for Phase 1 construction (reflecting meaningful intent preservation against a competent baseline).
   - $15\% - 29\%$ reduction indicates partial advantage; refine envelope assembly logic and narrow domain scope before full build.
@@ -358,8 +365,8 @@ sequenceDiagram
     Worker->>Worker: Stage 1: pulldown-cmark AST parse (extract blocks, exact byte spans, RFC 2119 keywords)
     Worker->>Worker: Stage 2: Targeted LLM classification (compact tuples without source text)
     Worker->>DB: Stage candidate draft nodes in staging_queue (linked by job_id)
-    Engineer->>API: Poll job status & candidate nodes (GET /api/v1/documents/ingest/{job_id})
-    Engineer->>API: Review & approve staged nodes (POST /api/v1/staging/approve)
+    Engineer->>API: Review candidate nodes via CLI (tks staging list / inspect)
+    Engineer->>API: Batch approve candidate nodes (tks staging approve <job_id>)
     API->>DB: Atomic squash: write canonical APPROVED event to audit_ledger & materialize ACTIVE nodes
 
     Note over Agent, DB: 2. Agent Execution & Governed Mutation Loop
@@ -394,7 +401,7 @@ sequenceDiagram
 
 1. **Upload & Versioning:** The human engineer uploads a Markdown specification to the REST API. The document is immediately committed to the bare Git repository object database via direct ODB writes (`git_blob_create_from_buffer`), generating cryptographic blob identifiers and a permanent reference under `refs/tks/blobs/<blob_hash>`. An ingestion job record is inserted into `ingestion_jobs` and returns `202 Accepted` with a `job_id`.
 2. **Two-Stage Mechanical Decomposition:** A persistent background worker claims the job. Stage 1 mechanically parses the CommonMark AST using `pulldown-cmark`, extracting structural blocks (headings, tables, lists), exact byte/char offsets, and RFC 2119 keywords with zero LLM token cost. Stage 2 invokes external LLM classification only on ambiguous fragments, instructing the model to output compact classification tuples without echoing source text. Staged candidate nodes are linked directly to `job_id`.
-3. **Staging & Human Verification:** Parsed requirements enter staging linked to the ingestion job. The engineer inspects job status and candidates via a unified relational query (`GET /api/v1/documents/ingest/{job_id}`).
+3. **Staging & Human Verification:** Parsed requirements enter staging linked to the ingestion job. The engineer inspects job status, hierarchical structure, and source byte spans using ergonomic CLI review commands (`tks staging list <job_id>`, `tks staging inspect <node_id>`) or direct API query (`GET /api/v1/documents/ingest/{job_id}`), and approves candidate batches via `tks staging approve <job_id>` without manual SQL or curl manipulation.
 4. **Graph Materialization & Draft Compaction:** Approved items are committed to PostgreSQL. For draft proposals, intermediate modifications are squashed into a single canonical `APPROVED` event in `audit_ledger` with `draft_evolution_summary` JSONB, and promoted to `ACTIVE` in `graph_nodes`.
 5. **Context Request:** External agents connecting over MCP (via HTTP/SSE or streaming stdio proxy) request context for assigned tasks. The substrate executes a bounded recursive CTE query (depth clamped $\le 3$, node budget $\le 40$, 250ms statement timeout, and priority pruning), retrieving parent requirements, direct architectural constraints, and vector-similar contextual nodes without fan-out DoS.
 6. **Execution, Identity Validation & Governed Mutation:** The agent runs locally, then submits proposed updates via MCP presenting its workload credentials. The MCP gateway statelessly validates caller identity (Invariant I-7). For structural mutations, the transaction acquires a global advisory lock (`pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`), executes an in-database recursive cycle check, and writes the draft node/edges. If autonomous elaboration is authorized, the change commits as `DRAFT` in `graph_nodes`; if human review is required, it is parked in `staging_queue` (`schema_version = 1`); if a cyclic dependency or invariant violation is detected, it is deterministically rejected.

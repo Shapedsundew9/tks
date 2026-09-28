@@ -53,7 +53,7 @@ In modern delivery lifecycles, project vision documents, product requirements (P
 
 ### The Monolithic Diff Dilemma (The Human Review Bottleneck)
 
-As agent synthesis speed outpaces human reading capacity, human supervisors face an unscalable verification burden: reviewing massive, multi-file code diffs generated in seconds. Humans cannot verify whether thousands of lines of synthesized code adhere to twenty subtle non-functional constraints, cross-cutting security policies, and accepted product requirements. Software engineering risks shifting from an intentional design discipline into an opaque quality-assurance bottleneck.
+As agent synthesis speed outpaces human reading capacity, human supervisors face an unscalable verification burden: reviewing massive, multi-file code diffs generated in seconds. Humans cannot verify whether thousands of lines of synthesized code adhere to twenty subtle non-functional constraints, cross-cutting security policies, and accepted product requirements. Software engineering risks shifting from an intentional design discipline into an opaque quality-assurance bottleneck. Crucially, this verification crisis cannot be resolved by simply displacing cognitive fatigue from code diffs to hundreds of isolated, atomized graph candidate nodes; human oversight must be grounded in tractable supervisory granularity.
 
 ### The Build-vs-Leverage Imperative (Operational Intent Substrate vs. Code-Level Orchestration & Retrospective ALM)
 
@@ -75,11 +75,12 @@ TKS occupies the critical gap between these two extremes: it is neither a code-e
 ### Key Capabilities
 
 1. **Unified Graph-Relational Substrate:** A PostgreSQL storage layer combining native property graph structures with vector embeddings, modeling vision, requirements, specifications, tasks, and artifacts as a strongly typed, navigable topology.
-2. **Document Provenance & Assisted Decomposition Pipeline:** Ingestion of text-based specifications into a Git-backed, content-addressed document store coupled to PostgreSQL, using conversational LLM pipelines and human review gates to extract structured requirement nodes with verified lineage.
+2. **Document Provenance & Assisted Decomposition Pipeline:** Ingestion of text-based specifications into a Git-backed, content-addressed document store coupled to PostgreSQL, using a two-stage extraction pipeline—mechanical AST structural decomposition followed by targeted cognitive semantic classification—with human review gates to extract structured requirement nodes with verified lineage.
 3. **Open Protocol Integration Gateway:** Standardized Model Context Protocol (MCP) and REST interfaces enabling external agent runtimes to retrieve bounded context envelopes and submit proposed graph mutations.
-4. **Immutable Audit Ledger & Historical Reversibility:** An append-only audit ledger ensuring every requirement, specification, task, and dependency edge is completely reversible, auditable, and point-in-time reconstructible without data loss.
+4. **Immutable Audit Ledger & Historical Reversibility:** An append-only audit ledger ensuring every approved requirement, specification, task, and dependency edge is completely reversible, auditable, and point-in-time reconstructible without data loss, while intermediate draft entities undergo lifecycle compaction upon approval to eliminate audit ledger bloat.
 5. **Attribute-Based Node Governance:** Granular, per-node governance attributes that dictate whether an entity is open for autonomous agent elaboration or strictly gated by human authorization.
-6. **Self-Referential Bootstrapping (Dogfooding Principle):** The capability of the Knowledge Substrate to manage its own development lifecycle. Following an initial bootstrap baseline, subsequent roadmap phases, requirements, specifications, and tasks are tracked and governed within the substrate itself.
+6. **Self-Referential Bootstrapping (Dogfooding Principle):** The capability of the Knowledge Substrate to manage its own development lifecycle via a phased transition: Phase 1 establishes read-only self-hosting for context retrieval, while Phase 2 enables autonomous self-evolution where subsequent roadmap phases, requirements, specifications, and tasks are authored, reviewed, and tracked within the substrate itself.
+7. **Tractable Supervisory Granularity:** Structuring human verification gates around cohesive functional modules, document sections, and hierarchical batches rather than isolated relational micro-nodes, presenting candidate entities in the context of their source document spans to ensure supervisory review remains cognitively tractable.
 
 ### Operational Timescales
 
@@ -96,11 +97,12 @@ To maintain engineering precision, all structural concepts are anchored in stand
 
 | System Concept | Concrete Engineering Specification |
 | --- | --- |
-| **Knowledge Substrate** | A PostgreSQL engine uniting graph topologies, dense vector indices (`pgvector`), and relational audit tables in an ACID-compliant store. |
-| **Document Ledger** | A Git-backed, content-addressed artifact store for text-based specification documents, coupled with PostgreSQL maintaining relational metadata, graph topology, and decomposition mappings. |
+| **Knowledge Substrate** | The authoritative living property graph uniting graph topologies, dense vector indices (`pgvector`), and relational audit tables in an ACID-compliant PostgreSQL store. |
+| **Document Ledger** | A Git-backed, content-addressed artifact store serving as an immutable historical intake ledger and baseline reference archive for text-based specifications, as well as a projection target for graph-exported artifacts. |
 | **Topological Context Envelope** | A directed subgraph query centered on an assigned task node, aggregating ancestor requirements and sibling constraints into a bounded prompt context. |
 | **Per-Node Governance Policy** | Metadata attributes stored on individual graph nodes designating the operational authorization level (`AUTONOMOUS_ELABORATION`, `HUMAN_REVIEW_REQUIRED`, `LOCKED`). |
 | **Self-Referential Engine** | The application of the Knowledge Substrate to its own codebase and lifecycle, establishing a closed feedback loop where the tool governs its own evolution. |
+| **Tractable Supervisory Unit** | A cohesive, hierarchical batch of candidate graph nodes presented in source document context for human verification, preventing supervisory review exhaustion. |
 
 ---
 
@@ -154,9 +156,11 @@ flowchart LR
 * **Single-Engine Operational Footprint:** All topology data, vector embeddings, relational metadata, and audit records reside in a single PostgreSQL instance. Distributed multi-database setups (e.g., maintaining an external vector database or separate graph DBMS alongside PostgreSQL) are prohibited, eliminating distributed transaction failures and synchronization drift. Raw text specifications are version-governed via Git and referenced relationally.
 * **Externalized Cognitive Compute:** The core Knowledge Substrate never directly invokes LLM inference for its internal operational loops. External agents supply their own compute and models. LLM interaction within the substrate is restricted to human-directed document ingestion and decomposition pipelines.
 * **Stateless Gateway Boundary:** The MCP and REST interfaces maintain no persistent session memory. Each operation is an authenticated, isolated transaction targeting explicit node identifiers and payloads. The gateway must validate caller identity on every request; no mutation may be committed to the audit ledger without a verified external identity reference.
-* **Document Immutability & Provenance Guarantee:** Uploaded text specifications (Markdown, plain text) are stored in a Git-backed document repository and content-addressed via cryptographic hashes. Requirements derived from them reference the document commit/blob identity and source character spans. Span stability, deterministic boundary re-anchoring, and revision reconciliation are managed at the strategic implementation level.
+* **Document Immutability & Provenance Guarantee:** Uploaded text specifications (Markdown, plain text) are stored in a Git-backed document repository and content-addressed via cryptographic hashes, serving as an immutable historical intake ledger and baseline reference archive. The PostgreSQL Property Graph is the sole authoritative living substrate for active project intent, requirements, governance states, and execution tasks. Text specifications in Git represent seed artifacts and point-in-time projection targets (i.e., human-readable Markdown can be synthesized and exported *from* the living graph), eliminating the fragility and overhead of bidirectional document-graph synchronization. Requirements derived from ingested documents reference the document commit/blob identity and source character spans. Span stability, deterministic boundary re-anchoring, and revision reconciliation are managed at the strategic implementation level.
 * **Schema Flexibility via Progressive Layering:** Core system tables enforce only foundational structural edges (`DERIVED_FROM`, `CONSTRAINED_BY`, `FULFILLS`, `VERIFIED_BY`). Domain-specific attributes and evolving project taxonomy are managed via typed JSONB fields to avoid costly schema migrations during early project phases.
-* **Bootstrap Boundary Contract:** Initial system design and Phase 0 development occur using conventional developer tooling. From the completion of foundational ingestion and context retrieval capabilities onward, all subsequent requirements, architectural decisions, and development tasks must be tracked and governed within the substrate itself.
+* **Bootstrap Boundary Contract:** Initial system design and Phase 0 development occur using conventional developer tooling. The bootstrapping transition proceeds across two distinct gates:
+  1. *Phase 1 Dogfooding Gate (Read-Only Self-Hosting):* Upon completing foundational ingestion and context retrieval, the project's own documentation (`vision.md`, backlogs) is ingested into the substrate; human developers and external agents retrieve context envelopes via the read-only MCP gateway to implement Phase 2 tasks.
+  2. *Phase 2 Dogfooding Gate (Autonomous Self-Evolution):* Once mutation-enabled tools, draft lifecycle handling, and governance filters are operational, all subsequent feature requirements, architectural adjustments, and tasks must be authored, reviewed, and governed directly within the substrate itself.
 
 ---
 
@@ -192,39 +196,41 @@ flowchart TD
 
     Doc["Raw Specification / Markdown Doc"]:::agent
     GitLedger["Git Document Ledger<br/><i>(Versioned Text & Object Hashes)</i>"]:::db
-    Decomp["Assisted Decomposition Assistant<br/><i>(LLM Parser via API)</i>"]:::gate
-    HumanReview["Human Staging & Verification Gate"]:::gate
+    ASTParser["Stage 1: Mechanical AST Structural Extractor<br/><i>(Deterministic Block & Span Resolution)</i>"]:::gate
+    Classifier["Stage 2: Targeted Semantic Classifier<br/><i>(Narrow LLM Classification Tuples)</i>"]:::gate
+    HumanReview["Human Staging & Verification Gate<br/><i>(Tractable Supervisory Batches)</i>"]:::gate
 
     Doc -->|"1. Ingest & Version"| GitLedger
-    GitLedger -->|"2. Stream Source Spans"| Decomp
-    Decomp -->|"3. Draft Requirement Nodes"| HumanReview
+    GitLedger -->|"2. Stream Document Text"| ASTParser
+    ASTParser -->|"3. Structural Blocks & Exact Spans"| Classifier
+    Classifier -->|"4. Candidate Requirement Tuples"| HumanReview
 
     subgraph Core["PostgreSQL Knowledge Substrate"]
         GraphStore["Graph Topology & pgvector Embeddings"]:::db
         AuditTrail["Immutable Change & Audit Ledger"]:::db
     end
 
-    HumanReview -->|"4. Commit Verified Graph Nodes"| AuditTrail
-    AuditTrail -->|"5. Materialize Topology"| GraphStore
+    HumanReview -->|"5. Commit Verified Graph Nodes"| AuditTrail
+    AuditTrail -->|"6. Materialize Topology"| GraphStore
 
     ExtAgent["External Autonomous Agent"]:::agent
     MCPGateway["MCP Protocol Gateway"]:::gate
     GovCheck["Per-Node Governance Policy Filter"]:::gate
 
-    GraphStore -.->|"6. Request Context Envelope"| MCPGateway
+    GraphStore -.->|"7. Request Context Envelope"| MCPGateway
     MCPGateway -.-> ExtAgent
-    ExtAgent -->|"7. Propose Node Mutation"| MCPGateway
-    MCPGateway -->|"8. Check Policy"| GovCheck
-    GovCheck -->|"9. Commit Authorized Change"| AuditTrail
+    ExtAgent -->|"8. Propose Node Mutation"| MCPGateway
+    MCPGateway -->|"9. Check Policy"| GovCheck
+    GovCheck -->|"10. Commit Authorized Change"| AuditTrail
 
 ```
 
 ### Conceptual Operational Loops
 
 1. **Document Ingestion & Decomposition Loop:**
-   Ingests text specifications into the Git document ledger, extracts atomic requirement entities through an assisted LLM decomposition workflow, subjects draft requirements to human verification, and commits verified nodes to PostgreSQL with cryptographic source span links.
+   Ingests text specifications into the Git document ledger as immutable baseline references. Decomposes documents through a two-stage extraction architecture: *Stage 1 (Mechanical AST Structural Extraction)* deterministically segments structural blocks (headings, lists, tables) and resolves exact source character spans at zero token cost; *Stage 2 (Targeted Cognitive Semantic Classification)* invokes narrow LLM inference solely to classify ambiguous candidates into compact relational tuples without echoing source text. Candidate nodes are staged in hierarchical batches representing cohesive functional sections to maintain tractable supervisory granularity. Verified nodes are committed to PostgreSQL with cryptographic source span links.
 2. **Agent Context Retrieval & Governed Mutation Loop:**
-   Provides external autonomous agents with bounded topological context envelopes via the Model Context Protocol (MCP). Agents execute tasks within their external runtimes and propose candidate graph mutations back through the gateway, where per-node governance policies either commit the mutation to the audit ledger or route it to human staging.
+   Provides external autonomous agents with bounded topological context envelopes via the Model Context Protocol (MCP). Agents execute tasks within their external runtimes and propose candidate graph mutations back through the gateway, where per-node governance policies either commit mutations to an isolated draft lifecycle (subject to atomic event compaction upon approval) or route them to human staging, preventing unauthorized mutations and audit ledger bloat.
 
 *(Note: Detailed step-by-step API message protocols and interaction sequences are cataloged in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
 
@@ -235,11 +241,11 @@ flowchart TD
 ### Architectural Invariants (Engineering Directives)
 
 * **Invariant I-1 (Strict Bidirectional Traceability):** Every functional specification, implementation task, and code artifact reference must maintain a valid, directed edge path terminating at an authorized requirement node. Orphan execution tasks are rejected at the database constraint level.
-* **Invariant I-2 (Auditability & Reversible Lineage):** Destructive in-place updates (`UPDATE` or `DELETE`) on requirements, specifications, and topological edges are strictly prohibited. State transitions must be recorded such that every state mutation is fully auditable, reversible, and point-in-time reconstructible without data loss. The specific versioning mechanism is resolved at the strategic planning level.
+* **Invariant I-2 (Auditability & Reversible Lineage):** Destructive in-place updates (`UPDATE` or `DELETE`) on approved requirements, specifications, and topological edges are strictly prohibited. State transitions across approved entities must be recorded such that every state mutation is fully auditable, reversible, and point-in-time reconstructible without data loss. Draft entities and exploratory agent proposals reside in an isolated draft lifecycle and are subject to lifecycle compaction (squashed into a single canonical audit event upon promotion to active status), preventing audit ledger exhaustion while preserving complete lineage of approved baselines. The specific versioning and compaction mechanisms are resolved at the strategic planning level.
 * **Invariant I-3 (Zero In-Database Agent Execution):** The core database engine and gateway services shall never execute autonomous agent cognitive loops internally. The substrate functions strictly as a deterministic state store and protocol gateway.
 * **Invariant I-4 (Cryptographic Source Anchoring):** Every requirement derived via the decomposition pipeline must store a persistent cryptographic reference (Git commit/blob hash) and source span coordinates pointing to the original document artifact.
 * **Invariant I-5 (Explicit Per-Node Governance Authority):** Permissions to alter or elaborate a node are governed by explicit per-node metadata attributes (`governance_policy`). Node-level policies take absolute precedence over global agent roles.
-* **Invariant I-6 (Self-Referential Bootstrapping):** The Knowledge Substrate must be used to manage its own development. Once foundational ingestion and context retrieval are functional, all new feature requirements, architectural adjustments, and tasks for subsequent iterations must be authored, reviewed, and tracked within the substrate itself.
+* **Invariant I-6 (Self-Referential Bootstrapping):** The Knowledge Substrate must be used to manage its own development through a phased bootstrapping transition. Upon completing Phase 1 foundational ingestion and read-only context retrieval, the substrate must self-host its own documentation for context querying. Upon completing Phase 2 mutation tooling and governance, all subsequent feature requirements, architectural adjustments, and development tasks must be authored, reviewed, and tracked directly within the substrate itself.
 * **Invariant I-7 (Agent Identity Attribution):** Every mutation submitted through the Integration Gateway must be attributable to a verified external identity (human user or autonomous agent instance). Agent identity credentials must be recorded in the audit ledger alongside mutation events. The specific authentication mechanism is resolved at the strategic planning level, but identity attribution is a non-negotiable audit requirement.
 
 ### Strategic Hypotheses (Scientific Bets to De-Risk)
@@ -315,8 +321,8 @@ quadrantChart
 To honor the principle to "start small" under a constrained resource model, development follows a strict self-referential bootstrapping path where each milestone delivers standalone utility before subsequent phases are attempted:
 
 * **Phase 0 Baseline:** Initial architecture and storage foundations are built externally using standard tools. Phase 0 additionally includes lightweight evaluation spikes to generate early directional signal on the highest-risk strategic hypotheses (H-1, H-4), reducing the probability of significant infrastructure investment on unvalidated premises.
-* **Phase 1 Self-Hosting Gate:** Upon completing the core ingestion and read-only MCP gateway, the project's own documentation (`vision.md`, backlogs) is ingested into the substrate.
-* **Phase 2+ Evolution:** All subsequent requirements and tasks are managed within the substrate itself, using autonomous agents operating via MCP to advance the codebase. Phases 3 and 4 remain aspirational targets contingent on the demonstrated operational viability of earlier phases.
+* **Phase 1 Self-Hosting Gate (Read-Only Context Retrieval):** Upon completing the core ingestion and read-only MCP gateway, the project's own documentation (`vision.md`, backlogs) is ingested into the substrate. Developers and external agents query bounded context envelopes via MCP to implement Phase 2 development tasks.
+* **Phase 2+ Evolution Gate (Autonomous Self-Evolution):** With mutation tools, draft lifecycle handling, and per-node governance operational, all subsequent requirements, specifications, and tasks are authored, reviewed, and tracked directly within the substrate itself, using autonomous agents operating via MCP to advance the codebase. Phases 3 and 4 remain aspirational targets contingent on the demonstrated operational viability of earlier phases.
 
 *(Note: Specific phase deliverables, engineering schedules, and operational dependencies are detailed in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
 
