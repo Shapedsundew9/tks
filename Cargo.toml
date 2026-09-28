@@ -1,9 +1,9 @@
 [package]
-name = "rust-base"
+name = "tks"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
-description = "Rust-Base"
+rust-version = "1.98"
+description = "The Knowledge Substrate"
 license = "MIT"
 readme = "README.md"
 
@@ -12,9 +12,9 @@ readme = "README.md"
 [dev-dependencies]
 
 [lib]
-name = "rust_base"
+name = "tks"
 path = "src/lib.rs"
 
 [[bin]]
-name = "protoproject"
+name = "tks"
 path = "src/main.rs"
