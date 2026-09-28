@@ -29,7 +29,7 @@ flowchart TD
     classDef failure fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
     classDef consequence fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
 
-    F1["The Context Window Collapse<br/><i>(Flat Vector Similarity)</i>"]:::failure
+    F1["The Context Window Collapse<br/><i>(Code-Level Context Blindness)</i>"]:::failure
     F2["The Specification Drift Trap<br/><i>(Decoupled Documentation)</i>"]:::failure
     F3["The Monolithic Diff Dilemma<br/><i>(Unverifiable Agent Output)</i>"]:::failure
 
@@ -43,9 +43,9 @@ flowchart TD
 
 ```
 
-### The Context Window Collapse (Flat Vector Search Limitations)
+### The Context Window Collapse (Code-Level Context Blindness)
 
-Standard agentic workflows rely on flat semantic search across raw codebases and unstructured documentation. Vector similarity measures lexical and topical proximity, but is blind to hierarchical constraints, dependency depths, and parent architectural rules. When an agent queries an unfamiliar codebase, it retrieves localized snippets while missing the systemic invariants that govern them, producing locally plausible implementations that violate system-wide architectural integrity.
+Contemporary AI-native engineering environments assemble context dynamically via Abstract Syntax Tree (AST) parsing, type-system traversal, symbol grepping, and iterative file exploration. While these techniques significantly surpass naive vector similarity, code-level context assembly remains structurally blind to the intent and requirement layer. Code-level tools can discover what existing code *does*, but they cannot infer what the software is *supposed to do*, why specific architectural invariants exist, or which upstream business requirements govern a component. Lacking a topological requirement substrate, agents assemble context that is locally coherent at the syntax level but blind to systemic architectural contracts, generating code that passes unit tests while violating high-level system invariants.
 
 ### The Specification Drift Trap (Decoupled Intent)
 
@@ -55,9 +55,14 @@ In modern delivery lifecycles, project vision documents, product requirements (P
 
 As agent synthesis speed outpaces human reading capacity, human supervisors face an unscalable verification burden: reviewing massive, multi-file code diffs generated in seconds. Humans cannot verify whether thousands of lines of synthesized code adhere to twenty subtle non-functional constraints, cross-cutting security policies, and accepted product requirements. Software engineering risks shifting from an intentional design discipline into an opaque quality-assurance bottleneck.
 
-### The Build-vs-Leverage Imperative (Operational Substrate vs. Retrospective ALM)
+### The Build-vs-Leverage Imperative (Operational Intent Substrate vs. Code-Level Orchestration & Retrospective ALM)
 
-Existing Application Lifecycle Management (ALM) platforms (e.g., IBM DOORS Next, Jama Connect, Siemens Polarion) and issue-tracker traceability matrix extensions treat requirements traceability primarily as a retrospective reporting and compliance concern. Autonomous software engineering, however, requires traceability to function as an active, forward-looking operational substrate for real-time agent context assembly. Extending legacy ALM tools via external adapters is architecturally insufficient: agent workflows require sub-second topological graph traversals, co-located vector search, and programmatic mutation governance at the storage layer. Purpose-building the Knowledge Substrate around a unified graph-relational engine ensures that topological provenance is the primary operational data structure rather than an afterthought export.
+The contemporary engineering ecosystem presents two divergent paradigms, neither of which addresses the foundational intent-fidelity gap:
+
+1. **AI-Native Development Tools (Thin Code Orchestration):** AI-native IDEs (e.g., Cursor, Windsurf, Devin Desktop) and terminal-first agentic harnesses (e.g., Claude Code, Codex CLI) operate as thin orchestration layers over raw code artifacts. Through Language Server Protocol (LSP) integration, Abstract Syntax Tree (AST) search, and multi-tool agentic retrieval, they excel at discovering and manipulating existing syntax. However, they structurally cannot reconstruct the "why" behind the code—the upstream business constraints, non-functional requirements, and architectural trade-offs that dictate correct behavior. Ad-hoc Model Context Protocol (MCP) bridges to issue trackers or flat documentation stores offer only fragmented, unverified context without topological coherence or mutation governance.
+2. **Legacy ALM Platforms (Retrospective Compliance):** Traditional Application Lifecycle Management suites (e.g., IBM DOORS Next, Jama Connect, Siemens Polarion) and issue-tracker traceability matrix plugins treat requirements traceability as a human-facing, retrospective reporting and compliance exercise. They were never designed to serve as an active, sub-second operational substrate for machine agents requiring topological graph traversals, co-located vector search, and transactional mutation governance.
+
+TKS occupies the critical gap between these two extremes: it is neither a code-editing assistant nor a compliance database. It is a purpose-built **requirement-intent provenance substrate** that anchors external agent reasoning directly to a version-governed property graph, supplying the causal architectural context that code-level tooling structurally lacks.
 
 ---
 
@@ -239,8 +244,8 @@ flowchart TD
 
 ### Strategic Hypotheses (Scientific Bets to De-Risk)
 
-* **Hypothesis H-1 (Topological Retrieval vs. Flat Vector Precision):**
-  *We hypothesize that* supplying agents with graph-bounded context envelopes (ancestor requirements plus direct architectural constraints) significantly reduces downstream architectural contract violations compared to standard top-$k$ flat semantic vector retrieval.
+* **Hypothesis H-1 (Topological Retrieval vs. Code-Level Agentic Context Assembly):**
+  *We hypothesize that* supplying agents with graph-bounded context envelopes (ancestor requirements plus direct architectural constraints) significantly reduces downstream architectural contract violations compared to best-available agentic context assembly (multi-tool code exploration, AST/symbol analysis, and lexical/semantic search lacking graph-structured requirement context).
 * **Hypothesis H-2 (Sublinear Human Oversight Overhead):**
   *We hypothesize that* managing autonomous agents through structured requirement graphs and topological impact analyses significantly reduces human supervisory overhead compared to manual inspection of agent-generated code diffs.
 * **Hypothesis H-3 (Single-Engine Relational Scalability):**
@@ -346,7 +351,7 @@ The program should be halted, redirected, or fundamentally restructured if any o
 1. **The Ingestion Friction Falsification:**
    If the overhead of ingesting, decomposing, and verifying markdown specifications in the graph exceeds the time required for engineering teams to manually write tickets and code, the core value proposition of an automated knowledge substrate is disproven.
 2. **The Graph RAG Inefficacy Falsification (Hypothesis H-1 Failure):**
-   If controlled benchmarks reveal that external agents operating over graph-structured context envelopes exhibit comparable rates of architectural drift and hallucination to agents using simple flat-file vector search, the graph-native thesis is falsified.
+   If controlled benchmarks reveal that external agents operating over graph-structured context envelopes exhibit comparable rates of architectural drift and hallucination to agents using best-available multi-tool agentic context assembly without requirement graphs, the graph-native thesis is falsified.
 3. **The Single-Engine Relational Bottleneck (Hypothesis H-3 Failure):**
    If graph traversals over versioned tables in PostgreSQL fail to maintain acceptable interactive latencies at scale, and this bottleneck cannot be resolved through index optimization, the single-engine architectural boundary must be abandoned in favor of a specialized graph database.
 4. **The Bootstrapping Failure Falsification:**

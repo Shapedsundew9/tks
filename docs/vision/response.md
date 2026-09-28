@@ -1,234 +1,175 @@
-# Stakeholder Response — Iteration 3
-
-**Role:** Stakeholder (Committed Ally / Constructive Skeptic)
-**Date:** 2026-09-28
+# Stakeholder Response — Iteration 4
 
 ---
 
-## Executive Summary
+## Summary Disposition
 
-The vision and backlog are in strong shape. The problem framing is disciplined,
-the kill conditions are honest, and the phased bootstrapping path is pragmatic.
-After careful review and external research, I am raising **four items** that I
-believe meet the threshold of significant feedback. Two are corrections to
-factual claims, one surfaces a latent strategic risk that deserves explicit
-acknowledgment, and one identifies a missing environmental constraint.
+The vision is structurally mature, disciplined in scope, and honest about
+its risks. The phased roadmap with dogfooding gates, the graduated
+response framework, and the kill conditions all reflect the kind of
+intellectual honesty that gives a constrained-resource initiative a real
+chance of succeeding. I remain a committed supporter of the direction.
 
----
-
-## Item 1 — SQL/PGQ Factual Correction (Backlog §5, Spike 1)
-
-### The Claim (Backlog, Line 240)
-
-> "SQL/PGQ (SQL:2023 Part 16) was removed from PostgreSQL 19 development
-> branches in September 2026 due to catalog stability, concurrency, and
-> security concerns."
-
-### The Problem
-
-This is partially incorrect and risks anchoring Spike 1 decisions on a stale
-premise. Current public evidence (PostgreSQL Beta 4 release notes, September 24,
-2026; neon.com coverage) shows that SQL/PGQ was **reverted** from the PostgreSQL
-19 release cycle, but multiple sources indicate it is **expected to reappear in
-PostgreSQL 20** after further community design work. Separately, Apache AGE now
-supports PostgreSQL 11–18, with PG 19 support pending the stable release.
-
-More importantly, the Spike 1 text describes SQL/PGQ removal as a settled, final
-outcome. It is more accurate to call it a *deferral*. The architectural
-implication is the same for Phase 1 (don't depend on SQL/PGQ now), but the
-forward-looking text should acknowledge that native SQL/PGQ may arrive in PG 20
-and could eventually simplify or replace the chosen graph query strategy.
-
-### Recommended Action
-
-**Backlog correction (minor).** Reword Spike 1 context to:
-
-> "SQL/PGQ (SQL:2023 Part 16) was reverted from the PostgreSQL 19 release cycle
-> due to design and stability concerns. Native SQL/PGQ support may appear in a
-> future major release (earliest PG 20). The project requires an alternative
-> graph query approach for initial phases."
-
-Add a forward note:
-
-> "Re-evaluate native SQL/PGQ feasibility when PG 20 reaches beta."
-
-This is a factual correction, not a vision change, but it affects a backlog
-spike's framing and should be fixed.
+Two concerns below rise to the level of significant feedback because they
+affect the **validity of the problem framing** and the
+**meaningfulness of the foundational hypothesis**, respectively. Neither
+requires tearing anything down — both can be addressed by tightening
+existing sections.
 
 ---
 
-## Item 2 — Character-Span Extraction Risk Is Under-Weighted (Vision §2.4 / Backlog Spike 4)
+## Concern 1: The Competitive Positioning in §1 Argues Against the Weakest Opponent
 
-### The Concern
+**Location:** §1, "The Build-vs-Leverage Imperative"
 
-Invariant I-4 (Cryptographic Source Anchoring) mandates that every derived
-requirement stores "source span coordinates pointing to the original document
-artifact." The entire provenance guarantee chain hangs on the accuracy of
-character offsets produced by the assisted decomposition pipeline (Hypothesis
-H-4).
+### The Gap
 
-External research (LLMStructBench 2026; industry practitioner consensus)
-confirms what the backlog's Spike 4 already suspects: **LLMs remain
-fundamentally challenged by character-level precision** due to tokenization
-boundaries. Models are reliable at schema-level structured output (valid JSON,
-correct field types) but demonstrably unreliable at returning *exact character
-offsets* into source documents, especially with:
+The fourth failure-mode subsection explicitly positions TKS against
+legacy ALM platforms (IBM DOORS Next, Jama Connect, Siemens Polarion),
+arguing they treat traceability as "a retrospective reporting and
+compliance concern." That argument is correct but incomplete. It defeats
+the weakest competitor in the room while ignoring the strongest.
 
-- UTF-8 multibyte sequences
-- Markdown formatting artifacts (link syntax, fenced blocks, nested lists)
-- Whitespace normalization differences between the model's internal
-  representation and the raw byte stream
+By late 2026, the most relevant competitive pressure comes from the
+**AI-native development tool ecosystem** — not legacy ALM:
 
-The backlog's CAL-H4 target (≥ 95% precision/recall on atomic requirement spans)
-is ambitious. Industry evidence suggests that achieving 95% on *span boundary
-accuracy* (as opposed to entity-level F1) is at the upper end of what
-state-of-the-art models achieve even with constrained generation, and that this
-accuracy degrades on structurally complex Markdown.
+- **AI-native IDEs** (Cursor, Windsurf/Devin Desktop) embed agentic
+  context assembly directly into the editing loop, using AST analysis,
+  type-system navigation, and multi-tool agentic retrieval (ripgrep,
+  ast-grep, LSP) to assemble context dynamically without a separate
+  knowledge substrate.
+- **Terminal-first agents** (Claude Code, OpenAI Codex CLI) perform
+  agentic retrieval loops — iteratively reading files, grepping symbols,
+  and exploring dependency graphs — rather than relying on flat vector
+  search.
+- **MCP-native integrations** are already bridging agents to ticketing
+  systems, ADRs, and documentation stores, providing ad-hoc traceability
+  without a purpose-built graph engine.
 
-### Why This Is Significant
+These tools are attacking the same three failure modes (context collapse,
+specification drift, unverifiable output) from a "thin orchestration
+layer over existing code artifacts" direction. The vision's problem
+framing implicitly assumes the baseline is "flat semantic search over raw
+codebases" (§1, first paragraph), but the industry baseline has moved
+beyond that.
 
-If span extraction proves unreliable, the project faces a fork:
+### Why This Is Vision-Level
 
-1. **Relax Invariant I-4** to allow approximate spans (e.g., paragraph-level or
-   section-level anchoring), which weakens the provenance guarantee.
-2. **Supplement LLM extraction with deterministic post-processing** (e.g.,
-   fuzzy-match the extracted text against the source document to re-derive exact
-   offsets), which adds pipeline complexity but preserves the invariant.
+The "Build-vs-Leverage Imperative" is part of the problem definition, not
+strategy. If the problem definition only argues against legacy tools, it
+cannot survive contact with the obvious rebuttal: *"We already have
+Cursor + Claude Code + MCP. Why do we need a separate knowledge
+substrate?"*
 
-Neither path is covered in the current vision or backlog.
+### What I Would Add
 
-### Recommended Action
+The vision's genuine, defensible differentiation is the **intent and
+requirement layer** — the "why" behind the code. AI-native IDEs
+can tell an agent what the code *does* (via AST/types/tests); they
+cannot tell an agent what the code is *supposed to do*, why a
+design decision was made, or which upstream business constraint governs
+a module. No amount of code-level context assembly reconstructs
+the requirement provenance that TKS provides.
 
-**Add a backlog item** (Spike 4 addendum or standalone) to explicitly plan for
-deterministic span re-anchoring as a fallback:
-
-> "If LLM-produced character offsets fall below the CAL-H4 threshold, implement
-> a deterministic post-processing step that fuzzy-matches extracted requirement
-> text against the source document byte stream to re-derive verified span
-> coordinates. This preserves Invariant I-4 without requiring the LLM itself to
-> produce exact offsets."
-
-This is a low-cost architectural hedge that should be identified now, not
-discovered during Phase 1 integration.
-
----
-
-## Item 3 — Competitive Positioning / Build-vs-Leverage Gap
-
-### The Concern
-
-The vision document (§1) defines the problem space convincingly but contains
-**no explicit acknowledgment of the existing competitive landscape**. There are
-mature, commercially supported tools in this space:
-
-- **Enterprise ALM platforms** (Jama Connect, IBM DOORS Next, PTC Codebeamer,
-  Siemens Polarion) provide end-to-end requirements traceability with audit
-  trails, albeit designed for human-centric workflows, not agentic ones.
-- **Modern DevOps integrations** (Modern Requirements / MR4DevOps, Qase) provide
-  traceability matrices that plug into existing issue trackers.
-- **Lightweight graph-native approaches** (ReqView + Neo4j export, SARA-style
-  Git/Markdown knowledge graphs) overlap directly with TKS's niche.
-
-The vision's differentiation is the *agent-agnostic MCP gateway* and the
-*graph-bounded context envelope* thesis. These are genuinely novel. But the
-document never states why an enterprise team should build TKS instead of
-extending an existing ALM tool with an MCP adapter layer, or why a solo
-developer should build a PostgreSQL substrate instead of using ReqView + Neo4j.
-
-### Why This Is Significant
-
-This is not a gap in the technical architecture — it is a gap in the *strategic
-justification*. Without an explicit "why not just extend X?" section, the vision
-is vulnerable to the objection: "You are building a requirements management
-system from scratch when dozens exist. The only novel part is the MCP context
-envelope, which could be a plugin for an existing tool."
-
-### Recommended Action
-
-**Vision addition (§1 or §2).** Add a brief (3–5 sentence) positioning
-statement that explicitly addresses why TKS must be a purpose-built substrate
-rather than an extension layer on existing ALM tools. The core argument should be
-that existing tools treat traceability as a *reporting* concern (backward-looking
-audit), whereas TKS treats it as an *operational* concern (forward-looking agent
-context assembly), and that this distinction requires the graph topology to be
-the primary storage model, not a secondary export.
-
-This is a vision-level addition — it clarifies the problem definition and
-success criteria by contrast.
+**Recommended action:** Revise §1's "Build-vs-Leverage Imperative" to
+acknowledge AI-native development tools as the primary contemporary
+competition, then explicitly articulate TKS's differentiation as the
+**requirement-intent provenance layer** that code-level tooling
+structurally cannot provide. This strengthens the problem framing by
+showing the vision survives the strongest objection, not just the
+weakest.
 
 ---
 
-## Item 4 — Missing Resource / Team-Size Constraint Acknowledgment
+## Concern 2: Hypothesis H-1's Baseline Is a Strawman
 
-### The Concern
+**Location:** §5, Hypothesis H-1; Backlog §5, Spike 0
 
-The vision and backlog implicitly assume a multi-person engineering team (e.g.,
-references to "engineering leadership," "human engineering teams," "development
-team"). The Cargo.toml and repository structure suggest this is currently a
-**single-developer project** (or very small team). The four-phase roadmap
-through to closed-loop lifecycle verification (Phase 4) is substantial — it
-encompasses a Git-backed document store, a PostgreSQL graph engine, an MCP
-server, a REST API, an LLM-assisted decomposition pipeline, a governance policy
-engine, a web supervisory portal, CI/CD webhook integration, and an audit ledger.
+### The Gap
 
-There is no explicit statement anywhere in the vision or backlog about the
-resource constraint under which this project operates, or about how the phased
-plan maps to a realistic execution timeline given the available effort.
+H-1 states:
 
-### Why This Is Significant
+> *"We hypothesize that supplying agents with graph-bounded context
+> envelopes [...] significantly reduces downstream architectural contract
+> violations compared to standard top-k flat semantic vector retrieval."*
 
-This matters because the bootstrapping strategy (§3) — "use the tool to build
-the tool" — is the project's primary risk mitigation for the scope/effort
-problem. If the project never reaches Phase 1 completion because Phase 0 + Phase
-1 scope is too large for the available effort, the self-referential feedback loop
-never engages, and the entire acceleration premise fails.
+And Spike 0's Condition A (baseline) is defined as:
 
-The kill condition for this (Kill #4, Bootstrapping Failure Falsification)
-triggers *after* Phase 1, but the actual risk is *reaching* Phase 1.
+> *"Standard top-k semantic vector similarity over chunked specification
+> text."*
 
-### Recommended Action
+In 2026, **flat top-k vector similarity is not how competent agents
+retrieve context**. Modern agents use multi-step agentic retrieval
+combining lexical search, AST-guided structural analysis, type-system
+navigation, and iterative file exploration. Benchmarks (GraphRAG-Bench,
+practitioner consensus from agentic coding tool evaluations) consistently
+show that hybrid agentic retrieval significantly outperforms naive vector
+search.
 
-**Vision addition (§3 or §6).** Add an explicit acknowledgment:
+If H-1 is validated against a strawman baseline, a positive result proves
+only that *structured retrieval beats the weakest available retrieval
+method*. That is not a useful scientific signal and would provide false
+confidence for the Phase 1 infrastructure investment.
 
-> "The project operates under a constrained resource model. The phased roadmap
-> is designed so that each phase delivers standalone value and can be evaluated
-> independently. Phase 0 and Phase 1 are scoped to be achievable by a small team
-> (or individual developer) using commodity infrastructure. Phases 3 and 4 are
-> aspirational targets contingent on the demonstrated viability of earlier
-> phases."
+### Why This Is Vision-Level
 
-This is not a change to the North Star — it is an environmental boundary
-contract (§3 scope) that is currently unstated. Stating it explicitly protects
-against scope creep in Phase 0/1 planning and makes the "start small" directive
-concrete rather than aspirational.
+H-1 is declared as a "Strategic Hypothesis (Scientific Bet to De-Risk)"
+in the vision document, and the entire program's go/no-go decision
+depends on its validation. If the hypothesis is poorly formulated, the
+kill conditions that depend on it (Kill #2, "Graph RAG Inefficacy
+Falsification") are also weakened. The integrity of the falsification
+framework requires that H-1 tests against a credible baseline.
+
+### What I Would Change
+
+**In the vision (§5, H-1):** Restate the comparison baseline as
+"best-available agentic context assembly" rather than "standard top-k
+flat semantic vector retrieval." The specific baseline configuration
+(which tools, which retrieval strategies) belongs in the backlog's
+Spike 0, but the vision-level hypothesis should not lock in a baseline
+that is already obsolete.
+
+**In the backlog (§5, Spike 0, Condition A):** Redefine the baseline
+condition to represent a competent agentic retrieval setup — e.g., an
+agent with access to file reading, grep, AST-based code search, and
+standard semantic search, operating without graph-structured requirement
+context. This tests whether the *requirement graph* adds value beyond
+what code-level tooling already provides, which is the actual bet TKS is
+making.
+
+**Impact on decision thresholds:** If the baseline is strengthened,
+the ≥40% violation reduction target for "strong directional greenlight"
+may need recalibration. A smaller margin against a strong baseline is
+more meaningful than a large margin against a strawman. Consider
+whether 20-30% reduction against a competent baseline should qualify
+for directional greenlight. This recalibration is a backlog concern
+and should be tracked there.
 
 ---
 
-## Items Considered and Not Raised
+## Items Considered and NOT Raised
 
-For transparency, I evaluated and chose *not* to raise the following:
+For transparency, the following were evaluated and judged to not
+constitute significant feedback:
 
-- **Mermaid diagram styling consistency:** Purely stylistic; no impact on
-  vision clarity.
-- **The Phase 3 Web Portal as scope creep risk:** Already implicitly mitigated
-  by the phased gating model; raising it would be a strategic/tactical
-  discussion, not a vision concern.
-- **Embedding model selection specifics:** Correctly deferred to the backlog.
-  No vision-level concern.
-- **The "single PostgreSQL instance" constraint (H-3):** The kill condition
-  and graduated response model already cover this adequately. The pgvector
-  benchmarks I reviewed (5–30ms p50 at 1M rows for vector search; sub-second
-  recursive CTEs at millions of edges with proper indexing) suggest the
-  hypothesis is plausible at the scale targets specified in SLA-1/SLA-2. No
-  reason to escalate.
+| Topic | Disposition |
+| --- | --- |
+| **Node lifecycle states** (ACTIVE, SUPERSEDED, ARCHIVED) | Could improve context envelope precision over time, but the vision's JSONB extension mechanism and progressive layering approach provide an adequate strategic path. Suggest adding as a backlog consideration for Phase 2+, not a vision change. |
+| **Semantic validation of autonomous mutations** | The governance model is structural, not semantic. This is a real limitation but the vision's progressive delegation model (AUTONOMOUS_ELABORATION only on low-risk nodes) adequately scopes the risk. Not a vision gap. |
+| **MCP protocol maturity risk** | Real but mitigated by the REST fallback. The vision's agent-agnostic claim is reasonable given the dual-protocol approach. |
+| **Git-only document ingestion** | Intentional and documented scope boundary. Expanding to Confluence/Notion/etc. is a Phase 3+ concern at most. |
 
 ---
 
-## Summary of Recommended Actions
+## Recommended Backlog Additions
 
-| # | Type | Scope | Action |
-| --- | ------ | ------- | -------- |
-| 1 | Factual correction | Backlog Spike 1 | Reword SQL/PGQ context from "removed" to "reverted/deferred"; add PG 20 re-evaluation note |
-| 2 | Risk mitigation | Backlog Spike 4 / new item | Add deterministic span re-anchoring fallback plan for when LLM offsets miss CAL-H4 |
-| 3 | Strategic clarification | Vision §1 or §2 | Add competitive positioning statement ("why not extend existing ALM tools?") |
-| 4 | Environmental constraint | Vision §3 or §6 | Acknowledge resource/team-size constraint; tie "start small" to concrete effort model |
+If the vision changes above are accepted, the following backlog items
+should be tracked:
+
+1. **Spike 0 baseline redesign:** Redefine Condition A to represent
+   competent multi-tool agentic retrieval (file reading + grep +
+   AST search + semantic search, without graph-structured requirements).
+   Recalibrate CAL-H1 decision thresholds against the stronger baseline.
+2. **Node lifecycle management (Phase 2+ consideration):** Evaluate
+   adding lifecycle state attributes (ACTIVE, SUPERSEDED, ARCHIVED) to
+   prevent context envelope degradation from graph growth over time.

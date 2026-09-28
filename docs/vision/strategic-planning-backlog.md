@@ -53,7 +53,7 @@ flowchart LR
 
 - **Primary Objective:** Empirically validate the foundational scientific premise (Hypothesis H-1) and baseline assisted extraction feasibility (Hypothesis H-4) using lightweight, throwaway prototypes before committing to Phase 1 infrastructure construction.
 - **Core Deliverables:**
-  1. **Spike 0 (H-1 Directional Validation Spike):** Rapid throwaway test comparing graph-bounded context retrieval against flat-vector similarity search on an in-memory graph of hand-curated requirement nodes (~50–100 nodes), measuring constraint violation reduction during agentic code synthesis.
+  1. **Spike 0 (H-1 Directional Validation Spike):** Rapid throwaway test comparing graph-bounded context retrieval against a competent multi-tool agentic retrieval baseline (file reading, grep, AST symbol search, and semantic search without graph-structured requirement context) on an in-memory graph of hand-curated requirement nodes (~50–100 nodes), measuring constraint violation reduction during agentic code synthesis.
   2. **Early Extraction Prompting Spike (H-4 Pre-Validation):** Empirical benchmarking of commodity LLM decomposition prompts against representative technical Markdown specs to verify character offset extraction accuracy.
   3. **Foundational Architecture Scaffolding:** Initial repository setup, developer tooling, Docker compose definition for PostgreSQL with `pgvector`, and baseline migration harness.
 
@@ -76,6 +76,7 @@ flowchart LR
   3. **Governance Policy Engine:** Database triggers and gateway filters enforcing `governance_policy` flags (`AUTONOMOUS_ELABORATION`, `HUMAN_REVIEW_REQUIRED`, `LOCKED`).
   4. **Rollback & Reversion Utility:** Administrative tooling to cleanly revert a sequence of agent mutations without leaving orphan nodes or dangling relationships.
   5. **Semantic Corruption Defenses & DAG Cycle Validation:** Database-level DAG constraints preventing circular dependency creation on structural edges (`CONSTRAINED_BY`, `DERIVED_FROM`), combined with agent-instance-scoped batch rollback tooling to cleanly neutralize corrupted or adversarial mutation bursts.
+  6. **Node Lifecycle State Architecture (Phase 2+ Consideration):** Introduce explicit entity lifecycle states (`ACTIVE`, `SUPERSEDED`, `ARCHIVED`) stored in node attributes to prevent graph growth and obsolete requirement versions from degrading context envelope precision and relevance over time.
 - **Dogfooding Milestone (Gate 2):** Use external coding agents (e.g., Claude Code, Aider, custom runners) operating through MCP to claim Phase 3 preparation tasks, generate implementation sub-specs, and commit them directly to the substrate.
 
 ### Phase 3: Topological Impact Analysis & Human Supervisory Portal
@@ -149,7 +150,7 @@ flowchart TD
 
 1. **Phase 0 (Current Baseline & Hypothesis De-risking):**
    - The project is designed and bootstrapped using conventional development environments, standard Git workflows, and manually maintained documentation (`vision.md`, `strategic-planning-backlog.md`).
-   - Early hypothesis de-risking: Execute Spike 0 (in-memory graph-bounded retrieval vs. flat vector search on agentic coding tasks) and early decomposition prompt tests (H-4) to establish directional confidence before committing to Phase 1 infrastructure.
+   - Early hypothesis de-risking: Execute Spike 0 (in-memory graph-bounded retrieval vs. competent agentic code retrieval on coding tasks) and early decomposition prompt tests (H-4) to establish directional confidence before committing to Phase 1 infrastructure.
    - Scope is intentionally constrained: build only the storage layer, Git connection, basic ingestion parser, and read MCP server.
 2. **Phase 1 Transition (Dogfooding Activation):**
    - Upon completing Phase 1, the development team executes the first real-world ingestion: uploading the project's own documentation files into the Git document ledger.
@@ -220,21 +221,21 @@ flowchart TD
 
 ## 5. Architectural Evaluation Spikes & Technical Investigations
 
-### Spike 0: Graph-Bounded vs. Flat-Vector Retrieval Directional Evaluation (Hypothesis H-1 De-risking)
+### Spike 0: Graph-Bounded Context Envelopes vs. Multi-Tool Agentic Retrieval Baseline (Hypothesis H-1 De-risking)
 
-- **Context:** Hypothesis H-1 (graph-bounded context envelopes significantly outperform flat vector retrieval for preserving architectural invariants) is the foundational scientific bet of TKS. While Microsoft GraphRAG (2024) demonstrated multi-hop reasoning gains for text summarization, empirical evidence in code synthesis fidelity and architectural constraint preservation remains untested. GraphRAG literature also indicates retrieval quality can degrade when graph construction is flawed. Phase 1 infrastructure must not proceed without early directional signal.
+- **Context:** Hypothesis H-1 (graph-bounded context envelopes significantly outperform code-level retrieval for preserving architectural invariants) is the foundational scientific bet of TKS. While Microsoft GraphRAG (2024) demonstrated multi-hop reasoning gains for text summarization, evaluating requirement graphs solely against naive flat-vector search is a strawman: modern 2026 agentic workflows (e.g., Cursor, Claude Code) already employ multi-tool retrieval (file inspection, symbol grep, AST code exploration). The genuine scientific test is whether supplying a graph-bounded requirement context envelope significantly reduces contract violations compared to an agent equipped with state-of-the-art code-level tools but lacking topological requirement provenance. Phase 1 infrastructure must not proceed without early directional signal.
 - **Experimental Setup & Scoping:**
   - Throwaway prototype testable in days, requiring zero production database setup.
   - In-memory graph representation with a hand-curated requirement tree (~50–100 nodes) modeling a realistic modular software component with explicit hierarchical constraints and sibling invariants.
   - Standard commodity embedding model (e.g., `text-embedding-3-small`) and LLM coding agent (e.g., Claude 3.5 Sonnet / GPT-4o).
 - **Evaluation Conditions:**
-  - *Condition A (Baseline Flat RAG):* Standard top-$k$ semantic vector similarity over chunked specification text.
-  - *Condition B (Topological Context Envelope):* Subgraph query returning target task + ancestor requirements + sibling architectural constraints.
+  - *Condition A (Competent Multi-Tool Agentic Baseline):* External agent equipped with standard code-level tooling (file read/grep, AST-based symbol navigation, and semantic search over flat documentation) operating without topological requirement graph context.
+  - *Condition B (Topological Context Envelope):* The same agent provided with a graph-bounded context envelope (target task + ancestor requirements + sibling architectural constraints and non-functional rules).
 - **Measurement:** Rate of invariant violations (missed architectural contracts, violated interfaces, dropped non-functional constraints) across $\ge 20$ controlled synthetic coding tasks.
 - **Decision Thresholds:**
-  - $\ge 40\%$ reduction in constraint violations provides strong directional greenlight for Phase 1 construction.
-  - $15\% - 39\%$ reduction indicates partial advantage; refine envelope assembly logic and narrow domain scope before full build.
-  - $< 0\%$ or non-significant difference signals failure of H-1 premise; halts Phase 1 build and triggers immediate strategic re-evaluation.
+  - $\ge 30\%$ reduction in constraint violations provides strong directional greenlight for Phase 1 construction (reflecting meaningful intent preservation against a competent baseline).
+  - $15\% - 29\%$ reduction indicates partial advantage; refine envelope assembly logic and narrow domain scope before full build.
+  - $\le 0\%$ or non-significant difference signals failure of H-1 premise; halts Phase 1 build and triggers immediate strategic re-evaluation.
 
 ### Spike 1: Graph Storage & Query Strategy in PostgreSQL
 
@@ -316,6 +317,15 @@ flowchart TD
   4. **Instance-Scoped Blast Radius Containment:**
      - Tooling to isolate, quarantine, and batch-revert all mutations from a compromised or misbehaving agent instance without disrupting concurrent valid contributions from other agents or humans.
 
+### Spike 7: Node Lifecycle State Management & Context Envelope Pruning (Phase 2+ Investigation)
+
+- **Context:** As a software system evolves, requirements and architectural decisions are superseded, deprecated, or archived. Without explicit lifecycle state filtering, historical or superseded requirement nodes remain connected in the graph topology, causing context envelope dilution, token waste, and potential agent hallucination.
+- **Investigation Areas:**
+  1. **Lifecycle State Taxonomy:** Model node states (`ACTIVE`, `SUPERSEDED`, `ARCHIVED`) within typed JSONB metadata attributes, ensuring backward compatibility with Phase 1 nodes.
+  2. **Traversal Filter Semantics:** Update CTE and graph traversal queries in `get_context_envelope` to filter out `ARCHIVED` and `SUPERSEDED` nodes by default while allowing historical and audit queries to traverse them explicitly.
+  3. **Automated Supersession Cascades:** Design the operational mechanism for marking a requirement `SUPERSEDED` when a replacing requirement node is approved, cleanly repointing dependent edges to avoid breaking topological invariants.
+- **Evaluation Criteria:** Latency impact on traversal queries when filtering by lifecycle state, and prevention of deprecated constraints bleeding into agent prompt contexts.
+
 ---
 
 ## 6. Quantitative Operational Targets & Metric Calibrations
@@ -326,7 +336,7 @@ While the technical vision defines qualitative hypotheses, this backlog establis
 | --- | --- | --- | --- |
 | **SLA-1** | Micro-Reflex Graph Traversal Latency | $< 50\text{ ms}$ for $k \le 3$ hop topological queries | Phase 1 Benchmark |
 | **SLA-2** | Context Envelope Assembly Latency | $< 100\text{ ms}$ at $10^5$ nodes in PostgreSQL | Phase 2 Benchmark |
-| **CAL-H1** | Contract Violation Reduction (Hypothesis H-1) | $\ge 70\%$ fewer architectural violations vs. flat-file vector search | Phase 2 Controlled Trial |
+| **CAL-H1** | Contract Violation Reduction (Hypothesis H-1) | $\ge 40\%$ fewer architectural violations vs. competent agentic baseline | Phase 2 Controlled Trial |
 | **CAL-H2** | Human Review Overhead Reduction (Hypothesis H-2) | $\ge 50\%$ reduction in supervisory review time per feature | Phase 3 User Study |
 | **CAL-H3** | Single-Engine Scalability Bound (Hypothesis H-3) | Sustained $< 100\text{ ms}$ query latency at $10^6$ nodes | Phase 3 Stress Test |
 | **CAL-H4** | Extraction Fidelity Benchmark (Hypothesis H-4) | $\ge 95\%$ precision/recall on atomic requirement spans | Phase 1 Ingestion Eval |
@@ -337,7 +347,7 @@ In alignment with the Technical Vision's graduated response model (§7), empiric
 
 | Metric Identifier | Target Validation Band (Full Success) | Graduated Scope Adjustment Band (Partial Validation) | Falsification / Kill Band (Termination / Pivot) |
 | --- | --- | --- | --- |
-| **CAL-H1** (Constraint Preservation) | $\ge 70\%$ violation reduction vs. flat vector | **$30\% - 69\%$ reduction:** Narrow domain to deeply coupled architectures or modular microservices; hybridize topological envelopes with local lexical retrieval. | $\le 0\%$ or non-significant improvement vs. flat vector (Triggers Kill #2). |
+| **CAL-H1** (Constraint Preservation) | $\ge 40\%$ violation reduction vs. competent agentic baseline | **$20\% - 39\%$ reduction:** Narrow domain to deeply coupled architectures or modular microservices; refine envelope filtering and hybridize topological envelopes with local code search. | $\le 0\%$ or non-significant improvement vs. competent agentic baseline (Triggers Kill #2). |
 | **CAL-H2** (Supervisory Review Overhead) | $\ge 50\%$ review time reduction | **$25\% - 49\%$ reduction:** Streamline supervisory UI staging workflows and enrich topological blast-radius visualizations. | $\le 0\%$ reduction (supervisory graph review equals or exceeds diff review time; Triggers Kill #1). |
 | **CAL-H3** (Single-Engine Scalability) | Sustained $< 100\text{ ms}$ at $10^6$ nodes | **$< 100\text{ ms}$ at $10^5$ nodes, degrading at $10^6$:** Satisfies small-to-mid enterprise repos; apply read-replica offloading, partition audit ledger, and optimize CTE indexes. | $> 500\text{ ms}$ latency at $\le 10^5$ nodes despite index optimization (Triggers Kill #3). |
 | **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95\%$ precision/recall on spans | **$80\% - 94\%$ precision/recall:** Engage deterministic span re-anchoring post-processor (fuzzy byte alignment against source) to correct offset drift; enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60\%$ precision/recall or severe span hallucination despite deterministic re-anchoring (Triggers Kill #1). |
