@@ -281,10 +281,10 @@ quadrantChart
     title Capability Progression Matrix
     x-axis Low Agent Autonomy --> High Agent Autonomy
     y-axis Basic Ingestion --> Deep Semantic Governance
-    quadrant-1 Phase 4: Closed-Loop Traceability
-    quadrant-2 Phase 3: Topological Impact Governance
-    quadrant-3 Phase 1: Substrate Core & Ingestion
-    quadrant-4 Phase 2: Bounded Agent Mutation
+    quadrant-1 "Phase 4: Closed-Loop Traceability"
+    quadrant-2 "Phase 3: Topological Impact Governance"
+    quadrant-3 "Phase 1: Substrate Core & Ingestion"
+    quadrant-4 "Phase 2: Bounded Agent Mutation"
     "MVD 1: Ingestion & Read-Only Context": [0.2, 0.25]
     "MVD 2: Bounded Mutation & Provenance": [0.55, 0.4]
     "MVD 3: Impact Analysis & Web Portal": [0.45, 0.75]
