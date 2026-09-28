@@ -66,19 +66,20 @@ As agent synthesis speed outpaces human reading capacity, human supervisors face
 ### Key Capabilities
 
 1. **Unified Graph-Relational Substrate:** A PostgreSQL storage layer combining native property graph structures with vector embeddings, modeling vision, requirements, specifications, tasks, and artifacts as a strongly typed, navigable topology.
-2. **Document Provenance & Assisted Decomposition Pipeline:** Ingestion of source documents into a cryptographically signed document store, using conversational LLM pipelines and human review gates to extract structured requirement nodes with verified lineage.
+2. **Document Provenance & Assisted Decomposition Pipeline:** Ingestion of text-based specifications into a Git-backed, content-addressed document store coupled to PostgreSQL, using conversational LLM pipelines and human review gates to extract structured requirement nodes with verified lineage.
 3. **Open Protocol Integration Gateway:** Standardized Model Context Protocol (MCP) and REST interfaces enabling external agent runtimes to retrieve bounded context envelopes and submit proposed graph mutations.
-4. **Immutable Versioning & Bitemporal Lineage:** An append-only audit ledger ensuring every requirement, specification, task, and dependency edge is completely reversible, diffable, and point-in-time reconstructible.
+4. **Immutable Audit Ledger & Historical Reversibility:** An append-only audit ledger ensuring every requirement, specification, task, and dependency edge is completely reversible, auditable, and point-in-time reconstructible without data loss.
 5. **Attribute-Based Node Governance:** Granular, per-node governance attributes that dictate whether an entity is open for autonomous agent elaboration or strictly gated by human authorization.
+6. **Self-Referential Bootstrapping (Dogfooding Principle):** The capability of the Knowledge Substrate to manage its own development lifecycle. Following an initial bootstrap baseline, subsequent roadmap phases, requirements, specifications, and tasks are tracked and governed within the substrate itself.
 
 ### Operational Timescales
 
-| Horizon | Mechanical Cadence | System Operation |
+| Horizon | Operational Cadence | System Operation |
 | --- | --- | --- |
-| **Micro-Reflex** | $< 50\text{ ms}$ | Graph traversal queries, vector similarity neighbor lookups, and transactional edge validation within PostgreSQL. |
-| **Agent Cycle** | Seconds to Minutes | External agents query context envelopes via MCP, execute local code synthesis, and submit candidate graph mutations. |
-| **Supervisory Review** | Hours to Days | Human engineers review extracted requirement drafts, inspect topological impact analyses, and sign off on gated nodes. |
-| **Systemic Evolution** | Weeks to Months | Strategic iteration on product roadmaps, high-level vision revisions, and schema attribute extensions across the project lifecycle. |
+| **Micro-Reflex** | Real-Time / Sub-Second | Graph traversal queries, vector similarity neighbor lookups, and transactional edge validation within PostgreSQL. |
+| **Agent Cycle** | Iterative Execution | External agents query context envelopes via MCP, execute local code synthesis, and submit candidate graph mutations. |
+| **Supervisory Review** | Deliberative Oversight | Human engineers review extracted requirement drafts, inspect topological impact analyses, and sign off on gated nodes. |
+| **Systemic Evolution** | Strategic Progression | Strategic iteration on product roadmaps, high-level vision revisions, and schema attribute extensions across the project lifecycle. |
 
 ### Conceptual Grounding
 
@@ -86,10 +87,11 @@ To maintain engineering precision, all structural concepts are anchored in stand
 
 | System Concept | Concrete Engineering Specification |
 | --- | --- |
-| **Knowledge Substrate** | A PostgreSQL engine uniting graph topologies (SQL/PGQ), dense vector indices (`pgvector`), and relational audit tables in an ACID-compliant store. |
-| **Document Ledger** | A content-addressed, cryptographically signed (`SHA-256`) artifact store preserving the exact byte-level source text from which requirements were derived. |
-| **Topological Context Envelope** | A $k$-hop directed subgraph query centered on an assigned task node, aggregating ancestor requirements and sibling constraints into a bounded prompt context. |
+| **Knowledge Substrate** | A PostgreSQL engine uniting graph topologies, dense vector indices (`pgvector`), and relational audit tables in an ACID-compliant store. |
+| **Document Ledger** | A Git-backed, content-addressed artifact store for text-based specification documents, coupled with PostgreSQL maintaining relational metadata, graph topology, and decomposition mappings. |
+| **Topological Context Envelope** | A directed subgraph query centered on an assigned task node, aggregating ancestor requirements and sibling constraints into a bounded prompt context. |
 | **Per-Node Governance Policy** | Metadata attributes stored on individual graph nodes designating the operational authorization level (`AUTONOMOUS_ELABORATION`, `HUMAN_REVIEW_REQUIRED`, `LOCKED`). |
+| **Self-Referential Engine** | The application of the Knowledge Substrate to its own codebase and lifecycle, establishing a closed feedback loop where the tool governs its own evolution. |
 
 ---
 
@@ -123,12 +125,15 @@ flowchart LR
         Users["Human Engineering Teams<br/><i>(Web UI, CLI, IDE Extensions)</i>"]:::boundary
     end
 
-    subgraph Substrate["The Knowledge Substrate (Single Database Engine)"]
+    subgraph Substrate["The Knowledge Substrate"]
         Gateway["Integration Gateway<br/><i>(MCP Server & REST API)</i>"]:::core
         Governance["Governance & Lineage Engine"]:::core
-        Storage["PostgreSQL Substrate<br/><i>(Property Graph + pgvector + Audit Ledger)</i>"]:::core
+        PostgresStorage["PostgreSQL Substrate<br/><i>(Property Graph + pgvector + Audit Ledger)</i>"]:::core
+        GitStore["Git Document Ledger<br/><i>(Text Specifications & Revision History)</i>"]:::core
 
-        Gateway --> Governance --> Storage
+        Gateway --> Governance --> PostgresStorage
+        Gateway --> GitStore
+        PostgresStorage -.->|"Relational Refs & Hashes"| GitStore
     end
 
     Agents <-->|Model Context Protocol / JSON-RPC| Gateway
@@ -136,11 +141,12 @@ flowchart LR
 
 ```
 
-* **Single-Engine Operational Footprint:** All topology data, vector embeddings, relational metadata, and audit records reside in a single PostgreSQL instance. Distributed dual-database setups (e.g., maintaining an external vector database alongside a graph store) are prohibited, eliminating distributed transaction failures.
+* **Single-Engine Operational Footprint:** All topology data, vector embeddings, relational metadata, and audit records reside in a single PostgreSQL instance. Distributed multi-database setups (e.g., maintaining an external vector database or separate graph DBMS alongside PostgreSQL) are prohibited, eliminating distributed transaction failures and synchronization drift. Raw text specifications are version-governed via Git and referenced relationally.
 * **Externalized Cognitive Compute:** The core Knowledge Substrate never directly invokes LLM inference for its internal operational loops. External agents supply their own compute and models. LLM interaction within the substrate is restricted to human-directed document ingestion and decomposition pipelines.
 * **Stateless Gateway Boundary:** The MCP and REST interfaces maintain no persistent session memory. Each operation is an authenticated, isolated transaction targeting explicit node identifiers and payloads.
-* **Document Immutability Guarantee:** Uploaded source documents (Markdown, text) are immediately content-addressed via cryptographic hashing (`SHA-256`) and stored in an append-only document repository. Requirements derived from them reference the document signature and source character offsets.
+* **Document Immutability & Provenance Guarantee:** Uploaded text specifications (Markdown, plain text) are stored in a Git-backed document repository and content-addressed via cryptographic hashes. Requirements derived from them reference the document commit/blob identity and source character spans. Span stability and revision reconciliation are managed at the strategic implementation level.
 * **Schema Flexibility via Progressive Layering:** Core system tables enforce only foundational structural edges (`DERIVED_FROM`, `CONSTRAINED_BY`, `FULFILLS`, `VERIFIED_BY`). Domain-specific attributes and evolving project taxonomy are managed via typed JSONB fields to avoid costly schema migrations during early project phases.
+* **Bootstrap Boundary Contract:** Initial system design and Phase 0 development occur using conventional developer tooling. From the completion of foundational ingestion and context retrieval capabilities onward, all subsequent requirements, architectural decisions, and development tasks must be tracked and governed within the substrate itself.
 
 ---
 
@@ -175,17 +181,17 @@ flowchart TD
     classDef db fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
 
     Doc["Raw Specification / Markdown Doc"]:::agent
-    DocStore["Immutable Document Store<br/><i>(SHA-256 Content-Addressed)</i>"]:::db
+    GitLedger["Git Document Ledger<br/><i>(Versioned Text & Object Hashes)</i>"]:::db
     Decomp["Assisted Decomposition Assistant<br/><i>(LLM Parser via API)</i>"]:::gate
     HumanReview["Human Staging & Verification Gate"]:::gate
 
-    Doc -->|"1. Ingest"| DocStore
-    DocStore -->|"2. Stream Source Spans"| Decomp
+    Doc -->|"1. Ingest & Version"| GitLedger
+    GitLedger -->|"2. Stream Source Spans"| Decomp
     Decomp -->|"3. Draft Requirement Nodes"| HumanReview
 
     subgraph Core["PostgreSQL Knowledge Substrate"]
         GraphStore["Graph Topology & pgvector Embeddings"]:::db
-        AuditTrail["Immutable Bitemporal Version Ledger"]:::db
+        AuditTrail["Immutable Change & Audit Ledger"]:::db
     end
 
     HumanReview -->|"4. Commit Verified Graph Nodes"| AuditTrail
@@ -203,24 +209,14 @@ flowchart TD
 
 ```
 
-### Communication Contracts & Workflow Protocols
+### Conceptual Operational Loops
 
-#### 1. Ingestion & Decomposition Flow
+1. **Document Ingestion & Decomposition Loop:**
+   Ingests text specifications into the Git document ledger, extracts atomic requirement entities through an assisted LLM decomposition workflow, subjects draft requirements to human verification, and commits verified nodes to PostgreSQL with cryptographic source span links.
+2. **Agent Context Retrieval & Governed Mutation Loop:**
+   Provides external autonomous agents with bounded topological context envelopes via the Model Context Protocol (MCP). Agents execute tasks within their external runtimes and propose candidate graph mutations back through the gateway, where per-node governance policies either commit the mutation to the audit ledger or route it to human staging.
 
-1. **Source Ingestion:** An engineering lead or product manager uploads a plain text or Markdown specification via the REST API.
-2. **Cryptographic Sealing:** The substrate computes the document's SHA-256 hash, stores the raw artifact in the document ledger, and mints a unique `DocumentArtifact` identifier.
-3. **Assisted Parsing:** A decomposition workflow provides the document content and structure prompts to an external or local LLM session. The LLM extracts proposed atomic requirement nodes, mapping each directly to character spans within the source document.
-4. **Staging & Verification:** The proposed nodes are held in a staging table. A human supervisor reviews the parsed requirement boundaries, adjusts initial metadata and governance flags, and authorizes insertion into the live graph.
-
-#### 2. Agent Execution & Graph Mutation Flow
-
-1. **Context Extraction (Graph RAG):** An external agent queries context for an assigned work unit (e.g., `Task-205`) via the MCP server. The server executes a topological query retrieving the target node, its direct ancestor specifications, linked architectural constraints, and vector-similar sibling context.
-2. **Bounded Execution:** The agent receives this bounded context envelope and executes its software engineering task within its external runtime (e.g., generating code, writing unit tests, or refining a functional specification).
-3. **Mutation Submission:** The agent submits a mutation payload back through the MCP gateway, proposing the creation of new sub-tasks, test results, or elaborated design specifications.
-4. **Governance Interception:** The substrate checks the target node's `governance_policy` attribute:
-
-* If flagged `AUTONOMOUS_ELABORATION`, the write succeeds immediately, committing an append-only delta to the audit ledger.
-* If flagged `HUMAN_REVIEW_REQUIRED`, the mutation is parked in a `PENDING_REVIEW` state, and an event is queued for human inspection.
+*(Note: Detailed step-by-step API message protocols and interaction sequences are cataloged in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
 
 ---
 
@@ -229,21 +225,24 @@ flowchart TD
 ### Architectural Invariants (Engineering Directives)
 
 * **Invariant I-1 (Strict Bidirectional Traceability):** Every functional specification, implementation task, and code artifact reference must maintain a valid, directed edge path terminating at an authorized requirement node. Orphan execution tasks are rejected at the database constraint level.
-* **Invariant I-2 (Immutable Append-Only Provenance):** Destructive in-place updates (`UPDATE` or `DELETE`) on requirements, specifications, and topological edges are strictly prohibited. State transitions must be recorded as newly versioned records pointing to predecessors via `SUPERSEDES` edges, guaranteeing full historical state reconstruction.
+* **Invariant I-2 (Auditability & Reversible Lineage):** Destructive in-place updates (`UPDATE` or `DELETE`) on requirements, specifications, and topological edges are strictly prohibited. State transitions must be recorded such that every state mutation is fully auditable, reversible, and point-in-time reconstructible without data loss. The specific versioning mechanism is resolved at the strategic planning level.
 * **Invariant I-3 (Zero In-Database Agent Execution):** The core database engine and gateway services shall never execute autonomous agent cognitive loops internally. The substrate functions strictly as a deterministic state store and protocol gateway.
-* **Invariant I-4 (Cryptographic Source Anchoring):** Every requirement derived via the decomposition pipeline must store a persistent cryptographic reference (`SHA-256` document hash) and source span coordinates pointing to the original document artifact.
+* **Invariant I-4 (Cryptographic Source Anchoring):** Every requirement derived via the decomposition pipeline must store a persistent cryptographic reference (Git commit/blob hash) and source span coordinates pointing to the original document artifact.
 * **Invariant I-5 (Explicit Per-Node Governance Authority):** Permissions to alter or elaborate a node are governed by explicit per-node metadata attributes (`governance_policy`). Node-level policies take absolute precedence over global agent roles.
+* **Invariant I-6 (Self-Referential Bootstrapping):** The Knowledge Substrate must be used to manage its own development. Once foundational ingestion and context retrieval are functional, all new feature requirements, architectural adjustments, and tasks for subsequent iterations must be authored, reviewed, and tracked within the substrate itself.
 
 ### Strategic Hypotheses (Scientific Bets to De-Risk)
 
 * **Hypothesis H-1 (Topological Retrieval vs. Flat Vector Precision):**
-*We hypothesize that* supplying agents with graph-bounded context envelopes (ancestor requirements plus direct architectural constraints) reduces downstream architectural contract violations by $\ge 70\%$ compared to standard top-$k$ flat semantic vector retrieval.
+  *We hypothesize that* supplying agents with graph-bounded context envelopes (ancestor requirements plus direct architectural constraints) significantly reduces downstream architectural contract violations compared to standard top-$k$ flat semantic vector retrieval.
 * **Hypothesis H-2 (Sublinear Human Oversight Overhead):**
-*We hypothesize that* managing autonomous agents through structured requirement graphs and topological impact analyses reduces human supervisory time per feature by $\ge 50\%$ compared to manual line-by-line inspection of agent-generated code diffs.
+  *We hypothesize that* managing autonomous agents through structured requirement graphs and topological impact analyses significantly reduces human supervisory overhead compared to manual inspection of agent-generated code diffs.
 * **Hypothesis H-3 (Single-Engine Relational Scalability):**
-*We hypothesize that* a single PostgreSQL instance combining graph query extensions and `pgvector` can comfortably scale to $10^6$ nodes with sub-100ms context envelope query latency, eliminating the need for dedicated graph or vector database clusters.
+  *We hypothesize that* a single PostgreSQL instance combining graph query patterns and `pgvector` scales comfortably to support large-scale enterprise project graphs without requiring dedicated graph or vector database clusters.
 * **Hypothesis H-4 (Assisted Ingestion Accuracy):**
-*We hypothesize that* a human-in-the-loop decomposition pipeline powered by a local or commodity LLM achieves $\ge 95\%$ requirement extraction fidelity from unstructured technical markdown without requiring proprietary parsing tools.
+  *We hypothesize that* a human-in-the-loop decomposition pipeline powered by commodity LLMs achieves high-fidelity requirement extraction from unstructured technical markdown without requiring proprietary parsing tools.
+
+*(Note: Quantitative calibration targets and metric benchmarks for each hypothesis are cataloged in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
 
 ### Inside-Out Mechanics to Outside-In Strategic Leverage
 
@@ -251,12 +250,13 @@ flowchart TD
 | --- | --- |
 | **Agent-Agnostic Protocol Gateway (MCP / REST)** | **Vendor Decoupling & Model Arbitrage:** The enterprise can adopt emerging LLM models and specialized external agent frameworks without modifying the underlying project knowledge base or business logic. |
 | **Unified PostgreSQL Engine** | **Operational Economy & Zero Infrastructure Sprawl:** Utilizes proven enterprise database tooling for backup, replication, security, and compliance, avoiding the operational cost of multi-database synchronization. |
-| **Cryptographic Document Lineage** | **Auditability & Regulatory Defense:** Establishes unambiguous, mathematically verifiable proof linking production code back to signed customer contracts, compliance mandates, and approved design documents. |
+| **Git-Backed Document Ledger** | **Proven Versioning & Transparent Text Diffing:** Leverages industry-standard VCS infrastructure for text artifact versioning and delta compression, seamlessly integrating with existing developer workflows. |
 | **Per-Node Governance Controls** | **Controlled Scaling of Autonomous Capacity:** Engineering leadership can progressively delegate lower-risk system layers to autonomous agents while enforcing strict human oversight over mission-critical components. |
+| **Self-Referential Architecture** | **Accelerated Dogfooding & Grounded Viability:** Forcing the system to manage its own development exposes UX friction and semantic gaps early, ensuring the product solves real engineering problems. |
 
 ---
 
-## 6. Multi-Axis Progression Roadmap
+## 6. Multi-Axis Progression Model
 
 Program advancement is organized across two orthogonal vectors: **Governance & Provenance Maturity** and **Agent Autonomy & Integration Breadth**.
 
@@ -292,27 +292,22 @@ quadrantChart
 
 ```
 
-### Execution Phases
+### Capability Progression Dimensions
 
-#### Phase 1: Substrate Core, Document Ingestion & Context Gateway
+1. **Governance & Provenance Maturity (Y-Axis):**
+   Advances from basic text specification ingestion and cryptographic anchoring, through attribute-based mutation control and automated invalidation cascading, to end-to-end spec-to-commit verification.
+2. **Agent Autonomy & Integration Breadth (X-Axis):**
+   Advances from read-only topological context retrieval via MCP, to bounded agent elaboration of sub-tasks, and finally to distributed multi-agent collaborative execution and automated PR reconciliation.
 
-* **Core Deliverable:** PostgreSQL operational instance configured with core property graph tables, `pgvector`, and an append-only document repository. REST endpoints for uploading source documents and initiating LLM-assisted decomposition. An MCP server providing read-only context envelope retrieval for external agents.
-* **Focus:** Validate document ingestion, cryptographic hashing, and graph-traversal context assembly.
+### The Bootstrapping Progression Strategy
 
-#### Phase 2: Bounded Agent Mutation & Per-Node Governance
+To honor the principle to "start small" and iterate, development follows a strict self-referential bootstrapping path:
 
-* **Core Deliverable:** Write-enabled MCP protocol tools allowing external agents to submit candidate specification and task nodes; database-level enforcement of append-only bitemporal versioning and per-node `governance_policy` attributes.
-* **Focus:** Verify multi-agent concurrent writes, reversion workflows, and policy-driven mutation blocking.
+* **Phase 0 Baseline:** Initial architecture and storage foundations are built externally using standard tools.
+* **Phase 1 Self-Hosting Gate:** Upon completing the core ingestion and read-only MCP gateway, the project's own documentation (`vision.md`, backlogs) is ingested into the substrate.
+* **Phase 2+ Evolution:** All subsequent requirements and tasks are managed within the substrate itself, using autonomous agents operating via MCP to advance the codebase.
 
-#### Phase 3: Topological Impact Analysis & Human Supervisory Portal
-
-* **Core Deliverable:** A web-based supervisory interface providing visual graph navigation, downstream invalidation alerts when parent requirements change, and review/approval queues for human-gated nodes.
-* **Focus:** Deliver human observability into project evolution; replace raw database inspection with topological impact tracking.
-
-#### Phase 4: Closed-Loop Lifecycle Verification & Source Code Mapping
-
-* **Core Deliverable:** Bi-directional synchronization mapping version-control commits and automated test run results directly to leaf execution nodes; formal sign-off and approval lifecycles for release candidates.
-* **Focus:** Realize full spec-driven development where code merges require continuous, automated proof of requirement satisfaction.
+*(Note: Specific phase deliverables, engineering schedules, and operational dependencies are detailed in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
 
 ---
 
@@ -320,35 +315,37 @@ quadrantChart
 
 ### Key Observables
 
-Progression across project phases is evaluated using four directional metrics:
+Progression across capability milestones is evaluated using four directional metrics:
 
 * **Retrieval Boundedness & Relevance:** Ratio of required context tokens delivered to external agents versus irrelevant noise, measuring the efficiency of the topological context envelope.
 * **Decomposition Lineage Fidelity:** Percentage of extracted requirement nodes that correctly resolve to exact, verifiable source spans within the signed source documents.
 * **Drift & Invalidation Velocity:** Latency from the moment a parent requirement is modified to the complete identification and flagging of all invalidated downstream tasks.
 * **Supervisory Decision Latency:** Time required for an engineering lead to evaluate, approve, or reject an agent-proposed requirement mutation via the supervisory interface.
 
-### Minimum Viable Demonstrations (MVDs)
+### Demonstration Milestones (MVD Overview)
 
-* **Phase 1 MVD (Ingest, Decompose, and Retrieve):**
-* *Demonstration:* Upload a multi-page Markdown system specification via the REST API. The assisted decomposition pipeline parses the document into atomic requirement nodes, presents them for human review, and commits them to PostgreSQL with cryptographic SHA-256 parent links. An external agent connects via MCP, requests context for an assigned requirement, and receives a bounded context envelope containing parent requirements and sibling constraints without manual prompt construction.
+The path to the North Star is gated by four Minimum Viable Demonstrations:
 
-* **Phase 2 MVD (Bounded Mutation & Clean Rollback):**
-* *Demonstration:* An external agent claims an open requirement flagged for autonomous elaboration via MCP, decomposes it into three functional specifications, and commits them to the database. An authorized human supervisor issues a rollback command; the entire generated sub-graph reverts cleanly to the historical snapshot without leaving orphan edges or corrupting database state.
+* **Milestone 1 (Ingest, Version, and Retrieve):** Ingestion of a Markdown specification into the Git document store, assisted decomposition into graph requirement nodes with cryptographic parent links, and successful retrieval of bounded topological context envelopes by an external agent via MCP.
+* **Milestone 2 (Bounded Mutation & Clean Rollback):** An external agent proposes child specifications via MCP, governed by per-node policy attributes, with full capability for a human supervisor to execute a clean graph rollback to a historical snapshot.
+* **Milestone 3 (Automated Invalidation Cascading):** Modification of an upstream requirement automatically cascades downstream, marking dependent specifications and tasks as requiring reverification and blocking unauthorized agent execution.
+* **Milestone 4 (Closed-Loop Traceability):** Bidirectional synchronization mapping Git commits and automated test results to leaf requirement nodes, providing continuous proof of requirement satisfaction.
 
-* **Phase 3 MVD (Automated Invalidation Cascading):**
-* *Demonstration:* A human user modifies a top-level requirement via the web dashboard. The system executes a graph traversal, marks all downstream specifications and tasks as `NEEDS_REVERIFICATION`, and blocks external agents from completing those tasks until an engineer updates the dependent specs.
+*(Note: Detailed execution scripts and verification procedures for each demonstration are documented in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
 
 ### Falsification & Termination Criteria (Kill Conditions)
 
 The program should be halted, redirected, or fundamentally restructured if any of the following failure conditions occur:
 
 1. **The Ingestion Friction Falsification:**
-If the overhead of ingesting, decomposing, and verifying markdown specifications in the graph exceeds the time required for engineering teams to manually write tickets and code, the core value proposition of an automated knowledge substrate is disproven.
+   If the overhead of ingesting, decomposing, and verifying markdown specifications in the graph exceeds the time required for engineering teams to manually write tickets and code, the core value proposition of an automated knowledge substrate is disproven.
 2. **The Graph RAG Inefficacy Falsification (Hypothesis H-1 Failure):**
-If controlled benchmarks reveal that external agents operating over graph-structured context envelopes exhibit comparable rates of architectural drift and hallucination to agents using simple flat-file vector search, the graph-native thesis is falsified.
+   If controlled benchmarks reveal that external agents operating over graph-structured context envelopes exhibit comparable rates of architectural drift and hallucination to agents using simple flat-file vector search, the graph-native thesis is falsified.
 3. **The Single-Engine Relational Bottleneck (Hypothesis H-3 Failure):**
-If recursive graph traversals over bitemporally versioned tables in PostgreSQL fail to maintain sub-100ms response latencies at $10^5$ nodes, and this bottleneck cannot be resolved through index optimization, the single-engine architectural boundary must be abandoned in favor of a specialized graph database.
+   If graph traversals over versioned tables in PostgreSQL fail to maintain acceptable interactive latencies at scale, and this bottleneck cannot be resolved through index optimization, the single-engine architectural boundary must be abandoned in favor of a specialized graph database.
+4. **The Bootstrapping Failure Falsification:**
+   If the development team cannot dogfood the Knowledge Substrate to manage its own post-Phase-1 development tasks and specifications due to operational friction or semantic inadequacy, the core premise of an agentic engineering substrate is falsified.
 
 ### Strategic Planning Handoff
 
-Exact database table definitions, API route contracts, specific embedding model selections, and UI wireframes are intentionally deferred to the **Strategic Planning Backlog** to be resolved during phased implementation planning.
+Detailed database table definitions, API route contracts, specific embedding model selections, architectural evaluation spikes, and phased implementation roadmaps are maintained in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).
