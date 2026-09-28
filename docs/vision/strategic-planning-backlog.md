@@ -39,25 +39,38 @@ This backlog is specifically organized around the **"Start Small"**, **"Constrai
     'mainBkg': '#1e2230',
     'nodeBorder': '#434c5e',
     'textColor': '#e2e8f0',
-    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
     'lineColor': '#8892b0',
-    'primaryColor': '#1b3528',
-    'primaryBorderColor': '#73c991',
-    'secondaryColor': '#1d2c44',
-    'secondaryBorderColor': '#61afef'
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
   }
 }}%%
 flowchart LR
-    classDef phase fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
-    classDef gate fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
 
-    P0["Phase 0: Pre-Construction Spikes<br/><i>(Lightweight H-1 & H-4 De-risking)</i>"]:::phase
-    P1["Phase 1: Substrate Core & Read Context<br/><i>(Git Store + PG Graph + Read MCP)</i>"]:::phase
-    G1["Dogfooding Gate 1:<br/><i>Self-Ingest Vision & Backlog</i>"]:::gate
-    P2["Phase 2: Bounded Mutation & Governance<br/><i>(Write MCP + Audit Log + Node Policies)</i>"]:::phase
-    G2["Dogfooding Gate 2:<br/><i>Manage Phase 3 Tasks via Substrate</i>"]:::gate
-    P3["Phase 3: Impact Analysis & Observability<br/><i>(Web Portal + Invalidation Cascading)</i>"]:::phase
-    P4["Phase 4: Closed-Loop Traceability<br/><i>(Git Commits + Automated Verification)</i>"]:::phase
+    P0["Phase 0: Pre-Construction Spikes<br/><i>(Lightweight H-1 & H-4 De-risking)</i>"]:::secondary
+    P1["Phase 1: Substrate Core & Read Context<br/><i>(Git Store + PG Graph + Read MCP)</i>"]:::secondary
+    G1["Dogfooding Gate 1:<br/><i>Self-Ingest Vision & Backlog</i>"]:::primary
+    P2["Phase 2: Bounded Mutation & Governance<br/><i>(Write MCP + Audit Log + Node Policies)</i>"]:::secondary
+    G2["Dogfooding Gate 2:<br/><i>Manage Phase 3 Tasks via Substrate</i>"]:::primary
+    P3["Phase 3: Impact Analysis & Observability<br/><i>(Web Portal + Invalidation Cascading)</i>"]:::secondary
+    P4["Phase 4: Closed-Loop Traceability<br/><i>(Git Commits + Automated Verification)</i>"]:::secondary
 
     P0 --> P1 --> G1 --> P2 --> G2 --> P3 --> P4
 ```
@@ -141,37 +154,47 @@ A foundational principle of the project is that the system must reach self-hosti
     'mainBkg': '#1e2230',
     'nodeBorder': '#434c5e',
     'textColor': '#e2e8f0',
-    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
     'lineColor': '#8892b0',
-    'primaryColor': '#1b3528',
-    'primaryBorderColor': '#73c991',
-    'secondaryColor': '#1d2c44',
-    'secondaryBorderColor': '#61afef',
-    'tertiaryColor': '#422026',
-    'tertiaryBorderColor': '#e06c75'
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
   }
 }}%%
 flowchart TD
-    classDef external fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
-    classDef transition fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
-    classDef internal fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
 
     subgraph Phase0["Phase 0: External Bootstrap & Early De-risking"]
-        E1["Manual Git Repository Management"]:::external
-        E2["Spike 0: Rapid H-1 & H-4 Directional Validation"]:::external
-        E3["Human-Driven Architecture & Coding"]:::external
+        E1["Manual Git Repository Management"]:::primary
+        E2["Spike 0: Rapid H-1 & H-4 Directional Validation"]:::primary
+        E3["Human-Driven Architecture & Coding"]:::primary
     end
 
     subgraph Transition["Phase 1 Completion: Self-Hosting Transition"]
-        T1["Ingest vision.md & backlog.md into Substrate"]:::transition
-        T2["Decompose Core Invariants into Graph Nodes via Mechanical AST"]:::transition
-        T3["Verify Self-Querying via MCP Server"]:::transition
+        T1["Ingest vision.md & backlog.md into Substrate"]:::tertiary
+        T2["Decompose Core Invariants into Graph Nodes via Mechanical AST"]:::tertiary
+        T3["Verify Self-Querying via MCP Server"]:::tertiary
     end
 
     subgraph Phase2Plus["Phase 2+: Autonomous Self-Evolution"]
-        I1["Agents Claim Substrate Tasks via MCP"]:::internal
-        I2["Agent Output Governed by Node Policies & Draft Lifecycle"]:::internal
-        I3["Upstream Vision Revisions Invalidate Dependent Tasks"]:::internal
+        I1["Agents Claim Substrate Tasks via MCP"]:::secondary
+        I2["Agent Output Governed by Node Policies & Draft Lifecycle"]:::secondary
+        I3["Upstream Vision Revisions Invalidate Dependent Tasks"]:::secondary
     end
 
     Phase0 --> Transition --> Phase2Plus
@@ -280,9 +303,9 @@ flowchart TD
   - *Condition B (Topological Context Envelope):* The same agent provided with a graph-bounded context envelope (target task + ancestor requirements + sibling architectural constraints and non-functional rules).
 - **Measurement:** Rate of invariant violations (missed architectural contracts, violated interfaces, dropped non-functional constraints across component boundaries) across $\ge 20$ controlled synthetic coding tasks.
 - **Decision Thresholds:**
-  - $\ge 30\%$ reduction in constraint violations provides strong directional greenlight for Phase 1 construction (reflecting meaningful intent preservation against a competent baseline).
-  - $15\% - 29\%$ reduction indicates partial advantage; refine envelope assembly logic and narrow domain scope before full build.
-  - $\le 0\%$ or non-significant difference signals failure of H-1 premise; halts Phase 1 build and triggers immediate strategic re-evaluation.
+  - $\ge 30$% reduction in constraint violations provides strong directional greenlight for Phase 1 construction (reflecting meaningful intent preservation against a competent baseline).
+  - 15%–29% reduction indicates partial advantage; refine envelope assembly logic and narrow domain scope before full build.
+  - $\le 0$% or non-significant difference signals failure of H-1 premise; halts Phase 1 build and triggers immediate strategic re-evaluation.
 
 ### Spike 1: Graph Storage & Query Strategy in PostgreSQL
 
@@ -340,10 +363,10 @@ While the technical vision defines qualitative hypotheses, this backlog establis
 | :--- | :--- | :--- | :--- |
 | **SLA-1** | Micro-Reflex Graph Traversal Latency | $< 50\text{ ms}$ for $k \le 3$ hop topological queries | Phase 1 Benchmark |
 | **SLA-2** | Context Envelope Assembly Latency | $< 100\text{ ms}$ at $10^5$ nodes in PostgreSQL | Phase 2 Benchmark |
-| **CAL-H1** | Contract Violation Reduction (Hypothesis H-1) | $\ge 40\%$ fewer architectural violations vs. competent agentic baseline | Phase 2 Controlled Trial |
-| **CAL-H2** | Human Review Overhead Reduction (Hypothesis H-2) | $\ge 50\%$ reduction in supervisory review time per feature | Phase 3 User Study |
+| **CAL-H1** | Contract Violation Reduction (Hypothesis H-1) | $\ge 40$% fewer architectural violations vs. competent agentic baseline | Phase 2 Controlled Trial |
+| **CAL-H2** | Human Review Overhead Reduction (Hypothesis H-2) | $\ge 50$% reduction in supervisory review time per feature | Phase 3 User Study |
 | **CAL-H3** | Single-Engine Scalability Bound (Hypothesis H-3) | Sustained $< 100\text{ ms}$ query latency at $10^6$ nodes | Phase 3 Stress Test |
-| **CAL-H4** | Extraction Fidelity Benchmark (Hypothesis H-4) | $\ge 95\%$ precision/recall on atomic requirement spans | Phase 1 Ingestion Eval |
+| **CAL-H4** | Extraction Fidelity Benchmark (Hypothesis H-4) | $\ge 95$% precision/recall on atomic requirement spans | Phase 1 Ingestion Eval |
 
 ### Graduated Evaluation Framework & Calibration Interpretation
 
@@ -351,10 +374,10 @@ In alignment with the Technical Vision's graduated response model (§7), empiric
 
 | Metric Identifier | Target Validation Band (Full Success) | Graduated Scope Adjustment Band (Partial Validation) | Falsification / Kill Band (Termination / Pivot) |
 | :--- | :--- | :--- | :--- |
-| **CAL-H1** (Constraint Preservation) | $\ge 40\%$ violation reduction vs. competent agentic baseline | **$20\% - 39\%$ reduction:** Narrow domain to deeply coupled architectures or modular microservices; refine envelope filtering and hybridize topological envelopes with local code search. | $\le 0\%$ or non-significant improvement vs. competent agentic baseline (Triggers Kill #2). |
-| **CAL-H2** (Supervisory Review Overhead) | $\ge 50\%$ review time reduction | **$25\% - 49\%$ reduction:** Streamline supervisory UI staging workflows and enrich topological blast-radius visualizations. | $\le 0\%$ reduction (supervisory graph review equals or exceeds diff review time; Triggers Kill #1). |
+| **CAL-H1** (Constraint Preservation) | $\ge 40$% violation reduction vs. competent agentic baseline | **20%–39% reduction:** Narrow domain to deeply coupled architectures or modular microservices; refine envelope filtering and hybridize topological envelopes with local code search. | $\le 0$% or non-significant improvement vs. competent agentic baseline (Triggers Kill #2). |
+| **CAL-H2** (Supervisory Review Overhead) | $\ge 50$% review time reduction | **25%–49% reduction:** Streamline supervisory UI staging workflows and enrich topological blast-radius visualizations. | $\le 0$% reduction (supervisory graph review equals or exceeds diff review time; Triggers Kill #1). |
 | **CAL-H3** (Single-Engine Scalability) | Sustained $< 100\text{ ms}$ at $10^6$ nodes | **$< 100\text{ ms}$ at $10^5$ nodes, degrading at $10^6$:** Satisfies small-to-mid enterprise repos; apply read-replica offloading, partition audit ledger, and optimize CTE indexes. | $> 500\text{ ms}$ latency at $\le 10^5$ nodes despite index optimization (Triggers Kill #3). |
-| **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95\%$ precision/recall on spans | **$80\% - 94\%$ precision/recall:** Engage deterministic span re-anchoring post-processor (fuzzy byte alignment against source) to correct offset drift; enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60\%$ precision/recall or severe span hallucination despite deterministic re-anchoring (Triggers Kill #1). |
+| **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95$% precision/recall on spans | **80%–94% precision/recall:** Engage deterministic span re-anchoring post-processor (fuzzy byte alignment against source) to correct offset drift; enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60$% precision/recall or severe span hallucination despite deterministic re-anchoring (Triggers Kill #1). |
 
 ---
 
@@ -369,14 +392,32 @@ In alignment with the Technical Vision's graduated response model (§7), empiric
     'mainBkg': '#1e2230',
     'nodeBorder': '#434c5e',
     'textColor': '#e2e8f0',
-    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    'fontSize': '14px',
     'lineColor': '#8892b0',
-    'primaryColor': '#1b3528',
-    'primaryBorderColor': '#73c991',
-    'secondaryColor': '#1d2c44',
-    'secondaryBorderColor': '#61afef',
-    'gateColor': '#2e271a',
-    'gateBorder': '#e5c07b'
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'actorBkg': '#1e2230',
+    'actorBorder': '#61afef',
+    'actorTextColor': '#e2e8f0',
+    'actorLineColor': '#6c7693',
+    'signalColor': '#8892b0',
+    'signalTextColor': '#e2e8f0',
+    'altBackground': '#13161f',
+    'activationBkgColor': '#2d3548',
+    'activationBorderColor': '#61afef'
   }
 }}%%
 sequenceDiagram

@@ -668,7 +668,7 @@ Rollback operations (`revert_mutation_batch`, `revert_agent_session`) adhere to 
 * **Decision:** Re-architect decomposition into a two-stage pipeline:
   1. *Stage 1 (Mechanical Parsing):* Integrate `pulldown-cmark` streaming CommonMark AST parser. Segments text along structural boundaries (headings H1–H4, tables, lists); extracts exact coordinates directly from source byte stream with zero token cost; performs deterministic lexical matching for RFC 2119 keywords (`MUST`, `SHALL`, etc.) and entity tags (`REQ-*`, `INV-*`).
   2. *Stage 2 (Targeted Semantic Classification):* External LLM is invoked solely on candidate chunks requiring classification or ambiguity resolution. The LLM is instructed never to echo back source text, returning only compact classification tuples referencing the mechanical chunk ID (e.g. `{"chunk_id": "sec-3.2-p1", "node_type": "REQUIREMENT", "priority": "MUST"}`).
-* **Rationale:** Handles $\ge 80\%$ of document decomposition mechanically; eliminates output token exhaustion and truncation; cuts LLM inference costs by >80%.
+* **Rationale:** Handles $\ge 80$% of document decomposition mechanically; eliminates output token exhaustion and truncation; cuts LLM inference costs by >80%.
 * **Reopen If:** Ingested specifications predominantly arrive in unstructured natural prose lacking CommonMark formatting or heading structure.
 
 ### D-16: Explicit `DRAFT` Lifecycle State and Draft Event Compaction (Squash on Approval)
@@ -877,7 +877,7 @@ Rollback operations (`revert_mutation_batch`, `revert_agent_session`) adhere to 
 
 * **Status:** Accepted (Updates D-15)
 * **Origin:** LD-8, iteration 4
-* **Context:** Decision D-15 establishes that Stage 1 CommonMark AST parsing extracts $\ge 80\%$ of requirement chunks and RFC 2119 keywords without LLM tokens, while Stage 2 invokes an external LLM solely to classify ambiguous fragments into compact tuples. If a developer runs `tks serve` without external LLM API credentials configured (or when the API returns 429/503 errors), document ingestion previously transitioned to `FAILED`, preventing even mechanical extraction from reaching `DRAFT` status and violating C-9.
+* **Context:** Decision D-15 establishes that Stage 1 CommonMark AST parsing extracts $\ge 80$% of requirement chunks and RFC 2119 keywords without LLM tokens, while Stage 2 invokes an external LLM solely to classify ambiguous fragments into compact tuples. If a developer runs `tks serve` without external LLM API credentials configured (or when the API returns 429/503 errors), document ingestion previously transitioned to `FAILED`, preventing even mechanical extraction from reaching `DRAFT` status and violating C-9.
 * **Decision:** Specify graceful degradation in the Decomposition Worker: If external LLM API credentials are not configured or the provider request fails/times out, Stage 1 mechanical extraction still commits candidate chunks to `graph_nodes` as `DRAFT` requirements with default typing (`node_type = 'REQUIREMENT'` for RFC 2119 matches, `'UNCLASSIFIED'` otherwise), recording a warning in `ingestion_jobs.error_message`. Supervisors can adjust types during staging review (`tks staging approve`).
 * **Rationale:** Ensures full local utility and CI test execution without mandatory external API keys; preserves the high-value mechanical 80% extraction; honors the constrained resource model (C-9).
 * **Reopen If:** Unclassified requirements introduce critical downstream semantic corruption that human staging cannot remediate.

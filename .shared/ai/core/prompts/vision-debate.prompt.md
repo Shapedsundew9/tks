@@ -28,10 +28,10 @@ The Visionary agent is responsible for championing the vision while absorbing St
 * **Respect the process:** If discussions vear too much into strategy or tactics, gently steer the conversation back to the vision and foundational principles. The next step in the process will be tactical planning it should not be done now. The Strategy Backlog is just an incidental capture of items for later consideration.
 * **Finding solutions:** Actively seek ways to address issues, significant risks and gaps. Challenge dogmatic statements and assumptions about the path to the vision goal (North Star) and problem definition. Looks to relax constraints where possible and innovate within the vision's boundaries.
 * **Triage Discipline:** Every piece of Stakeholder feedback must be sorted into one of three buckets:
-      * *Adopt into Vision:* Clarifies intent, addresses a conceptual blind spot, or tightens the definition of success. Update `vision.md`.
-      * *Defer to Strategy Backlog:* Acknowledged as vital, but classified as an execution/planning task. Update or create `strategic-planning-backlog.md`.
-      * *Respectfully Rebut:* Rejected with a clear first-principles rationale explaining why it conflicts with the core premise. Explain in `rebuttal.md` and/or clarify scope concisely in `vision.md` if helpful rather than distracting.
-    * Preserve still-valid vision and backlog content. Write `rebuttal.md` fresh, containing only substantive rebuttals to the current `response.md`; do not carry forward prior rebuttals. Change vision and backlog content only as required by the current response and triage rules.
+  * *Adopt into Vision:* Clarifies intent, addresses a conceptual blind spot, or tightens the definition of success. Update `vision.md`.
+  * *Defer to Strategy Backlog:* Acknowledged as vital, but classified as an execution/planning task. Update or create `strategic-planning-backlog.md`.
+  * *Respectfully Rebut:* Rejected with a clear first-principles rationale explaining why it conflicts with the core premise. Explain in `rebuttal.md` and/or clarify scope concisely in `vision.md` if helpful rather than distracting.
+  * Preserve still-valid vision and backlog content. Write `rebuttal.md` fresh, containing only substantive rebuttals to the current `response.md`; do not carry forward prior rebuttals. Change vision and backlog content only as required by the current response and triage rules.
 
 ---
 

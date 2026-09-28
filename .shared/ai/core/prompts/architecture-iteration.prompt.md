@@ -28,7 +28,7 @@ Instantiate a sub-agent using the defined Lead Developer model for the iteration
   * *Target:* the `architecture.md` section heading or `strategic-planning-backlog.md` item the finding addresses.
   * *Critique:* the implementation problem.
   * *Proposed Alternative:* a concrete alternative or the specification needed.
-* **Focus:** Report at most 10 findings, ranked by severity, plus at most 3 simplifications that remove or consolidate whole components (also numbered `LD-n`). Stylistic preferences and duplicate observations are not findings. Do not get implementation detailed obsessed, this is architecture. Detailed specifications will be done in the next phase. 
+* **Focus:** Report at most 10 findings, ranked by severity, plus at most 3 simplifications that remove or consolidate whole components (also numbered `LD-n`). Stylistic preferences and duplicate observations are not findings. Do not get implementation detailed obsessed, this is architecture. Detailed specifications will be done in the next phase.
 * **Output:** Write `response.md` at the absolute path provided only if at least one finding is `Blocker` or `Major`. End the final message with exactly one status line: `STATUS: RESPONSE_WRITTEN <absolute path>` or `STATUS: NO_SIGNIFICANT_FEEDBACK`.
 
 ### B. The Architect (Sub-Agent)

@@ -3,14 +3,14 @@
 ## 1. Executive Summary & Deliverables Mapping
 
 - **Primary Objective:** Empirically validate the foundational scientific premise (Hypothesis [H-1](file:///workspaces/tks/docs/vision/vision.md#L253)) and baseline assisted extraction feasibility (Hypothesis [H-4](file:///workspaces/tks/docs/vision/vision.md#L259)) using lightweight, throwaway prototypes before committing to Phase 1 infrastructure construction ([`strategic-planning-backlog.md` §2 Phase 0](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L65)).
-- **Target Gate / Milestone:** Pre-Construction Hypothesis Validation Gate ([CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L343) $\ge 30\%$ violation reduction greenlight across $\ge 20$ controlled synthetic coding tasks; [CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L346) $\ge 95\%$ span precision/recall with $\ge 80\%$ mechanical token reduction; containerized PostgreSQL with `pgvector` and embedded migration harness operational).
+- **Target Gate / Milestone:** Pre-Construction Hypothesis Validation Gate ([CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L343) $\ge 30$% violation reduction greenlight across $\ge 20$ controlled synthetic coding tasks; [CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L346) $\ge 95$% span precision/recall with $\ge 80$% mechanical token reduction; containerized PostgreSQL with `pgvector` and embedded migration harness operational).
 
 ### Deliverable Traceability Matrix
 
 | Core Deliverable (from Strategic Backlog §2) | Responsible Work Package(s) | Architecture / Technical References |
 | :--- | :--- | :--- |
 | **Spike 0 (H-1 Directional Validation Spike):** Rapid throwaway test comparing graph-bounded context retrieval against a competent multi-tool agentic retrieval baseline on an in-memory graph (~50–100 nodes), measuring constraint violation reduction across $\ge 20$ synthetic coding tasks | [WP-0.4](#wp-04-in-memory-graph-context-retrieval-vs-multi-tool-agentic-baseline-spike) | [`architecture.md` §1 DR-10](file:///workspaces/tks/docs/vision/architecture.md#L26), [§10 R-1](file:///workspaces/tks/docs/vision/architecture.md#L1133); [`vision.md` §5 H-1](file:///workspaces/tks/docs/vision/vision.md#L253), [§7 Kill #2](file:///workspaces/tks/docs/vision/vision.md#L359); [`strategic-planning-backlog.md` §5 Spike 0](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L268), [§6 CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L343) |
-| **Early Extraction & AST Pre-Parsing Spike (H-4 Pre-Validation / TB-2):** Empirical benchmarking of mechanical CommonMark parsing (`pulldown-cmark`) paired with targeted commodity LLM classification prompts against representative technical Markdown specs to verify 0-based byte offsets, RFC 2119 keywords, canonical tags, and $\ge 80\%$ mechanical token reduction | [WP-0.2](#wp-02-mechanical-commonmark-ast-decomposition--exact-span-extraction-spike), [WP-0.3](#wp-03-targeted-semantic-classification--extraction-fidelity-evaluation-spike) | [`architecture.md` §1 DR-11](file:///workspaces/tks/docs/vision/architecture.md#L27), [§2 C-11](file:///workspaces/tks/docs/vision/architecture.md#L67), [§9 D-15](file:///workspaces/tks/docs/vision/architecture.md#L305), [§9 D-37](file:///workspaces/tks/docs/vision/architecture.md#L876), [§10 R-2](file:///workspaces/tks/docs/vision/architecture.md#L1134); [`technical-backlog.md` TB-2](file:///workspaces/tks/docs/vision/technical-backlog.md#L22), [TB-7](file:///workspaces/tks/docs/vision/technical-backlog.md#L112); [`vision.md` §5 H-4](file:///workspaces/tks/docs/vision/vision.md#L259); [`strategic-planning-backlog.md` §5 Spike 4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L305), [§6 CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L346) |
+| **Early Extraction & AST Pre-Parsing Spike (H-4 Pre-Validation / TB-2):** Empirical benchmarking of mechanical CommonMark parsing (`pulldown-cmark`) paired with targeted commodity LLM classification prompts against representative technical Markdown specs to verify 0-based byte offsets, RFC 2119 keywords, canonical tags, and $\ge 80$% mechanical token reduction | [WP-0.2](#wp-02-mechanical-commonmark-ast-decomposition--exact-span-extraction-spike), [WP-0.3](#wp-03-targeted-semantic-classification--extraction-fidelity-evaluation-spike) | [`architecture.md` §1 DR-11](file:///workspaces/tks/docs/vision/architecture.md#L27), [§2 C-11](file:///workspaces/tks/docs/vision/architecture.md#L67), [§9 D-15](file:///workspaces/tks/docs/vision/architecture.md#L305), [§9 D-37](file:///workspaces/tks/docs/vision/architecture.md#L876), [§10 R-2](file:///workspaces/tks/docs/vision/architecture.md#L1134); [`technical-backlog.md` TB-2](file:///workspaces/tks/docs/vision/technical-backlog.md#L22), [TB-7](file:///workspaces/tks/docs/vision/technical-backlog.md#L112); [`vision.md` §5 H-4](file:///workspaces/tks/docs/vision/vision.md#L259); [`strategic-planning-backlog.md` §5 Spike 4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L305), [§6 CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L346) |
 | **Foundational Architecture Scaffolding:** Initial repository setup, developer tooling, Docker compose definition for PostgreSQL with `pgvector`, embedded migration harness (`refinery`), and baseline migration schema | [WP-0.1](#wp-01-repository-infrastructure--postgresql-development-scaffolding) | [`architecture.md` §2 C-1, C-2, C-9, C-10, C-12](file:///workspaces/tks/docs/vision/architecture.md#L57), [§4 Component Topology](file:///workspaces/tks/docs/vision/architecture.md#L88), [§5.1 State Ownership](file:///workspaces/tks/docs/vision/architecture.md#L213), [§7 Technology Stack](file:///workspaces/tks/docs/vision/architecture.md), [§9 D-31, D-32, D-45, D-48, D-56, D-58, D-60](file:///workspaces/tks/docs/vision/architecture.md#L824); [`technical-backlog.md` TB-5](file:///workspaces/tks/docs/vision/technical-backlog.md#L73) |
 
 ---
@@ -18,11 +18,43 @@
 ## 2. Work Package Dependency Flow
 
 ```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'darkMode': true,
+    'background': '#161922',
+    'mainBkg': '#1e2230',
+    'nodeBorder': '#434c5e',
+    'textColor': '#e2e8f0',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
+    'lineColor': '#8892b0',
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
+  }
+}}%%
 flowchart TD
-    WP1["WP-0.1: Repository Infrastructure & PostgreSQL Development Scaffolding"] --> WP2["WP-0.2: Mechanical CommonMark AST & Exact Span Extraction Spike"]
-    WP2 --> WP3["WP-0.3: Targeted Semantic Classification & Extraction Fidelity Evaluation Spike"]
-    WP1 --> WP4["WP-0.4: In-Memory Graph Context Retrieval vs. Multi-Tool Agentic Baseline Spike"]
-    WP3 --> GATE["Phase 0 Pre-Construction Validation Gate & Readiness Assessment"]
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
+
+    WP1["WP-0.1: Repository Infrastructure & PostgreSQL Development Scaffolding"]:::secondary --> WP2["WP-0.2: Mechanical CommonMark AST & Exact Span Extraction Spike"]:::secondary
+    WP2 --> WP3["WP-0.3: Targeted Semantic Classification & Extraction Fidelity Evaluation Spike"]:::secondary
+    WP1 --> WP4["WP-0.4: In-Memory Graph Context Retrieval vs. Multi-Tool Agentic Baseline Spike"]:::secondary
+    WP3 --> GATE["Phase 0 Pre-Construction Validation Gate & Readiness Assessment"]:::primary
     WP4 --> GATE
 ```
 
@@ -69,7 +101,7 @@ flowchart TD
 
 ### WP-0.2: Mechanical CommonMark AST Decomposition & Exact Span Extraction Spike
 
-- **Goal & Scope:** Build an empirical prototype and benchmark harness testing mechanical CommonMark AST parsing (`pulldown-cmark`) against technical Markdown specifications. Extract 0-based byte offsets (`byte_start`, `byte_end`), verify zero-copy byte slicing UTF-8 safety (`&source_bytes[byte_start..byte_end]`), extract RFC 2119 keywords, parse canonical `node_key` identifiers, and verify $\ge 80\%$ mechanical structural chunking without LLM output tokens. Strictly out of scope: calling external LLM APIs (covered in WP-0.3), Git ODB writes (Phase 1), or database persistence.
+- **Goal & Scope:** Build an empirical prototype and benchmark harness testing mechanical CommonMark AST parsing (`pulldown-cmark`) against technical Markdown specifications. Extract 0-based byte offsets (`byte_start`, `byte_end`), verify zero-copy byte slicing UTF-8 safety (`&source_bytes[byte_start..byte_end]`), extract RFC 2119 keywords, parse canonical `node_key` identifiers, and verify $\ge 80$% mechanical structural chunking without LLM output tokens. Strictly out of scope: calling external LLM APIs (covered in WP-0.3), Git ODB writes (Phase 1), or database persistence.
 - **Governing Directives & References:**
   - Drivers: [`architecture.md` §1 DR-2](file:///workspaces/tks/docs/vision/architecture.md#L18) (Document provenance & assisted decomposition), [DR-11](file:///workspaces/tks/docs/vision/architecture.md#L27) (Token minimization & mechanical 80/20 parsing), [DR-13](file:///workspaces/tks/docs/vision/architecture.md#L29) (Deterministic byte-offset alignment).
   - Constraints: [`architecture.md` §2 C-11](file:///workspaces/tks/docs/vision/architecture.md#L67) (Mechanical-first extraction).
@@ -100,26 +132,26 @@ flowchart TD
      - Zero character boundary slicing panics across multi-byte UTF-8 inputs.
   6. Author [`benches/ast_decomposition_bench.rs`](file:///workspaces/tks/benches/ast_decomposition_bench.rs) calculating:
      - Document token count vs. candidate chunk tokens.
-     - Percentage of structural blocks handled mechanically without LLM output tokens ($\ge 80\%$).
+     - Percentage of structural blocks handled mechanically without LLM output tokens ($\ge 80$%).
      - Parsing throughput ($< 10\text{ ms}$ per 10,000 words).
 - **Verification & Proof Criteria:**
   - Automated test: `cargo test --test ast_spike` passes with 0 failures, proving 100% round-trip span fidelity and zero UTF-8 boundary panics.
-  - Benchmark criteria: `cargo bench --bench ast_decomposition_bench` confirms that $\ge 80\%$ of structural decomposition is achieved mechanically without LLM output generation and parsing latency is $< 10\text{ ms}$ per document.
+  - Benchmark criteria: `cargo bench --bench ast_decomposition_bench` confirms that $\ge 80$% of structural decomposition is achieved mechanically without LLM output generation and parsing latency is $< 10\text{ ms}$ per document.
   - Code hygiene: `cargo clippy --all-targets --all-features -- -D warnings` passes with zero warnings.
 
 ---
 
 ### WP-0.3: Targeted Semantic Classification & Extraction Fidelity Evaluation Spike
 
-- **Goal & Scope:** Build a throwaway evaluation harness pairing the mechanical CommonMark AST chunks from WP-0.2 with targeted commodity LLM classification prompts. Empirically evaluate candidate typing accuracy against hand-labeled ground-truth spans, verify compact classification tuple formats (`node_type`, `governance_policy`) that eliminate output token echoing, evaluate graceful degradation on missing/failed API calls, and measure CAL-H4 precision/recall ($\ge 95\%$). Strictly out of scope: production worker queues, staging table migrations, or Axum REST endpoints.
+- **Goal & Scope:** Build a throwaway evaluation harness pairing the mechanical CommonMark AST chunks from WP-0.2 with targeted commodity LLM classification prompts. Empirically evaluate candidate typing accuracy against hand-labeled ground-truth spans, verify compact classification tuple formats (`node_type`, `governance_policy`) that eliminate output token echoing, evaluate graceful degradation on missing/failed API calls, and measure CAL-H4 precision/recall ($\ge 95$%). Strictly out of scope: production worker queues, staging table migrations, or Axum REST endpoints.
 - **Governing Directives & References:**
   - Directives: Project Initiator Directive ("minimal LLM reliance and maximum reliance on mechanical processes; reducing output tokens").
   - Drivers: [`architecture.md` §1 DR-11](file:///workspaces/tks/docs/vision/architecture.md#L27) (Token minimization & mechanical 80/20 parsing).
   - Constraints: [`architecture.md` §2 C-8](file:///workspaces/tks/docs/vision/architecture.md#L64) (LLM restricted to decomposition), [C-11](file:///workspaces/tks/docs/vision/architecture.md#L67) (Compact classification tuples).
   - Invariants: [`architecture.md` §3 INV-3](file:///workspaces/tks/docs/vision/architecture.md#L82) (Zero in-database agent execution; LLM externalized).
   - Decisions: [`architecture.md` §9 D-15](file:///workspaces/tks/docs/vision/architecture.md#L305) (Targeted classification tuples), [D-37](file:///workspaces/tks/docs/vision/architecture.md#L876) (Graceful degradation with default typing).
-  - Strategic Backlog: [`strategic-planning-backlog.md` §5 Spike 4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L305), [§6 CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L346) ($\ge 95\%$ precision/recall).
-  - Architecture: [`architecture.md` §10 R-2](file:///workspaces/tks/docs/vision/architecture.md#L1134) (H-4 pass threshold $\ge 95\%$ precision/recall).
+  - Strategic Backlog: [`strategic-planning-backlog.md` §5 Spike 4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L305), [§6 CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L346) ($\ge 95$% precision/recall).
+  - Architecture: [`architecture.md` §10 R-2](file:///workspaces/tks/docs/vision/architecture.md#L1134) (H-4 pass threshold $\ge 95$% precision/recall).
 - **Inputs & Preconditions:** Mechanical AST parser and span extractor from WP-0.2; hand-labeled ground-truth dataset of 50 requirement spans in test fixture (`tests/fixtures/ground_truth_requirements.json`); optional `$LLM_API_KEY` (with mock provider fallback for offline testing).
 - **Target Artifacts & Changes:**
   - Files / Modules:
@@ -137,21 +169,21 @@ flowchart TD
   2. Implement JSON response deserializer mapping returned classifications to candidate AST chunks.
   3. Implement fallback module [`src/ingest/fallback.rs`](file:///workspaces/tks/src/ingest/fallback.rs) applying RFC 2119 heuristic defaults per Decision [D-37](file:///workspaces/tks/docs/vision/architecture.md#L876).
   4. Create hand-labeled test ground-truth dataset in [`tests/fixtures/ground_truth_requirements.json`](file:///workspaces/tks/tests/fixtures/ground_truth_requirements.json) containing $\ge 50$ labeled requirement and non-requirement spans.
-  5. Implement evaluation runner in [`tests/extraction_eval.rs`](file:///workspaces/tks/tests/extraction_eval.rs) supporting both mock and live API execution, asserting precision $\ge 95\%$ and recall $\ge 95\%$ (CAL-H4).
-  6. Measure total prompt output tokens versus input tokens, verifying output tokens represent $< 10\%$ of input tokens.
+  5. Implement evaluation runner in [`tests/extraction_eval.rs`](file:///workspaces/tks/tests/extraction_eval.rs) supporting both mock and live API execution, asserting precision $\ge 95$% and recall $\ge 95$% (CAL-H4).
+  6. Measure total prompt output tokens versus input tokens, verifying output tokens represent $< 10$% of input tokens.
 - **Verification & Proof Criteria:**
-  - Automated offline evaluation: `cargo test --test extraction_eval -- --nocapture` runs against ground-truth fixtures and confirms $\ge 95\%$ precision and recall on candidate requirement identification.
+  - Automated offline evaluation: `cargo test --test extraction_eval -- --nocapture` runs against ground-truth fixtures and confirms $\ge 95$% precision and recall on candidate requirement identification.
   - Fallback verification: `cargo test --test extraction_eval test_graceful_degradation` confirms that unconfigured LLM credentials yield valid draft candidates with default typing without panic or error.
-  - Token ratio assertion: Test confirms that generated output tokens are $< 10\%$ of document input tokens, proving adherence to Project Initiator token optimization constraints.
+  - Token ratio assertion: Test confirms that generated output tokens are $< 10$% of document input tokens, proving adherence to Project Initiator token optimization constraints.
 
 ---
 
 ### WP-0.4: In-Memory Graph Context Retrieval vs. Multi-Tool Agentic Baseline Spike
 
-- **Goal & Scope:** Design and execute Spike 0 to empirically test Hypothesis [H-1](file:///workspaces/tks/docs/vision/vision.md#L253). Build a throwaway in-memory property graph with ~50–100 hand-curated requirement nodes modeling cross-cutting architectural contracts; formulate $\ge 20$ controlled synthetic coding tasks targeting non-local contracts; evaluate external coding agents across Condition A (competent multi-tool agentic baseline: file reading, grep, AST symbol search, semantic search) vs. Condition B (graph-bounded topological context envelope); measure constraint violation reduction against the CAL-H1 decision threshold ($\ge 30\%$). Strictly out of scope: production database CTE queries, REST/MCP network transport, or production agent harnesses.
+- **Goal & Scope:** Design and execute Spike 0 to empirically test Hypothesis [H-1](file:///workspaces/tks/docs/vision/vision.md#L253). Build a throwaway in-memory property graph with ~50–100 hand-curated requirement nodes modeling cross-cutting architectural contracts; formulate $\ge 20$ controlled synthetic coding tasks targeting non-local contracts; evaluate external coding agents across Condition A (competent multi-tool agentic baseline: file reading, grep, AST symbol search, semantic search) vs. Condition B (graph-bounded topological context envelope); measure constraint violation reduction against the CAL-H1 decision threshold ($\ge 30$%). Strictly out of scope: production database CTE queries, REST/MCP network transport, or production agent harnesses.
 - **Governing Directives & References:**
   - Hypotheses: [`vision.md` §5 H-1](file:///workspaces/tks/docs/vision/vision.md#L253) (Topological retrieval vs. code-level agentic context assembly).
-  - Metrics & Calibrations: [`strategic-planning-backlog.md` §6 CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L343) ($\ge 30\%$ violation reduction greenlight; 15–29% scope adjustment; $\le 0\%$ falsification / kill).
+  - Metrics & Calibrations: [`strategic-planning-backlog.md` §6 CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L343) ($\ge 30$% violation reduction greenlight; 15–29% scope adjustment; $\le 0$% falsification / kill).
   - Architecture: [`architecture.md` §1 DR-10](file:///workspaces/tks/docs/vision/architecture.md#L26), [§10 R-1](file:///workspaces/tks/docs/vision/architecture.md#L1133) (Hypothesis H-1 risk and decision thresholds).
   - Strategic Backlog: [`strategic-planning-backlog.md` §2 Phase 0](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L65), [§5 Spike 0](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L268).
   - Vision: [`vision.md` §7 Kill Condition #2](file:///workspaces/tks/docs/vision/vision.md#L359).
@@ -173,14 +205,14 @@ flowchart TD
   3. Author 20 synthetic coding tasks in [`tasks.json`](file:///workspaces/tks/scripts/spikes/h1_spike/tasks.json) with deterministic invariant rubrics (e.g. must propagate trace ID, must use specific error type, must handle state transition invariants).
   4. Implement [`runner.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/runner.rs) running both conditions with identical LLM model (e.g. GPT-4o / Claude 3.5 Sonnet) across all 20 tasks.
   5. Implement [`evaluator.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/evaluator.rs) to score outputs, tabulate violation counts, compute violation reduction percentage:
-     $$\text{Reduction} = \frac{V_A - V_B}{V_A} \times 100\%$$
+     $$\text{Reduction} = \frac{V_A - V_B}{V_A} \times \text{100%}$$
      and output findings to [`spike0-results.md`](file:///workspaces/tks/docs/vision/spike0-results.md).
 - **Verification & Proof Criteria:**
   - Automated trial execution: `cargo run --bin h1_spike_eval` executes evaluation over 20 tasks.
   - Decision threshold check:
-    - If $\ge 30\%$ reduction: Greenlight for Phase 1 construction.
-    - If $15\% - 29\%$ reduction: Graduated scope adjustment (document domain restriction).
-    - If $\le 0\%$: Trigger Kill Condition #2 and halt Phase 1.
+    - If $\ge 30$% reduction: Greenlight for Phase 1 construction.
+    - If 15%–29% reduction: Graduated scope adjustment (document domain restriction).
+    - If $\le 0$%: Trigger Kill Condition #2 and halt Phase 1.
   - Trial reproducibility: All task inputs, envelope outputs, synthesized code, and rubric evaluations are recorded in [`docs/vision/spike0-results.md`](file:///workspaces/tks/docs/vision/spike0-results.md).
 
 ---
@@ -192,9 +224,9 @@ flowchart TD
 - [ ] All work package tests and automated checks passing.
 - [ ] Project linting, type-checking, and format checks pass cleanly with zero warnings/errors (`cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`).
 - [ ] Docker Compose PostgreSQL with `pgvector` boots cleanly and executes `--migrate-only` successfully.
-- [ ] CommonMark AST parsing decomposes specifications with $\ge 80\%$ mechanical chunking and 100% exact UTF-8 byte span fidelity ([TB-2](file:///workspaces/tks/docs/vision/technical-backlog.md#L22)).
-- [ ] Extraction benchmark achieves $\ge 95\%$ precision/recall against hand-labeled ground truth ([CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L346)).
-- [ ] Spike 0 achieves $\ge 30\%$ reduction in constraint violations vs. multi-tool agentic baseline across $\ge 20$ tasks ([CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L343)).
+- [ ] CommonMark AST parsing decomposes specifications with $\ge 80$% mechanical chunking and 100% exact UTF-8 byte span fidelity ([TB-2](file:///workspaces/tks/docs/vision/technical-backlog.md#L22)).
+- [ ] Extraction benchmark achieves $\ge 95$% precision/recall against hand-labeled ground truth ([CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L346)).
+- [ ] Spike 0 achieves $\ge 30$% reduction in constraint violations vs. multi-tool agentic baseline across $\ge 20$ tasks ([CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L343)).
 
 ### 4.2 Gate / Milestone Demonstration
 

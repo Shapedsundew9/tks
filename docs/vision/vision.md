@@ -15,32 +15,41 @@ Autonomous AI agents are increasingly capable of generating functional software 
     'mainBkg': '#1e2230',
     'nodeBorder': '#434c5e',
     'textColor': '#e2e8f0',
-    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
     'lineColor': '#8892b0',
     'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
     'primaryBorderColor': '#e06c75',
     'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
     'secondaryBorderColor': '#73c991',
     'tertiaryColor': '#1d2c44',
-    'tertiaryBorderColor': '#61afef'
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
   }
 }}%%
 flowchart TD
-    classDef failure fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
-    classDef consequence fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
 
-    F1["The Context Window Collapse<br/><i>(Code-Level Context Blindness)</i>"]:::failure
-    F2["The Specification Drift Trap<br/><i>(Decoupled Documentation)</i>"]:::failure
-    F3["The Monolithic Diff Dilemma<br/><i>(Unverifiable Agent Output)</i>"]:::failure
+    F1["The Context Window Collapse<br/><i>(Code-Level Context Blindness)</i>"]:::primary
+    F2["The Specification Drift Trap<br/><i>(Decoupled Documentation)</i>"]:::primary
+    F3["The Monolithic Diff Dilemma<br/><i>(Unverifiable Agent Output)</i>"]:::primary
 
-    C1["Loss of Architectural Invariants<br/><i>(Local optimization violates global contracts)</i>"]:::consequence
-    C2["Silent Requirement Decay<br/><i>(Code mutates away from baseline intent)</i>"]:::consequence
-    C3["Human Supervisory Exhaustion<br/><i>(Blind rubber-stamping of massive PRs)</i>"]:::consequence
+    C1["Loss of Architectural Invariants<br/><i>(Local optimization violates global contracts)</i>"]:::tertiary
+    C2["Silent Requirement Decay<br/><i>(Code mutates away from baseline intent)</i>"]:::tertiary
+    C3["Human Supervisory Exhaustion<br/><i>(Blind rubber-stamping of massive PRs)</i>"]:::tertiary
 
     F1 --> C1
     F2 --> C2
     F3 --> C3
-
 ```
 
 ### The Context Window Collapse (Code-Level Context Blindness)
@@ -119,37 +128,48 @@ The Knowledge Substrate operates strictly within the following architectural bou
     'mainBkg': '#1e2230',
     'nodeBorder': '#434c5e',
     'textColor': '#e2e8f0',
-    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
     'lineColor': '#8892b0',
-    'primaryColor': '#1b3528',
-    'primaryBorderColor': '#73c991',
-    'secondaryColor': '#1d2c44',
-    'secondaryBorderColor': '#61afef'
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
   }
 }}%%
 flowchart LR
-    classDef boundary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
-    classDef core fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
 
     subgraph External["External Runtime Boundary"]
-        Agents["External Agent Ecosystem<br/><i>(Claude Code, Custom LLM Runners, Aider)</i>"]:::boundary
-        Users["Human Engineering Teams<br/><i>(Web UI, CLI, IDE Extensions)</i>"]:::boundary
+        Agents["External Agent Ecosystem<br/><i>(Claude Code, Custom LLM Runners, Aider)</i>"]:::tertiary
+        Users["Human Engineering Teams<br/><i>(Web UI, CLI, IDE Extensions)</i>"]:::tertiary
     end
 
     subgraph Substrate["The Knowledge Substrate"]
-        Gateway["Integration Gateway<br/><i>(MCP Server & REST API)</i>"]:::core
-        Governance["Governance & Lineage Engine"]:::core
-        PostgresStorage["PostgreSQL Substrate<br/><i>(Property Graph + pgvector + Audit Ledger)</i>"]:::core
-        GitStore["Git Document Ledger<br/><i>(Text Specifications & Revision History)</i>"]:::core
+        Gateway["Integration Gateway<br/><i>(MCP Server & REST API)</i>"]:::secondary
+        Governance["Governance & Lineage Engine"]:::secondary
+        PostgresStorage["PostgreSQL Substrate<br/><i>(Property Graph + pgvector + Audit Ledger)</i>"]:::secondary
+        GitStore["Git Document Ledger<br/><i>(Text Specifications & Revision History)</i>"]:::secondary
 
         Gateway --> Governance --> PostgresStorage
         Gateway --> GitStore
         PostgresStorage -.->|"Relational Refs & Hashes"| GitStore
     end
 
-    Agents <-->|Model Context Protocol / JSON-RPC| Gateway
-    Users <-->|REST API / HTTPS| Gateway
-
+    Agents <-->|"Model Context Protocol / JSON-RPC"| Gateway
+    Users <-->|"REST API / HTTPS"| Gateway
 ```
 
 * **Resource-Constrained Execution Model:** The project operates under an explicitly constrained resource model. The phased roadmap is engineered so that each progression phase delivers standalone operational value and can be evaluated or falsified independently. Phase 0 and Phase 1 are scoped to be achievable by a small team (or individual developer) utilizing commodity infrastructure. Subsequent milestones (Phases 3 and 4) are aspirational targets whose investment is strictly contingent on the demonstrated viability and dogfooding adoption of earlier phases.
@@ -177,28 +197,37 @@ The architecture is organized around two decoupled operational loops: the **Docu
     'mainBkg': '#1e2230',
     'nodeBorder': '#434c5e',
     'textColor': '#e2e8f0',
-    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
     'lineColor': '#8892b0',
     'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
     'primaryBorderColor': '#e06c75',
     'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
     'secondaryBorderColor': '#73c991',
     'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
     'tertiaryBorderColor': '#61afef',
-    'gateColor': '#2e271a',
-    'gateBorder': '#e5c07b'
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
   }
 }}%%
 flowchart TD
-    classDef agent fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
-    classDef gate fill:#2e271a,stroke:#e5c07b,stroke-width:1.5px,color:#fdf4db;
-    classDef db fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
+    classDef note fill:#2e271a,stroke:#e5c07b,stroke-width:1.5px,color:#fdf4db;
 
-    Doc["Raw Specification / Markdown Doc"]:::agent
-    GitLedger["Git Document Ledger<br/><i>(Versioned Text & Object Hashes)</i>"]:::db
-    ASTParser["Stage 1: Mechanical AST Structural Extractor<br/><i>(Deterministic Block & Span Resolution)</i>"]:::gate
-    Classifier["Stage 2: Targeted Semantic Classifier<br/><i>(Narrow LLM Classification Tuples)</i>"]:::gate
-    HumanReview["Human Staging & Verification Gate<br/><i>(Tractable Supervisory Batches)</i>"]:::gate
+    Doc["Raw Specification / Markdown Doc"]:::tertiary
+    GitLedger["Git Document Ledger<br/><i>(Versioned Text & Object Hashes)</i>"]:::secondary
+    ASTParser["Stage 1: Mechanical AST Structural Extractor<br/><i>(Deterministic Block & Span Resolution)</i>"]:::note
+    Classifier["Stage 2: Targeted Semantic Classifier<br/><i>(Narrow LLM Classification Tuples)</i>"]:::note
+    HumanReview["Human Staging & Verification Gate<br/><i>(Tractable Supervisory Batches)</i>"]:::primary
 
     Doc -->|"1. Ingest & Version"| GitLedger
     GitLedger -->|"2. Stream Document Text"| ASTParser
@@ -206,23 +235,22 @@ flowchart TD
     Classifier -->|"4. Candidate Requirement Tuples"| HumanReview
 
     subgraph Core["PostgreSQL Knowledge Substrate"]
-        GraphStore["Graph Topology & pgvector Embeddings"]:::db
-        AuditTrail["Immutable Change & Audit Ledger"]:::db
+        GraphStore["Graph Topology & pgvector Embeddings"]:::secondary
+        AuditTrail["Immutable Change & Audit Ledger"]:::secondary
     end
 
     HumanReview -->|"5. Commit Verified Graph Nodes"| AuditTrail
     AuditTrail -->|"6. Materialize Topology"| GraphStore
 
-    ExtAgent["External Autonomous Agent"]:::agent
-    MCPGateway["MCP Protocol Gateway"]:::gate
-    GovCheck["Per-Node Governance Policy Filter"]:::gate
+    ExtAgent["External Autonomous Agent"]:::tertiary
+    MCPGateway["MCP Protocol Gateway"]:::note
+    GovCheck["Per-Node Governance Policy Filter"]:::note
 
     GraphStore -.->|"7. Request Context Envelope"| MCPGateway
     MCPGateway -.-> ExtAgent
     ExtAgent -->|"8. Propose Node Mutation"| MCPGateway
     MCPGateway -->|"9. Check Policy"| GovCheck
     GovCheck -->|"10. Commit Authorized Change"| AuditTrail
-
 ```
 
 ### Conceptual Operational Loops
@@ -286,12 +314,24 @@ Program advancement is organized across two orthogonal vectors: **Governance & P
     'mainBkg': '#1e2230',
     'nodeBorder': '#434c5e',
     'textColor': '#e2e8f0',
-    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
     'lineColor': '#8892b0',
-    'primaryColor': '#1b3528',
-    'primaryBorderColor': '#73c991',
-    'secondaryColor': '#1d2c44',
-    'secondaryBorderColor': '#61afef'
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
   }
 }}%%
 quadrantChart
