@@ -2,7 +2,7 @@
 
 Execute the prompt @[.github/prompts/vision-debate.prompt.md] with the following inputs from the Project Initiator:
 
-- The documents are in @docs/visions/
+- The document(s) are in @docs/vision/
 - Visionary model: `gemini-3.8-flash-high`
 - Stakeholder models: `claude-opus-4-6-thinking`
 - Create a uniquely named `prompt-file.txt` in your session scratch pad to pass to the agent.
