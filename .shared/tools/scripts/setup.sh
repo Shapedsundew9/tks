@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Configuration (keep in sync with configure-subtree.sh)
 REMOTE_NAME="shared-dev"
-REMOTE_URL="git@github.com:shapedsundew9/shared-dev.git"
+FETCH_URL="https://github.com/shapedsundew9/shared-dev.git"
+PUSH_URL="git@github.com:shapedsundew9/shared-dev.git"
 PREFIX=".shared"
 BRANCH="main"
 
@@ -23,9 +24,14 @@ fi
 # 3. Add remote alias if not already registered
 if git remote | grep -qx "$REMOTE_NAME"; then
     echo "Notice: Remote '$REMOTE_NAME' already exists."
+    CURRENT_PUSH_URL="$(git remote get-url --push "$REMOTE_NAME" 2>/dev/null || true)"
+    if [ "$CURRENT_PUSH_URL" != "$PUSH_URL" ]; then
+        git remote set-url --push "$REMOTE_NAME" "$PUSH_URL"
+    fi
 else
-    echo "Adding remote '$REMOTE_NAME' ($REMOTE_URL)..."
-    git remote add -f "$REMOTE_NAME" "$REMOTE_URL"
+    echo "Adding remote '$REMOTE_NAME'..."
+    git remote add "$REMOTE_NAME" "$FETCH_URL"
+    git remote set-url --push "$REMOTE_NAME" "$PUSH_URL"
 fi
 
 # Repo-local shortcuts: `git shared-pull` and `git shared-push`
@@ -33,10 +39,17 @@ SYNC_ENV="python3 $PREFIX/tools/scripts/sync_devcontainer_env.py --if-opted-in"
 git config alias.shared-pull "!git subtree pull --prefix=$PREFIX $REMOTE_NAME $BRANCH --squash && $SYNC_ENV"
 git config alias.shared-push "subtree push --prefix=$PREFIX $REMOTE_NAME $BRANCH"
 
-# 4. Check if directory or tree already exists
+# 4. Check if subtree metadata already exists
+has_subtree_metadata() {
+    [ -n "$(git log -1 --grep="^git-subtree-dir: $PREFIX/*\$" HEAD 2>/dev/null)" ]
+}
+
 if [ -d "$PREFIX" ] || git ls-tree -d HEAD "$PREFIX" 2>/dev/null | grep -q "$PREFIX"; then
-    echo "Notice: Directory '$PREFIX' already exists. Subtree is already initialized."
-    exit 0
+    if has_subtree_metadata; then
+        echo "Notice: Directory '$PREFIX' already exists and subtree is initialized."
+        exit 0
+    fi
+    echo "Notice: Directory '$PREFIX' exists but lacks git-subtree metadata (e.g. created from a template)."
 fi
 
 # 5. Ensure pull.rebase preserves merge commits
@@ -75,8 +88,24 @@ fi
 echo "Fetching latest refs from '$REMOTE_NAME/$BRANCH'..."
 git fetch "$REMOTE_NAME" "$BRANCH"
 
-# 8. Add subtree using --squash
-echo "Adding subtree into '$PREFIX'..."
-git subtree add --prefix="$PREFIX" "$REMOTE_NAME" "$BRANCH" --squash
+# 8. Add or link subtree using --squash
+if [ -d "$PREFIX" ] || git ls-tree -d HEAD "$PREFIX" 2>/dev/null | grep -q "$PREFIX"; then
+    echo "Linking existing directory '$PREFIX' as subtree..."
+    REMOTE_REV="$(git rev-parse "$REMOTE_NAME/$BRANCH")"
+    REMOTE_REV_SHORT="$(git rev-parse --short "$REMOTE_REV")"
+    REMOTE_TREE="$(git rev-parse "$REMOTE_REV^{tree}")"
 
-echo "Success: Subtree initialized at '$PREFIX'."
+    SQUASH_MSG="$(printf "Squashed '%s/' content from commit %s\n\ngit-subtree-dir: %s\ngit-subtree-split: %s\n" "$PREFIX" "$REMOTE_REV_SHORT" "$PREFIX" "$REMOTE_REV")"
+    SQUASH_COMMIT="$(printf "%s" "$SQUASH_MSG" | git commit-tree "$REMOTE_TREE")"
+
+    HEAD_TREE="$(git write-tree)"
+    HEAD_REV="$(git rev-parse HEAD)"
+    MERGE_COMMIT="$(printf "Merge commit '%s' as '%s'\n" "$SQUASH_COMMIT" "$PREFIX" | git commit-tree "$HEAD_TREE" -p "$HEAD_REV" -p "$SQUASH_COMMIT")"
+
+    git reset "$MERGE_COMMIT"
+    echo "Success: Subtree linked at '$PREFIX'."
+else
+    echo "Adding subtree into '$PREFIX'..."
+    git subtree add --prefix="$PREFIX" "$REMOTE_NAME" "$BRANCH" --squash
+    echo "Success: Subtree initialized at '$PREFIX'."
+fi
