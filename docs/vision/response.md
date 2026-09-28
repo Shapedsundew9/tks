@@ -1,223 +1,206 @@
-# Lead Developer Review: Architectural Alignment & Implementation Realities (Iteration 4)
+# Lead Developer Alignment Response (Iteration 5)
 
-## Executive Summary
+## Executive Summary & Engineering Disposition
 
-As the Lead Developer Sub-Agent for Iteration 4, I have evaluated the updated architectural specifications (`architecture.md`), governing vision (`vision.md`), strategic planning backlog (`strategic-planning-backlog.md`), and technical implementation backlog (`technical-backlog.md`).
+As Lead Developer Sub-Agent, I have reviewed the Iteration 5 architecture specification (`architecture.md`), governing vision (`vision.md`), strategic planning backlog (`strategic-planning-backlog.md`), and technical implementation backlog (`technical-backlog.md`).
 
-The architecture has matured substantially through prior iterations: the elimination of the disconnected staging queue table (`staging_queue`), the consolidation of candidate requirements directly into `graph_nodes` with `lifecycle_state = 'DRAFT'`, the standardization on 0-based byte offsets, and the adoption of native row-level locking (`SELECT ... FOR UPDATE`) for leaf attribute updates provide an exceptional, pragmatic foundation.
+The architecture has matured substantially through prior iterations: consolidating staging into draft graph topology (D-23), eliminating destructive edge deletions with surrogate keys (D-32), introducing mechanical AST parsing (D-15), standardizing on 0-based byte offsets (D-22), and establishing native full-text search for micro-reflex queries (D-35) have created a coherent, buildable technical foundation.
 
-However, moving from architectural concept to executable code reveals two **Blockers** and six **Major** implementation friction points that must be rectified before engineering begins:
+However, moving into tactical execution exposes critical implementation frictions and operational gaps that must be resolved prior to Phase 1 coding. Most urgently:
 
-1. **Existential Data Loss Risk (Blocker):** The foreign key `job_id REFERENCES ingestion_jobs(job_id) ON DELETE CASCADE` on `graph_nodes` will cause routine operational job pruning to cascade-delete active, canonical production requirements.
-2. **Constraint Collision on Edge Lifecycle (Blocker):** The composite primary key `PRIMARY KEY (from_node_id, to_node_id, edge_type)` on `graph_edges` prevents re-linking or evolving topological relationships once an edge has transitioned to `SUPERSEDED` or `REVERTED`, violating Invariant INV-2.
-3. **Git Concurrency & Non-Fast-Forward Race Conditions (Major):** Committing directly to a single branch (`refs/heads/specs`) via direct ODB writes without in-process synchronization causes file lock contention (`GIT_ELOCKED`) and non-fast-forward push rejections under concurrent document ingestion calls.
-4. **Batch Promotion Ancestor Validation Failure (Major):** Transactional CTE checks for Invariant INV-1 evaluate parent nodes as `DRAFT` during atomic batch approval, causing valid hierarchical specification trees to fail promotion and abort.
-5. **Schema Disconnect on Source Spans (Major):** The inspection query joins `source_spans.node_id = graph_nodes.id`, but Table 5.1 omits `node_id` from `source_spans`.
-6. **Undefined Search Strategy for `query_requirements` (Major):** Coupling `query_requirements` to synchronous external embedding generation would breach SLA-1 (<50ms) and introduce external API failure points on read operations.
-7. **Incomplete Ingestion Job State Machine (Major):** The absence of a `STAGED` / `AWAITING_REVIEW` state prevents supervisory tools and CLI automation from distinguishing between in-progress decomposition and unapproved drafts.
-8. **Lack of Graceful Degradation in Decomposition Worker (Major):** Ingestion jobs fail entirely if external LLM API credentials are not configured, breaking offline development and local test automation despite having 80%+ mechanical extraction.
+1. Document ingestion and Git commit-tree reachability lack document path and slug identifiers, preventing Git tree generation, breaking `git log`/`git diff`, and making span re-anchoring across document revisions impossible (**LD-1**, Blocker).
+2. Blocking synchronous libgit2 C calls wrapped in an in-process async mutex risk starving the Tokio reactor and introduce severe Rust concurrency impedance mismatches (**LD-2**, Major).
+3. Candidate draft nodes currently enqueue embedding generation tasks immediately upon ingestion, burning external LLM tokens and API calls on false-positive drafts that are never queried (**LD-3**, Major).
+4. The append-only `audit_ledger` lacks a concrete DDL schema and a monotonically increasing sequence primary key, jeopardizing total event ordering and point-in-time reconstruction (**LD-4**, Major).
+5. Granular staging approvals leak orphaned draft nodes and leave ingestion jobs in an inconsistent operational state (**LD-5**, Major).
+6. Draft edge promotion lacks active endpoint validation and active edge supersession mechanics, causing fatal partial unique index violations (**LD-6**, Major).
+7. The `embedding_queue` lacks a retry scheduling column, causing worker tight-loop API hammering on HTTP 429 rate limits (**LD-7**, Major).
+8. Identity CLI commands operate directly on PostgreSQL, causing desynchronization with the daemon's in-process `moka` auth cache (**LD-8**, Major).
 
-Below are the 10 prioritized findings followed by 3 whole-component simplifications.
+Below are the 10 prioritized technical findings (ranked by severity) followed by 3 concrete component simplifications.
 
 ---
 
-## Prioritized Findings (Ranked by Severity)
+## Detailed Findings
 
 ### LD-1
 
-* **Severity:** `Blocker`
-* **Target:** `architecture.md` §5.1 State Ownership (Table 5.1 & Relational Ingestion Unification)
-* **Critique:** In Table 5.1 and Section 5.1 "Relational Ingestion Unification", the foreign key on `graph_nodes` is specified as:
-  `job_id UUID REFERENCES ingestion_jobs(job_id) ON DELETE CASCADE`.
-  While candidate draft nodes are initially linked to an ingestion job, once a supervisor approves them via `POST /api/v1/staging/approve`, they transition to `lifecycle_state = 'ACTIVE'` and become the permanent, canonical requirements of the project.
-  In any production database, job queues like `ingestion_jobs` are transient operational tables that undergo periodic retention cleanup (e.g., pruning records older than 30 or 90 days). Under `ON DELETE CASCADE`, pruning or deleting an old ingestion job record will trigger PostgreSQL to cascade-delete all active requirements, specifications, and tasks originally ingested by that job.
-  This introduces an existential operational risk of permanent data loss and directly violates Invariant INV-2 ("Destructive in-place updates on active requirements, specifications, and topological edges must not occur").
+* **Severity:** Blocker
+* **Target:** `architecture.md` §5.1 State Ownership, §6 Interfaces & Contracts; `strategic-planning-backlog.md` §7 Operational Workflow Specifications
+* **Critique:** Missing Document Path/Slug in Ingestion API and Data Model Breaks Git Tree Structure, Commit History (`git log`/`git diff`), and Deterministic Span Re-Anchoring.
+  In `POST /api/v1/documents/ingest` and the `ingestion_jobs` schema, documents are identified exclusively by cryptographic hash (`job_id`, `document_hash`, `status`, `error_message`, `retry_count`, `created_at`, `updated_at`). No document path, slug, or filename is required or stored.
+  This introduces three fatal operational blockers:
+  1. *Git Tree Object Generation Failure:* In TB-1 and Decision D-33, the Git adapter must "update the tree structure in the ODB to include the new or updated document blob alongside existing document entries". A Git tree object cannot store bare, nameless blobs; every Git tree entry requires a path filename (e.g. `specs/vision.md`). Without a document path, libgit2 cannot construct tree objects or commit trees.
+  2. *Destruction of Document Revision History:* Decision D-29 explicitly justifies standard Git branch commits on `refs/heads/specs` so that "developers can inspect document revision history using standard Git CLI commands (`git log`, `git diff`)". Without a stable file path across commits, standard Git history tracking is completely broken because each revision appears as an unrelated anonymous blob rather than an evolving document.
+  3. *Impossibility of Span Re-Anchoring on Revision:* In §5.1, `source_spans` are stated to be "re-anchored on document revision" (and de-risked under R-6 / CAL-H4). When an edited document is ingested, its content hash changes completely. Without a stable `doc_path` or document entity identifier linking the new ingestion job to the previous document version, the decomposition pipeline cannot locate prior requirement nodes to diff AST blocks or re-anchor byte offsets. Every ingestion upload is treated as a set of brand-new, unrelated candidate nodes, causing runaway duplicate requirement graphs on every edit.
 * **Proposed Alternative:**
-  Change the foreign key constraint on `graph_nodes.job_id` from `ON DELETE CASCADE` to `ON DELETE SET NULL`.
-  To cleanly remove false positives during staging review, `POST /api/v1/staging/reject` should execute an explicit statement: `DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT'`.
-  Once nodes are promoted to `ACTIVE`, their relationship to `job_id` becomes non-cascading historical provenance, guaranteeing that operational maintenance on `ingestion_jobs` can never alter or destroy active graph entities.
+  1. Update `POST /api/v1/documents/ingest` payload to mandate a document path/slug: `{"doc_path": "specs/vision.md", "content": "# Technical Vision..."}`.
+  2. Add `doc_path VARCHAR(255) NOT NULL` to `ingestion_jobs` and `source_spans`.
+  3. In `src/storage/git/`, use `doc_path` when creating the Git tree object so that successive uploads update the file at `doc_path` on `refs/heads/specs`. Standard `git log specs/vision.md` and `git diff HEAD~1 specs/vision.md` will function out-of-the-box.
+  4. When an ingestion job executes for an existing `doc_path`, the decomposition pipeline retrieves prior active nodes anchored to that `doc_path`, correlates AST structural blocks and RFC 2119 keywords, re-anchors source byte spans, and marks modified nodes as revisions rather than generating duplicate trees.
 
 ### LD-2
 
-* **Severity:** `Blocker`
-* **Target:** `architecture.md` §5.1 Entity Typing and Relational Constraints (lines 236–247), §9 Decision D-21
-* **Critique:** Section 5.1 defines the schema for `graph_edges` as:
-
-  ```sql
-  CREATE TABLE graph_edges (
-      from_node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-      to_node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-      edge_type VARCHAR(32) NOT NULL,
-      lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
-          CHECK (lifecycle_state IN ('DRAFT', 'ACTIVE', 'SUPERSEDED', 'REVERTED')),
-      PRIMARY KEY (from_node_id, to_node_id, edge_type)
-  );
-  ```
-
-  Invariant INV-2 explicitly mandates that structural edges are never physically deleted, instead transitioning through `lifecycle_state` (`DRAFT`, `ACTIVE`, `SUPERSEDED`, `REVERTED`).
-  However, because the primary key is strictly composite on `(from_node_id, to_node_id, edge_type)`, the table cannot store more than one historical or lifecycle state record for any edge relationship.
-  If an edge from node A to node B is marked `SUPERSEDED` or `REVERTED` (for instance, during a dependency refactor or administrative session rollback), and later a new draft or revised active edge of that type is proposed between A and B, PostgreSQL immediately throws a fatal primary key violation (`duplicate key value violates unique constraint "graph_edges_pkey"`).
-  Furthermore, if in-place `UPDATE` on edges is prohibited by INV-2, transitioning an edge cannot even be performed by inserting an updated state row.
+* **Severity:** Major
+* **Target:** `architecture.md` §4 Component Topology, §5.2 Concurrency Model; `technical-backlog.md` TB-1
+* **Critique:** Premature In-Place Execution of Synchronous Blocking libgit2 C Calls on Tokio Async Worker Threads.
+  Decision D-33 and TB-1 encapsulate bare Git operations in an `Arc<tokio::sync::Mutex<git2::Repository>>` inside the `tks serve` daemon.
+  In implementation, this presents severe concurrency and runtime hazards:
+  1. *Async Reactor Starvation:* `git2::Repository` wraps synchronous, blocking C library calls (`git_blob_create_from_buffer`, `git_treebuilder_write`, `git_commit_create`) that perform synchronous filesystem disk I/O. Executing blocking C code directly inside Tokio worker threads starves Tokio's async reactor.
+  2. *Tokio Mutex / Spawn-Blocking Impedance Mismatch:* In Rust, `tokio::task::spawn_blocking` requires a synchronous closure (`FnOnce() -> R + Send + 'static`). You cannot `.await` an async `tokio::sync::Mutex` inside `spawn_blocking`. Conversely, acquiring the mutex outside `spawn_blocking` and attempting to pass the guard into `spawn_blocking` violates Rust's `Send` bounds.
+  3. *Unsafe C-Pointer Sharing:* `git2::Repository` does not implement `Sync`, making shared mutex access across Tokio worker threads brittle.
 * **Proposed Alternative:**
-  Replace the composite primary key on `graph_edges` with a dedicated surrogate key:
-  `edge_id UUID PRIMARY KEY DEFAULT gen_random_uuid()`.
-  Enforce active edge uniqueness using a partial unique index:
-
-  ```sql
-  CREATE UNIQUE INDEX idx_graph_edges_active_unique
-      ON graph_edges (from_node_id, to_node_id, edge_type)
-      WHERE lifecycle_state = 'ACTIVE';
-  ```
-
-  This guarantees that at most one active relationship of a given type exists between any two nodes while allowing historical `SUPERSEDED` and `REVERTED` edge records to coexist safely without primary key collisions, fully satisfying Invariant INV-2.
+  Decouple Git operations using a dedicated background Git actor task communicating over a bounded mpsc channel (`tokio::sync::mpsc::channel`). The dedicated actor thread exclusively owns the `git2::Repository` instance, executes blocking libgit2 C calls sequentially off the async runtime, and returns results via `tokio::sync::oneshot` channels. This guarantees strict linear serialization on `refs/heads/specs` without `.lock` collisions, eliminates mutex contention across Axum handlers, prevents Tokio worker starvation, and cleanly isolates unsafe C-pointer handling from async request pipelines.
 
 ### LD-3
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §4 Component Topology, §5.2 Concurrency Model, §7 Technology Stack, §9 Decision D-29; `technical-backlog.md` TB-1
-* **Critique:** Decision D-29 and TB-1 specify that raw specification documents are committed directly to a single dedicated branch (`refs/heads/specs`) in the bare Git repository via direct ODB writes using `git2`. The architecture asserts that this eliminates `.lock` contention and loose reference bloat.
-  However, in Git and `libgit2`, updating a branch reference requires acquiring a reference lock file (`.git/refs/heads/specs.lock`).
-  In a concurrent multi-threaded environment (such as an Axum server handling concurrent document uploads or an ingestion retry executing alongside a new upload), multiple worker tasks attempting to commit to `refs/heads/specs` concurrently will encounter:
-  1. File lock collisions (`GIT_ELOCKED`) on `.git/refs/heads/specs.lock`.
-  2. Non-fast-forward push rejections, because both threads construct their tree from the same parent commit, and the second commit will attempt to overwrite the first rather than building on it.
-  3. In addition, the `git2::Repository` handle in Rust contains raw C pointers and does not implement `Sync`, preventing safe shared access across Tokio worker threads without synchronization.
+* **Severity:** Major
+* **Target:** `architecture.md` §4 Component Topology, §5.1 State Ownership, §5.2 Concurrency Model
+* **Critique:** Premature Enqueueing of Unapproved Draft Nodes in `embedding_queue` Violates Token Minimization and Wastes External API Compute.
+  In §5.2 Concurrency Model (line 366), the specification states: "When a node is created or its text modified, an entry is upserted into `embedding_queue` within the same transaction."
+  When a document is ingested, 30–60 candidate nodes are created in `graph_nodes` with `lifecycle_state = 'DRAFT'`. If `embedding_queue` is populated on draft creation, the background worker immediately calls external embedding APIs for unverified candidate chunks. Many of these chunks are false positives (revision tables, document headers, non-normative prose) that human supervisors reject during staging review (`tks staging reject`).
+  Furthermore, production context queries (`get_context_envelope` and `query_requirements`) filter strictly on `lifecycle_state = 'ACTIVE'`, meaning draft node embeddings are never queried. Generating embeddings for draft nodes wastes LLM tokens, incurs unnecessary cloud API costs, creates rate-limit contention, and directly violates Project Initiator Constraint §2.1 ("minimal LLM reliance"). It also directly contradicts §4 line 164 and §5.1 line 215, which state embeddings are created on node approval.
 * **Proposed Alternative:**
-  Within `tks serve`, encapsulate bare Git operations inside an in-process serialized queue or `Arc<tokio::sync::Mutex<git2::Repository>>`.
-  The commit routine must sequentially:
-  1. Acquire the repository mutex.
-  2. Resolve the latest commit head on `refs/heads/specs`.
-  3. Update the tree structure in the ODB to include the new/updated document blob alongside existing document entries.
-  4. Write the commit object with the current HEAD as parent.
-  5. Advance `refs/heads/specs`.
-  Update §5.2 Concurrency Model and `technical-backlog.md` TB-1 to document in-process synchronization for Git branch mutations.
+  Explicitly mandate that `embedding_queue` records are enqueued ONLY when a node transitions to `lifecycle_state = 'ACTIVE'` (during staging approval in `POST /api/v1/staging/approve` or draft promotion) or when an already `ACTIVE` node's content is modified. Nodes created in `DRAFT` state must never insert rows into `embedding_queue`.
 
 ### LD-4
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §3 Architectural Invariants (INV-1), §5.1 Draft Lifecycle & Event Compaction, §9 Decision D-24
-* **Critique:** Invariant INV-1 requires active functional specifications and tasks to maintain a directed edge path terminating at an authorized active requirement node, verified via transactional CTE ancestor checks during draft promotion (`POST /api/v1/staging/approve`).
-  When a Markdown document is ingested and decomposed, it typically yields a hierarchical tree containing top-level `REQUIREMENT` nodes, child `SPECIFICATION` nodes, and leaf `TASK` nodes, all initially staged with `lifecycle_state = 'DRAFT'`.
-  When a supervisor approves the job, promoting the candidate batch together, a standard transactional CTE checking `WHERE parent.lifecycle_state = 'ACTIVE'` evaluates against the pre-update state where the parent requirement is still `DRAFT`. Consequently, the ancestor check fails for all child specifications and tasks in the batch, causing the approval transaction to roll back.
+* **Severity:** Major
+* **Target:** `architecture.md` §3 Architectural Invariants (INV-2), §5.1 State Ownership, §9 Decision D-4
+* **Critique:** Unspecified Relational Schema and Missing Monotonically Increasing Sequence in `audit_ledger`.
+  The append-only audit ledger is the cornerstone of Invariant INV-2, Invariant INV-7, and Decision D-4. However, `architecture.md` provides no DDL or column definitions for `audit_ledger`.
+  Crucially:
+  1. *Total Ordering & Snapshot Replay:* Invariant INV-2 specifies a "monotonically increasing audit ledger for approved states" enabling point-in-time reconstruction. Relying on `TIMESTAMPTZ` alone is vulnerable to clock skew and sub-millisecond timestamp collisions during atomic batch approvals, making deterministic event replay impossible. Total ordering requires a monotonic 64-bit integer sequence (`event_seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`).
+  2. *Referential Integrity Isolation:* The schema must not use cascading foreign keys (`REFERENCES graph_nodes(id) ON DELETE CASCADE`) to live graph tables, as physical deletion of draft or reverted nodes would destroy historical audit logs.
+  3. *Missing Field Specifications:* Fields for `event_seq`, `event_type` (`APPROVED`, `MUTATED`, `SUPERSEDED`, `REVERTED`), `entity_id UUID NOT NULL`, `entity_type VARCHAR(32) NOT NULL`, `actor_id VARCHAR(64) NOT NULL`, `actor_type VARCHAR(16) NOT NULL`, `token_fingerprint VARCHAR(64) NOT NULL`, `delta JSONB NOT NULL`, `snapshot JSONB NOT NULL`, `draft_evolution_summary JSONB`, and `created_at TIMESTAMPTZ NOT NULL` must be explicitly specified before Phase 1 implementation begins.
 * **Proposed Alternative:**
-  Formally specify the batch promotion CTE semantics in §3 and §5.1: The ancestor path validation CTE must evaluate child nodes against the union of currently `ACTIVE` requirement nodes and candidate requirement nodes included in the current promotion batch (`id = ANY($approved_node_ids)`).
-  This ensures that hierarchical document trees can be approved atomically in a single transaction without false invariant violations.
+  Add the complete SQL schema definition for `audit_ledger` to §5.1:
+
+  ```sql
+  CREATE TABLE audit_ledger (
+      event_seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      event_id UUID NOT NULL DEFAULT gen_random_uuid(),
+      event_type VARCHAR(32) NOT NULL,
+      entity_id UUID NOT NULL,
+      entity_type VARCHAR(32) NOT NULL,
+      actor_id VARCHAR(64) NOT NULL,
+      actor_type VARCHAR(16) NOT NULL,
+      token_fingerprint VARCHAR(64) NOT NULL,
+      delta JSONB NOT NULL,
+      snapshot JSONB NOT NULL,
+      draft_evolution_summary JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX idx_audit_ledger_entity ON audit_ledger(entity_id, event_seq);
+  CREATE INDEX idx_audit_ledger_created_at ON audit_ledger(created_at);
+  ```
 
 ### LD-5
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §5.1 State Ownership (Table 5.1 & Relational Ingestion Unification)
-* **Critique:** In Section 5.1, the ingestion inspection query executes:
-  `LEFT JOIN source_spans s ON s.node_id = n.id`
-  However, Table 5.1 defines `source_spans` as:
-  `source_spans table (doc_hash, byte_start INT NOT NULL, byte_end INT NOT NULL)`
-  `node_id` is completely absent from the table schema in Table 5.1, and `graph_nodes` contains no foreign key referencing `source_spans`.
-  Without `node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE` on `source_spans`, the document inspection join fails with `column s.node_id does not exist`, and Invariant INV-4's requirement to cryptographically link extracted requirements to source spans cannot be fulfilled relationally.
+* **Severity:** Major
+* **Target:** `architecture.md` §5.1 State Ownership, §6 Interfaces & Contracts, §9 Decisions D-27, D-36, D-41
+* **Critique:** Granular Staging Approval Leaks Orphan Draft Nodes and Leaves `ingestion_jobs` in an Inconsistent State.
+  Decision D-27 and D-36 allow supervisors to execute granular approval: `POST /api/v1/staging/approve` accepts an optional `approved_node_ids: Vec<Uuid>` list (CLI `tks staging approve <job_id> --only <id1,id2>`).
+  However, §6 and D-36 specify that upon approval, `ingestion_jobs.status` transitions from `STAGED` to `APPROVED`.
+  When a supervisor approves only a subset, the candidate draft nodes that were NOT included in `approved_node_ids` remain in `graph_nodes` with `lifecycle_state = 'DRAFT'`. But because the job status is now `APPROVED`, these leftover draft nodes:
+  1. Disappear from `tks staging list <job_id>` (which filters on `STAGED`).
+  2. Cannot be rejected or purged via `tks staging reject --job-id <job_id>` because the job is marked `APPROVED`.
+  3. Remain permanently trapped as orphaned drafts in `graph_nodes`.
 * **Proposed Alternative:**
-  Update Table 5.1 to define the concrete relational schema for `source_spans`:
-
-  ```sql
-  CREATE TABLE source_spans (
-      span_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-      doc_hash VARCHAR(64) NOT NULL,
-      byte_start INT NOT NULL,
-      byte_end INT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-  CREATE INDEX idx_source_spans_node ON source_spans(node_id);
-  ```
-
-  This matches the relational join in Section 5.1 and guarantees instant sub-millisecond inspection joins.
+  Specify explicit atomic purging for granular approval:
+  When `approved_node_ids` is supplied in `POST /api/v1/staging/approve` (or `--only` / `--exclude` in CLI), any candidate draft nodes linked to `job_id` that are NOT in `approved_node_ids` must be atomically deleted in the same transaction:
+  `DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT' AND id != ALL($approved_node_ids);`
+  This ensures that staging approval is a clean, definitive promotion gate that eliminates all rejected false positives and transitions the job to `APPROVED` without orphan draft residue.
 
 ### LD-6
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §6 Interfaces & Contracts, §7 Technology Stack; `strategic-planning-backlog.md` §6 SLA-1
-* **Critique:** The read tool `query_requirements` is an essential Phase 1 MCP interface for agents to locate existing requirements. However, Section 6 specifies neither its search mechanism nor its performance bounds, stating only "Returns empty result set on no match; error on malformed query; filters on `lifecycle_state = 'ACTIVE'`".
-  If `query_requirements` is implemented using vector similarity search, every inbound query requires an on-the-fly embedding calculation. Invoking an external embedding API (e.g. OpenAI) synchronously during an MCP request introduces a 150–500ms network round-trip, immediately breaching SLA-1 (<50ms micro-reflex latency), introducing rate-limit failure modes, and breaking offline developer workflows (violating C-9).
-  Conversely, PostgreSQL native full-text search (`tsvector` / `websearch_to_tsquery`) executes in <5ms, requires zero external network calls, zero API tokens, and functions fully offline.
+* **Severity:** Major
+* **Target:** `architecture.md` §5.1 State Ownership, §9 Decisions D-21, D-32, D-34
+* **Critique:** Draft Edge Promotion Lacks Dual-Endpoint Active Validation and Active Edge Supersession Mechanics.
+  In §5.1 line 306, the approval transaction transitions approved nodes to `ACTIVE` "and associated edges to `ACTIVE`".
+  However:
+  1. *Dual-Endpoint Validation:* If `Node A` is approved, but connected candidate `Node B` is excluded or rejected, promoting edges connected to `Node A` would transition an edge to `ACTIVE` while one endpoint remains `DRAFT` or is deleted, violating graph integrity. An edge must transition from `DRAFT` to `ACTIVE` if and only if BOTH `from_node_id` AND `to_node_id` are in `ACTIVE` state (either already active or in `approved_node_ids`).
+  2. *Active Edge Unique Constraint Violation:* `graph_edges` enforces `CREATE UNIQUE INDEX idx_graph_edges_active_unique ON graph_edges (from_node_id, to_node_id, edge_type) WHERE lifecycle_state = 'ACTIVE'`. If an agent proposes a new draft edge between two nodes that already have an existing active edge of that type (e.g. updating or replacing an edge), promoting the draft edge without first superseding the existing active edge triggers a fatal PostgreSQL unique constraint violation (`23505`).
 * **Proposed Alternative:**
-  Formally specify that `query_requirements` operates via PostgreSQL native full-text search using a generated `tsvector` column and GIN index on `graph_nodes(title, content)`.
-  Vector similarity search in `node_embeddings` is reserved strictly for context envelope neighbor enrichment where node embeddings have already been generated asynchronously out-of-band (per D-18 and D-28).
+  Specify the exact edge transition logic during batch approval:
+  1. Supersede existing active edges:
+     `UPDATE graph_edges SET lifecycle_state = 'SUPERSEDED' WHERE lifecycle_state = 'ACTIVE' AND (from_node_id, to_node_id, edge_type) IN (SELECT from_node_id, to_node_id, edge_type FROM graph_edges WHERE lifecycle_state = 'DRAFT' AND from_node_id = ANY($all_active_ids) AND to_node_id = ANY($all_active_ids));`
+  2. Promote candidate draft edges where both endpoints are active:
+     `UPDATE graph_edges SET lifecycle_state = 'ACTIVE' WHERE lifecycle_state = 'DRAFT' AND from_node_id = ANY($all_active_ids) AND to_node_id = ANY($all_active_ids);`
+  3. Purge orphaned draft edges where either endpoint was discarded:
+     `DELETE FROM graph_edges WHERE lifecycle_state = 'DRAFT' AND (from_node_id = ANY($discarded_ids) OR to_node_id = ANY($discarded_ids));`
 
 ### LD-7
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §5.1 State Ownership (Table 5.1), §6 Interfaces & Contracts; `strategic-planning-backlog.md` §2 Phase 1
-* **Critique:** In Table 5.1 and Section 6, the lifecycle states for `ingestion_jobs` are defined strictly as:
-  `QUEUED` → `PROCESSING` → `COMPLETED` or `FAILED`.
-  When the decomposition worker finishes Stage 1 AST parsing and Stage 2 classification, candidate nodes are inserted into `graph_nodes` with `lifecycle_state = 'DRAFT'`.
-  Transitioning the job status directly to `COMPLETED` at this stage causes two operational breakdowns:
-  1. An external client or automated script polling `GET /api/v1/documents/ingest/{job_id}` sees `COMPLETED` and cannot distinguish whether the candidate requirements are awaiting human supervisory sign-off or are already approved and active.
-  2. The supervisory CLI command `tks staging list` cannot query `ingestion_jobs` for jobs currently pending human review without scanning all jobs or executing expensive joins across `graph_nodes`.
+* **Severity:** Major
+* **Target:** `architecture.md` §5.1 State Ownership, §6 Interfaces & Contracts, §9 Decisions D-18, D-26
+* **Critique:** Missing Retry Scheduling Column (`scheduled_at`) in `embedding_queue` Causes Tight-Loop API Throttling on Rate Limits.
+  Section 5.1 defines `embedding_queue` columns as `(node_id UUID PRIMARY KEY, content_hash VARCHAR(64) NOT NULL, status, retry_count, updated_at)`.
+  Section 6 states: "Embedding queue jobs retry up to 5 times with backoff before flagging `FAILED`."
+  However, without a `scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()` column, worker queries using `FOR UPDATE SKIP LOCKED` cannot filter by backoff readiness. When an external embedding provider returns a rate limit (HTTP 429) or temporary outage (HTTP 503), the worker has nowhere to record the backoff delay. If the worker updates `retry_count` and leaves or resets `status = 'PENDING'`, the very next polling query tick (e.g. 500ms later) will re-select the exact same record, immediately re-hammering the throttled provider, exhausting the retry limit within seconds, and permanently failing embeddings.
 * **Proposed Alternative:**
-  Expand the `ingestion_jobs.status` state machine to:
-  `QUEUED` → `PROCESSING` → `STAGED` (decomposition finished, candidates ready for review) → `APPROVED` (candidates promoted to `ACTIVE`) or `REJECTED` (all candidates discarded), with `FAILED` for unrecoverable errors.
-  This establishes an unambiguous operational contract across the API, CLI, and supervisory portal.
+  Add `scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW()` to `embedding_queue` and create a partial index:
+  `CREATE INDEX idx_embedding_queue_pending ON embedding_queue(scheduled_at) WHERE status = 'PENDING';`
+  The worker claim query must filter `WHERE status = 'PENDING' AND scheduled_at <= NOW() ORDER BY scheduled_at LIMIT $1 FOR UPDATE SKIP LOCKED`. On transient failure, the worker updates `scheduled_at = NOW() + (INTERVAL '1 second' * POWER(2, retry_count))` and increments `retry_count`.
 
 ### LD-8
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §4 Component Topology, §5.2 Concurrency Model, §7 Technology Stack, §9 Decision D-15
-* **Critique:** Decision D-15 establishes that Stage 1 CommonMark AST parsing (`pulldown-cmark`) mechanically extracts $\ge 80\%$ of requirement chunks and RFC 2119 keywords without LLM tokens, while Stage 2 invokes an external LLM solely to classify ambiguous fragments into compact tuples.
-  However, the operational specification dictates that any Stage 2 failure transitions the entire ingestion job to `FAILED`.
-  If a developer or CI pipeline runs `tks serve` without an external LLM API key configured (or when the external API returns 429 rate-limit or 503 outage errors), document ingestion fails entirely—preventing even the mechanical 80% extraction from reaching `DRAFT` status.
-  This creates unnecessary onboarding friction and violates the "start small" / constrained resource model (C-9).
+* **Severity:** Major
+* **Target:** `architecture.md` §4 Component Topology, §8 Operational Model; `technical-backlog.md` TB-5
+* **Critique:** In-Process `moka` LRU Cache Desynchronization When Identity CLI Operates Directly Against PostgreSQL.
+  Section 4 line 176 and Decision D-39 specify that Axum Tower auth middleware validates credentials against `agent_identities` backed by an in-process `moka` LRU cache inside `tks serve`.
+  However, TB-5 specifies `tks identity revoke <agent_id>` and `tks identity create` as CLI commands that connect directly to PostgreSQL.
+  If an operator runs `tks identity revoke <agent_id>` from a terminal, the command updates the database row in PostgreSQL, but the running `tks serve` daemon is completely unaware of the change. The compromised agent's credentials remain cached in `tks serve`'s in-process `moka` cache and will continue to be authorized for mutations until the TTL expires (which could be minutes or hours). This breaks blast-radius security containment.
 * **Proposed Alternative:**
-  Specify graceful degradation in the Decomposition Worker: If external LLM API credentials are not configured or the provider request fails/times out, Stage 1 mechanical extraction still commits candidate chunks to `graph_nodes` as `DRAFT` requirements with default typing (`node_type = 'REQUIREMENT'` for RFC 2119 matches, or `'UNCLASSIFIED'`), recording a warning in `ingestion_jobs.error_message`.
-  Supervisors can then adjust types during staging review (`tks staging approve`), ensuring full local utility without mandatory external API keys.
+  Align CLI identity commands with the client-daemon architecture:
+  `tks identity create` and `tks identity revoke` must execute via REST endpoints on the running daemon (`POST /api/v1/identities` and `POST /api/v1/identities/{id}/revoke`), allowing `tks serve` to immediately invalidate its local `moka` cache entry upon revocation. If `tks serve` is offline, direct database mutation is permitted as a fallback, but the daemon must invalidate or check cache validity on startup.
 
 ### LD-9
 
-* **Severity:** `Minor`
-* **Target:** `architecture.md` §5.2 Concurrency Model (Topological Mutations & Global Advisory Locking), §6 Interfaces & Contracts
-* **Critique:** Section 5.2 states that structural mutations (`propose_node_mutation`, edge creation, deletions/reversions, and cycle checks) acquire the global transaction advisory lock:
-  `SELECT pg_advisory_xact_lock(hashtext('tks_structural_mutation'));`
-  However, Section 5.1 and Section 6 do not explicitly specify that `POST /api/v1/staging/approve` (which transitions candidate draft edges to `ACTIVE`) and `revert_mutation_batch` (which transitions edges to `REVERTED` or `SUPERSEDED`) acquire this lock.
-  If an agent runs `propose_node_mutation` concurrently with a staging approval or rollback, the agent's cycle check could execute concurrently with edge state transitions, resulting in cycle race conditions.
+* **Severity:** Minor
+* **Target:** `architecture.md` §5.2 Concurrency Model, §9 Decision D-28
+* **Critique:** Unspecified Query Vector Resolution in `get_context_envelope` Vector Neighbor Ranking.
+  Decision D-28 specifies reserving up to 10 slots for vector neighbor retrieval in `get_context_envelope(target_node_id, depth)`. However, the API arguments include only `target_node_id`, and the architecture never specifies where the query vector comes from.
+  In implementation, the query vector must be resolved from `node_embeddings` for `target_node_id`. If `target_node_id` does not yet have an embedding (because embeddings are generated asynchronously out-of-band), the vector neighbor query cannot execute.
 * **Proposed Alternative:**
-  Explicitly mandate in §5.2 and §6 that `POST /api/v1/staging/approve`, `revert_mutation_batch`, and `revert_agent_session` acquire `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))` for the duration of the promotion or rollback transaction.
+  Formally specify in `src/storage/envelope.rs` that the target node's embedding (`SELECT embedding FROM node_embeddings WHERE node_id = $1`) serves as the query vector for neighbor retrieval. If no embedding is found for `target_node_id`, the repository layer must gracefully skip vector search and allocate the full 40-node budget to the topological recursive CTE traversal.
 
 ### LD-10
 
-* **Severity:** `Minor`
-* **Target:** `architecture.md` §8 Operational Model (Failure & Recovery), §5.1 State Ownership
-* **Critique:** Section 8 states that in-progress ingestion jobs interrupted by a server crash are reclaimed upon restart via timeout detection (`updated_at < NOW() - INTERVAL '180s'`).
-  However, if a crashed worker had already inserted candidate draft nodes into `graph_nodes` before crashing, restarting the worker on that job will attempt to re-insert candidate nodes, resulting in duplicate draft requirements or unique constraint errors.
+* **Severity:** Minor
+* **Target:** `architecture.md` §5.1 State Ownership (Edge relationship rules), §3 Invariant INV-1
+* **Critique:** Ambiguous Directed Orientation of `CONSTRAINED_BY` Edges in Recursive Ancestor Traversal.
+  Section 5.1 specifies:
+  * `FULFILLS` edges originate at `TASK` or `SPECIFICATION` and terminate at `SPECIFICATION` or `REQUIREMENT` (pointing upward toward requirements).
+  * `CONSTRAINED_BY` edges "connect nodes of compatible governance hierarchy."
+  If `CONSTRAINED_BY` is oriented from Requirement to Specification (`Req -> Spec`), its direction opposes `FULFILLS` (`Task -> Spec`). A standard recursive CTE traversing directed edges upward toward root requirements (`from_node_id -> to_node_id`) will fail to navigate past `CONSTRAINED_BY` edges unless the query explicitly introduces bidirectional joins or case-switched traversal logic, complicating recursive CTEs and threatening SLA-1 (<50ms).
 * **Proposed Alternative:**
-  Specify that upon reclaiming a `PROCESSING` job, the worker must execute an idempotent cleanup statement:
-  `DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT';`
-  prior to re-running the decomposition pipeline.
+  Formally standardize the orientation of all governance edges in §5.1: `CONSTRAINED_BY` must originate at the constrained entity and terminate at the governing constraint/requirement (`Spec -CONSTRAINED_BY-> Requirement`). This ensures that all traceability edges uniformly point upward toward governing requirements, allowing simple and fast unidirectional CTE recursive traversal: `JOIN graph_edges e ON e.from_node_id = curr.id AND e.lifecycle_state = 'ACTIVE'`.
 
 ---
 
-## Architectural Simplifications (Consolidation of Components)
+## Architectural Simplifications
 
-### LD-11 (Simplification)
+### LD-11
 
-* **Severity:** `Major` (Consolidation)
-* **Target:** `architecture.md` §4 Component Topology, §7 Technology Stack
-* **Critique:** In Section 4 Component Topology and Table 4.1, `AuthN: Identity Validator` is depicted as an independent middle-tier architectural component with cache notes. In a single-binary Axum application, this represents unnecessary architectural ceremony and conceptual indirection.
+* **Target:** `architecture.md` §4 Component Topology, §5.1 State Ownership
+* **Critique / Opportunity:** Redundant Architectural Boundary Between Governance Policy Engine and Storage Repository Layer.
+  Section 4 depicts `GovEngine` ("Governance Policy Engine") as an independent middle-tier architectural component in "Core", separate from `StorageRepo` ("Storage Repository Layer") in "Storage". In reality, both components execute purely within the `tks serve` process and interact exclusively via PostgreSQL SQL statements (advisory locking, row-level locking, and transactional CTEs). Having a separate "Governance Engine" introduces conceptual indirection without runtime separation.
 * **Proposed Alternative:**
-  Consolidate `Identity Validator` directly into an Axum Tower middleware and `FromRequestParts` extractor (`src/gateway/auth.rs`).
-  The extractor validates bearer tokens or API keys against `agent_identities` (with an in-process `moka` LRU cache) and attaches the verified `ActorClaims` directly to the request extensions. This eliminates an artificial component boundary while simplifying testing and middleware chaining.
+  Consolidate `GovEngine` directly into the Storage Repository layer as `src/storage/mutation.rs` / `src/storage/governance.rs`. The unified storage layer exposes clean Rust methods (e.g. `TksStorage::propose_mutation`, `TksStorage::approve_staging`, `TksStorage::get_context_envelope`) managing both query assembly and transactional lock acquisition, eliminating redundant component boundaries.
 
-### LD-12 (Simplification)
+### LD-12
 
-* **Severity:** `Major` (Consolidation)
-* **Target:** `architecture.md` §4 Component Topology, §7 Technology Stack, §8 Operational Model
-* **Critique:** Section 4 depicts two separate, uncoordinated background worker components (`DecompWorker` and `EmbedWorker`), each running independent polling loops against PostgreSQL (`ingestion_jobs` and `embedding_queue`) with `FOR UPDATE SKIP LOCKED`.
-  In a resource-constrained single-process daemon (`tks serve`), running dual polling loops causes unnecessary connection pool churn and duplicate failure-handling logic.
+* **Target:** `architecture.md` §4 Component Topology, §7 Technology Stack, §9 Decision D-40
+* **Critique / Opportunity:** Elimination of Dual `LISTEN/NOTIFY` and Polling Abstractions in Cooperative Worker Manager in Favor of Pure `FOR UPDATE SKIP LOCKED`.
+  Decision D-40 and §7 suggest that the `WorkerManager` can use either cooperative polling or PostgreSQL `LISTEN/NOTIFY` triggers. Adding `LISTEN/NOTIFY` requires maintaining dedicated, non-pooled connection state, handling reconnects, managing connection state across dropped notifications, and adding trigger DDL to PostgreSQL tables. Given that Phase 1 and 2 operate on commodity infrastructure with low-frequency job submissions (document uploads and approval batches), a simple, cooperative polling loop using standard pooled connections with `FOR UPDATE SKIP LOCKED` and backoff sleep is vastly simpler, completely reliable, uses standard `deadpool-postgres` connections, and eliminates bespoke database notification plumbing.
 * **Proposed Alternative:**
-  Consolidate background task handling into a single cooperative worker manager (`src/worker/mod.rs`) running inside `tks serve`.
-  The worker manager polls pending jobs using a unified cooperative loop or PostgreSQL `LISTEN/NOTIFY` triggers on `ingestion_jobs` and `embedding_queue`, reducing idle database polling queries and centralizing telemetry, backoff, and graceful shutdown handling.
+  Standardize `WorkerManager` strictly on cooperative timer polling with `FOR UPDATE SKIP LOCKED` and exponential backoff on empty queue ticks (e.g. 500ms polling interval when active, sleeping up to 2s when idle). Explicitly eliminate `LISTEN/NOTIFY` from the architecture and technology stack.
 
-### LD-13 (Simplification)
+### LD-13
 
-* **Severity:** `Minor` (Workflow Simplification)
-* **Target:** `architecture.md` §6 Interfaces & Contracts (`POST /api/v1/staging/reject`); `strategic-planning-backlog.md` §2 Phase 1
-* **Critique:** The staging rejection interface currently requires passing individual `rejected_node_ids: Vec<Uuid>`. If a decomposed document contains dozens of false positives or the user wishes to discard the entire candidate batch, requiring individual UUID extraction and rejection creates significant manual friction during staging review.
+* **Target:** `architecture.md` §4 Component Topology, §8 Operational Model; `technical-backlog.md` TB-5
+* **Critique / Opportunity:** Unification of All CLI Operational Commands Through the Local Axum REST Gateway.
+  Currently, CLI operations have fractured execution paths: `tks mcp-stdio` proxies JSON-RPC over HTTP/SSE, `tks staging` calls REST endpoints, but `tks identity` instantiates its own direct PostgreSQL connection. This creates code duplication (multiple CLI commands embedding database drivers vs. HTTP clients) and causes cache desynchronization.
 * **Proposed Alternative:**
-  Expand `POST /api/v1/staging/reject` and the CLI command `tks staging reject` to support atomic job-level rejection:
-  `tks staging reject --job-id <job_id> [--reason <reason>]`.
-  The endpoint executes `DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT'` and marks the job `REJECTED`, discarding the entire candidate batch in one operational step.
+  Unify all CLI administrative and supervisory subcommands (`tks staging`, `tks identity`, `tks migrate`) to operate as thin HTTP clients targeting the local `tks serve` REST API (`http://localhost:8080/api/v1/...`). The CLI binary embeds only a lightweight HTTP client (`reqwest`), completely eliminating database client dependencies from the CLI subcommands and centralizing all caching, logging, and connection pooling in `tks serve`.
