@@ -37,6 +37,7 @@ flowchart LR
     classDef phase fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
     classDef gate fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
 
+    P0["Phase 0: Pre-Construction Spikes<br/><i>(Lightweight H-1 & H-4 De-risking)</i>"]:::phase
     P1["Phase 1: Substrate Core & Read Context<br/><i>(Git Store + PG Graph + Read MCP)</i>"]:::phase
     G1["Dogfooding Gate 1:<br/><i>Self-Ingest Vision & Backlog</i>"]:::gate
     P2["Phase 2: Bounded Mutation & Governance<br/><i>(Write MCP + Audit Log + Node Policies)</i>"]:::phase
@@ -44,8 +45,16 @@ flowchart LR
     P3["Phase 3: Impact Analysis & Observability<br/><i>(Web Portal + Invalidation Cascading)</i>"]:::phase
     P4["Phase 4: Closed-Loop Traceability<br/><i>(Git Commits + Automated Verification)</i>"]:::phase
 
-    P1 --> G1 --> P2 --> G2 --> P3 --> P4
+    P0 --> P1 --> G1 --> P2 --> G2 --> P3 --> P4
 ```
+
+### Phase 0: Pre-Construction Hypothesis De-risking & Prototype Spikes
+
+- **Primary Objective:** Empirically validate the foundational scientific premise (Hypothesis H-1) and baseline assisted extraction feasibility (Hypothesis H-4) using lightweight, throwaway prototypes before committing to Phase 1 infrastructure construction.
+- **Core Deliverables:**
+  1. **Spike 0 (H-1 Directional Validation Spike):** Rapid throwaway test comparing graph-bounded context retrieval against flat-vector similarity search on an in-memory graph of hand-curated requirement nodes (~50–100 nodes), measuring constraint violation reduction during agentic code synthesis.
+  2. **Early Extraction Prompting Spike (H-4 Pre-Validation):** Empirical benchmarking of commodity LLM decomposition prompts against representative technical Markdown specs to verify character offset extraction accuracy.
+  3. **Foundational Architecture Scaffolding:** Initial repository setup, developer tooling, Docker compose definition for PostgreSQL with `pgvector`, and baseline migration harness.
 
 ### Phase 1: Substrate Core, Git Document Ingestion & Context Gateway
 
@@ -54,17 +63,18 @@ flowchart LR
   1. **Git-Backed Document Store:** Local/server-side Git repository integration for storing raw Markdown/text documents, generating commit and blob object references.
   2. **PostgreSQL Relational & Graph Schema:** Core tables for requirement entities, structural edges (`DERIVED_FROM`, `CONSTRAINED_BY`), source text span references (document hash, character start/end), and vector embeddings (`pgvector`).
   3. **Assisted Decomposition Pipeline:** Ingestion REST API endpoint orchestrating prompt-based requirement extraction via external LLM APIs, with a staging table for human review before graph insertion.
-  4. **Read-Only MCP Server:** MCP endpoint exposing tool `get_context_envelope` that performs directed graph traversals and vector neighbor lookups, assembling bounded ancestor and sibling context.
+  4. **Read-Only MCP Server & Identity Scaffolding:** MCP endpoint exposing tool `get_context_envelope` that performs directed graph traversals and vector neighbor lookups, with stateless caller identity verification scaffolding (Invariant I-7).
 - **Dogfooding Milestone (Gate 1):** Ingest the project's own `vision.md` and `strategic-planning-backlog.md` into the Phase 1 substrate, verifying that atomic requirements and constraints can be queried via MCP.
 
 ### Phase 2: Bounded Agent Mutation & Per-Node Governance
 
-- **Primary Objective:** Enable external AI agents to submit candidate graph mutations (sub-tasks, refined specifications, test definitions) while enforcing per-node governance policies and reversible, append-only auditability.
+- **Primary Objective:** Enable external AI agents to submit candidate graph mutations (sub-tasks, refined specifications, test definitions) while enforcing per-node governance policies, non-negotiable identity attribution, and reversible, append-only auditability.
 - **Core Deliverables:**
-  1. **Mutation-Enabled MCP Tools:** MCP tools `propose_node_mutation`, `create_subtask`, and `update_node_status`.
-  2. **Append-Only Audit Ledger:** Change-log mechanism recording all entity and edge mutations as discrete, reversible delta events, supporting point-in-time state reconstruction.
+  1. **Mutation-Enabled MCP Tools:** MCP tools `propose_node_mutation`, `create_subtask`, and `update_node_status`, with caller authentication and token verification.
+  2. **Append-Only Audit Ledger:** Change-log mechanism recording all entity and edge mutations as discrete, reversible delta events, capturing caller identity (`agent_instance_id`, `caller_type`, `auth_fingerprint`) alongside mutation payloads.
   3. **Governance Policy Engine:** Database triggers and gateway filters enforcing `governance_policy` flags (`AUTONOMOUS_ELABORATION`, `HUMAN_REVIEW_REQUIRED`, `LOCKED`).
   4. **Rollback & Reversion Utility:** Administrative tooling to cleanly revert a sequence of agent mutations without leaving orphan nodes or dangling relationships.
+  5. **Semantic Corruption Defenses & DAG Cycle Validation:** Database-level DAG constraints preventing circular dependency creation on structural edges (`CONSTRAINED_BY`, `DERIVED_FROM`), combined with agent-instance-scoped batch rollback tooling to cleanly neutralize corrupted or adversarial mutation bursts.
 - **Dogfooding Milestone (Gate 2):** Use external coding agents (e.g., Claude Code, Aider, custom runners) operating through MCP to claim Phase 3 preparation tasks, generate implementation sub-specs, and commit them directly to the substrate.
 
 ### Phase 3: Topological Impact Analysis & Human Supervisory Portal
@@ -113,9 +123,9 @@ flowchart TD
     classDef transition fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
     classDef internal fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
 
-    subgraph Phase0["Phase 0: External Bootstrap Baseline"]
+    subgraph Phase0["Phase 0: External Bootstrap & Early De-risking"]
         E1["Manual Git Repository Management"]:::external
-        E2["Unstructured Markdown Vision & Backlog"]:::external
+        E2["Spike 0: Rapid H-1 & H-4 Directional Validation"]:::external
         E3["Human-Driven Architecture & Coding"]:::external
     end
 
@@ -136,8 +146,9 @@ flowchart TD
 
 ### Bootstrap Phasing Plan
 
-1. **Phase 0 (Current Baseline):**
+1. **Phase 0 (Current Baseline & Hypothesis De-risking):**
    - The project is designed and bootstrapped using conventional development environments, standard Git workflows, and manually maintained documentation (`vision.md`, `strategic-planning-backlog.md`).
+   - Early hypothesis de-risking: Execute Spike 0 (in-memory graph-bounded retrieval vs. flat vector search on agentic coding tasks) and early decomposition prompt tests (H-4) to establish directional confidence before committing to Phase 1 infrastructure.
    - Scope is intentionally constrained: build only the storage layer, Git connection, basic ingestion parser, and read MCP server.
 2. **Phase 1 Transition (Dogfooding Activation):**
    - Upon completing Phase 1, the development team executes the first real-world ingestion: uploading the project's own documentation files into the Git document ledger.
@@ -175,13 +186,14 @@ flowchart TD
 
 ### Phase 2 MVD: Bounded Mutation, Governance Enforcement, and Clean Rollback
 
-- **Preconditions:** Phase 1 graph loaded; node `REQ-005` set to `AUTONOMOUS_ELABORATION`; node `REQ-006` set to `HUMAN_REVIEW_REQUIRED`.
+- **Preconditions:** Phase 1 graph loaded; node `REQ-005` set to `AUTONOMOUS_ELABORATION`; node `REQ-006` set to `HUMAN_REVIEW_REQUIRED`; authenticated agent session initialized with verified identity (`agent_instance_id: "agent-runner-42"`).
 - **Test Procedure:**
-  1. External agent calls `propose_node_mutation` targeting `REQ-005` to create three child sub-tasks.
-  2. Verify immediate database write, creation of valid directed edges, and audit ledger entry.
-  3. External agent calls `propose_node_mutation` targeting `REQ-006` to modify requirement text.
-  4. Verify that the mutation is intercepted, placed in `PENDING_REVIEW`, and no live graph edges are updated.
-  5. Administrative user triggers rollback for the agent session:
+  1. External agent calls `propose_node_mutation` targeting `REQ-005` to create three child sub-tasks, passing bearer authorization credentials.
+  2. Verify immediate database write, creation of valid directed edges, and audit ledger entry capturing verified `agent_instance_id` and auth token fingerprint (Invariant I-7).
+  3. External agent attempts to introduce an invalid circular constraint edge targeting `REQ-005`; verify that database-level DAG cycle constraints reject the mutation with error code `ERR_GRAPH_CYCLE_DETECTED`.
+  4. External agent calls `propose_node_mutation` targeting `REQ-006` to modify requirement text.
+  5. Verify that the mutation is intercepted, placed in `PENDING_REVIEW`, attributed to the agent identity, and no live graph edges are updated.
+  6. Administrative user triggers rollback for the agent session:
 
      ```json
      {
@@ -192,7 +204,7 @@ flowchart TD
      }
      ```
 
-  6. Verify that all three child sub-tasks under `REQ-005` are reverted to historical snapshot without leaving orphan edges or corrupting table state.
+  7. Verify that all three child sub-tasks under `REQ-005` are reverted to historical snapshot without leaving orphan edges or corrupting table state.
 
 ### Phase 3 MVD: Automated Invalidation Cascading
 
@@ -206,6 +218,22 @@ flowchart TD
 ---
 
 ## 5. Architectural Evaluation Spikes & Technical Investigations
+
+### Spike 0: Graph-Bounded vs. Flat-Vector Retrieval Directional Evaluation (Hypothesis H-1 De-risking)
+
+- **Context:** Hypothesis H-1 (graph-bounded context envelopes significantly outperform flat vector retrieval for preserving architectural invariants) is the foundational scientific bet of TKS. While Microsoft GraphRAG (2024) demonstrated multi-hop reasoning gains for text summarization, empirical evidence in code synthesis fidelity and architectural constraint preservation remains untested. GraphRAG literature also indicates retrieval quality can degrade when graph construction is flawed. Phase 1 infrastructure must not proceed without early directional signal.
+- **Experimental Setup & Scoping:**
+  - Throwaway prototype testable in days, requiring zero production database setup.
+  - In-memory graph representation with a hand-curated requirement tree (~50–100 nodes) modeling a realistic modular software component with explicit hierarchical constraints and sibling invariants.
+  - Standard commodity embedding model (e.g., `text-embedding-3-small`) and LLM coding agent (e.g., Claude 3.5 Sonnet / GPT-4o).
+- **Evaluation Conditions:**
+  - *Condition A (Baseline Flat RAG):* Standard top-$k$ semantic vector similarity over chunked specification text.
+  - *Condition B (Topological Context Envelope):* Subgraph query returning target task + ancestor requirements + sibling architectural constraints.
+- **Measurement:** Rate of invariant violations (missed architectural contracts, violated interfaces, dropped non-functional constraints) across $\ge 20$ controlled synthetic coding tasks.
+- **Decision Thresholds:**
+  - $\ge 40\%$ reduction in constraint violations provides strong directional greenlight for Phase 1 construction.
+  - $15\% - 39\%$ reduction indicates partial advantage; refine envelope assembly logic and narrow domain scope before full build.
+  - $< 0\%$ or non-significant difference signals failure of H-1 premise; halts Phase 1 build and triggers immediate strategic re-evaluation.
 
 ### Spike 1: Graph Storage & Query Strategy in PostgreSQL
 
@@ -263,12 +291,28 @@ flowchart TD
 
 ### Spike 5: Model Context Protocol (MCP) Tool Schema Design
 
-- **Context:** External agents interact with the substrate through a standardized MCP server.
+- **Context:** External agents interact with the substrate through a standardized MCP server with stateless identity verification.
 - **Proposed Tool Definitions:**
   - `get_context_envelope(node_id: string, depth: int, include_vectors: bool)`: Returns structured context JSON including target node, ancestor requirements, linked constraints, and sibling context.
-  - `propose_node_mutation(target_node_id: string, mutation_type: string, payload: object)`: Submits candidate changes; returns status (`COMMITTED` or `PENDING_REVIEW`).
+  - `propose_node_mutation(target_node_id: string, mutation_type: string, payload: object)`: Submits candidate changes accompanied by caller identity credentials; returns status (`COMMITTED` or `PENDING_REVIEW`).
   - `query_requirements(query_text: string, limit: int)`: Performs hybrid vector + keyword search over requirement nodes.
   - `get_document_span(document_hash: string, start_offset: int, end_offset: int)`: Retrieves verified source text from Git backend.
+  - `revert_mutation_batch(batch_id: string)`: Administrative tool to roll back a specific batch of mutations.
+  - `revert_agent_session(agent_instance_id: string, since_timestamp: string)`: Administrative tool to roll back all mutations executed by a specific agent instance.
+
+### Spike 6: Agent Identity, Workload Authentication & Semantic Defenses (Invariant I-7)
+
+- **Context:** Invariant I-7 mandates that all mutations submitted through the Integration Gateway are attributable to a verified external identity recorded in the audit ledger. The MCP July 2026 specification standardizes on OAuth 2.1 with PKCE, and the Agent Identity Working Group is establishing workload identity federation and DPoP (Demonstrating Proof-of-Possession). The architecture must also defend against policy-compliant semantic corruption and circular dependencies.
+- **Investigation Areas:**
+  1. **Stateless Identity & Token Verification:**
+     - Validate incoming OAuth 2.1 / DPoP tokens at the gateway without persisting session state.
+     - Extract verified caller claims (`caller_id`, `caller_type: HUMAN | AGENT_WORKLOAD`, `agent_instance_id`, `workload_issuer`).
+  2. **Audit Ledger Identity Attribution Schema:**
+     - Design immutable audit columns (`actor_id`, `actor_type`, `token_fingerprint`, `agent_runtime_metadata`) to guarantee cryptographic non-repudiation.
+  3. **Structural DAG Cycle Prevention:**
+     - Enforce database-level cycle detection on structural edges (`CONSTRAINED_BY`, `DERIVED_FROM`) via PostgreSQL triggers or CTE validation to deterministically prevent hallucinating agents from introducing cyclic dependencies.
+  4. **Instance-Scoped Blast Radius Containment:**
+     - Tooling to isolate, quarantine, and batch-revert all mutations from a compromised or misbehaving agent instance without disrupting concurrent valid contributions from other agents or humans.
 
 ---
 
@@ -284,6 +328,17 @@ While the technical vision defines qualitative hypotheses, this backlog establis
 | **CAL-H2** | Human Review Overhead Reduction (Hypothesis H-2) | $\ge 50\%$ reduction in supervisory review time per feature | Phase 3 User Study |
 | **CAL-H3** | Single-Engine Scalability Bound (Hypothesis H-3) | Sustained $< 100\text{ ms}$ query latency at $10^6$ nodes | Phase 3 Stress Test |
 | **CAL-H4** | Extraction Fidelity Benchmark (Hypothesis H-4) | $\ge 95\%$ precision/recall on atomic requirement spans | Phase 1 Ingestion Eval |
+
+### Graduated Evaluation Framework & Calibration Interpretation
+
+In alignment with the Technical Vision's graduated response model (§7), empirical evaluation outcomes are evaluated across three operational tiers to prevent premature program termination when partial validation occurs:
+
+| Metric Identifier | Target Validation Band (Full Success) | Graduated Scope Adjustment Band (Partial Validation) | Falsification / Kill Band (Termination / Pivot) |
+| --- | --- | --- | --- |
+| **CAL-H1** (Constraint Preservation) | $\ge 70\%$ violation reduction vs. flat vector | **$30\% - 69\%$ reduction:** Narrow domain to deeply coupled architectures or modular microservices; hybridize topological envelopes with local lexical retrieval. | $\le 0\%$ or non-significant improvement vs. flat vector (Triggers Kill #2). |
+| **CAL-H2** (Supervisory Review Overhead) | $\ge 50\%$ review time reduction | **$25\% - 49\%$ reduction:** Streamline supervisory UI staging workflows and enrich topological blast-radius visualizations. | $\le 0\%$ reduction (supervisory graph review equals or exceeds diff review time; Triggers Kill #1). |
+| **CAL-H3** (Single-Engine Scalability) | Sustained $< 100\text{ ms}$ at $10^6$ nodes | **$< 100\text{ ms}$ at $10^5$ nodes, degrading at $10^6$:** Satisfies small-to-mid enterprise repos; apply read-replica offloading, partition audit ledger, and optimize CTE indexes. | $> 500\text{ ms}$ latency at $\le 10^5$ nodes despite index optimization (Triggers Kill #3). |
+| **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95\%$ precision/recall on spans | **$80\% - 94\%$ precision/recall:** Enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60\%$ precision/recall or severe span hallucination (Triggers Kill #1). |
 
 ---
 
@@ -334,16 +389,20 @@ sequenceDiagram
     DB-->>MCP: Return bounded ancestor & sibling envelope
     MCP-->>Agent: Deliver context envelope JSON
     Agent->>Agent: Execute local synthesis (code, sub-specs)
-    Agent->>MCP: Submit proposed mutation (create sub-tasks)
-    MCP->>DB: Check target node governance_policy
-    alt Policy = AUTONOMOUS_ELABORATION
-        DB->>DB: Commit mutation to audit ledger & update graph
+    Agent->>MCP: Submit proposed mutation with caller auth token
+    MCP->>MCP: Validate caller identity (Invariant I-7)
+    MCP->>DB: Check target node governance_policy & DAG acyclicity
+    alt Policy = AUTONOMOUS_ELABORATION & Valid Acyclic Topology
+        DB->>DB: Commit mutation with agent identity attribution to audit ledger & update graph
         DB-->>MCP: Mutation accepted (COMMITTED)
         MCP-->>Agent: Success
     else Policy = HUMAN_REVIEW_REQUIRED
-        DB->>DB: Park mutation in staging table (PENDING_REVIEW)
+        DB->>DB: Park mutation in staging table with agent identity (PENDING_REVIEW)
         DB-->>MCP: Mutation queued for review
         MCP-->>Agent: Queued for human approval
+    else Structural Cycle Detected
+        DB-->>MCP: Reject mutation (ERR_GRAPH_CYCLE_DETECTED)
+        MCP-->>Agent: Rejected: cyclic dependency violation
     end
 ```
 
@@ -354,4 +413,4 @@ sequenceDiagram
 3. **Staging & Human Verification:** Parsed requirements enter a staging state. The engineer reviews the extracted nodes, adjusts governance flags, and approves insertion.
 4. **Graph Materialization:** Approved items are committed to PostgreSQL, writing records to the live graph topology, embedding tables, and append-only audit ledger.
 5. **Context Request:** External agents connecting over MCP request context for assigned tasks. The substrate executes a directed graph query retrieving parent requirements, linked architectural constraints, and vector-similar contextual nodes.
-6. **Execution & Governed Mutation:** The agent runs locally, then submits proposed graph updates via MCP. The substrate inspects the target node's governance policy. If autonomous elaboration is authorized, the change commits immediately; otherwise, it is parked in a review queue for human sign-off.
+6. **Execution, Identity Validation & Governed Mutation:** The agent runs locally, then submits proposed graph updates via MCP presenting its workload credentials. The MCP gateway statelessly validates caller identity (Invariant I-7). The substrate verifies structural integrity (rejecting circular dependency chains) and inspects the target node's governance policy. If autonomous elaboration is authorized and structural invariants hold, the change commits immediately to the graph and immutable audit ledger with verified caller attribution; if human review is required, it is parked in a review queue for human sign-off; if a cyclic dependency or invariant violation is detected, it is deterministically rejected.

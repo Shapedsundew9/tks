@@ -143,7 +143,7 @@ flowchart LR
 
 * **Single-Engine Operational Footprint:** All topology data, vector embeddings, relational metadata, and audit records reside in a single PostgreSQL instance. Distributed multi-database setups (e.g., maintaining an external vector database or separate graph DBMS alongside PostgreSQL) are prohibited, eliminating distributed transaction failures and synchronization drift. Raw text specifications are version-governed via Git and referenced relationally.
 * **Externalized Cognitive Compute:** The core Knowledge Substrate never directly invokes LLM inference for its internal operational loops. External agents supply their own compute and models. LLM interaction within the substrate is restricted to human-directed document ingestion and decomposition pipelines.
-* **Stateless Gateway Boundary:** The MCP and REST interfaces maintain no persistent session memory. Each operation is an authenticated, isolated transaction targeting explicit node identifiers and payloads.
+* **Stateless Gateway Boundary:** The MCP and REST interfaces maintain no persistent session memory. Each operation is an authenticated, isolated transaction targeting explicit node identifiers and payloads. The gateway must validate caller identity on every request; no mutation may be committed to the audit ledger without a verified external identity reference.
 * **Document Immutability & Provenance Guarantee:** Uploaded text specifications (Markdown, plain text) are stored in a Git-backed document repository and content-addressed via cryptographic hashes. Requirements derived from them reference the document commit/blob identity and source character spans. Span stability and revision reconciliation are managed at the strategic implementation level.
 * **Schema Flexibility via Progressive Layering:** Core system tables enforce only foundational structural edges (`DERIVED_FROM`, `CONSTRAINED_BY`, `FULFILLS`, `VERIFIED_BY`). Domain-specific attributes and evolving project taxonomy are managed via typed JSONB fields to avoid costly schema migrations during early project phases.
 * **Bootstrap Boundary Contract:** Initial system design and Phase 0 development occur using conventional developer tooling. From the completion of foundational ingestion and context retrieval capabilities onward, all subsequent requirements, architectural decisions, and development tasks must be tracked and governed within the substrate itself.
@@ -230,6 +230,7 @@ flowchart TD
 * **Invariant I-4 (Cryptographic Source Anchoring):** Every requirement derived via the decomposition pipeline must store a persistent cryptographic reference (Git commit/blob hash) and source span coordinates pointing to the original document artifact.
 * **Invariant I-5 (Explicit Per-Node Governance Authority):** Permissions to alter or elaborate a node are governed by explicit per-node metadata attributes (`governance_policy`). Node-level policies take absolute precedence over global agent roles.
 * **Invariant I-6 (Self-Referential Bootstrapping):** The Knowledge Substrate must be used to manage its own development. Once foundational ingestion and context retrieval are functional, all new feature requirements, architectural adjustments, and tasks for subsequent iterations must be authored, reviewed, and tracked within the substrate itself.
+* **Invariant I-7 (Agent Identity Attribution):** Every mutation submitted through the Integration Gateway must be attributable to a verified external identity (human user or autonomous agent instance). Agent identity credentials must be recorded in the audit ledger alongside mutation events. The specific authentication mechanism is resolved at the strategic planning level, but identity attribution is a non-negotiable audit requirement.
 
 ### Strategic Hypotheses (Scientific Bets to De-Risk)
 
@@ -303,7 +304,7 @@ quadrantChart
 
 To honor the principle to "start small" and iterate, development follows a strict self-referential bootstrapping path:
 
-* **Phase 0 Baseline:** Initial architecture and storage foundations are built externally using standard tools.
+* **Phase 0 Baseline:** Initial architecture and storage foundations are built externally using standard tools. Phase 0 additionally includes lightweight evaluation spikes to generate early directional signal on the highest-risk strategic hypotheses (H-1, H-4), reducing the probability of significant infrastructure investment on unvalidated premises.
 * **Phase 1 Self-Hosting Gate:** Upon completing the core ingestion and read-only MCP gateway, the project's own documentation (`vision.md`, backlogs) is ingested into the substrate.
 * **Phase 2+ Evolution:** All subsequent requirements and tasks are managed within the substrate itself, using autonomous agents operating via MCP to advance the codebase.
 
@@ -345,6 +346,10 @@ The program should be halted, redirected, or fundamentally restructured if any o
    If graph traversals over versioned tables in PostgreSQL fail to maintain acceptable interactive latencies at scale, and this bottleneck cannot be resolved through index optimization, the single-engine architectural boundary must be abandoned in favor of a specialized graph database.
 4. **The Bootstrapping Failure Falsification:**
    If the development team cannot dogfood the Knowledge Substrate to manage its own post-Phase-1 development tasks and specifications due to operational friction or semantic inadequacy, the core premise of an agentic engineering substrate is falsified.
+
+### Graduated Response to Partial Validation
+
+If empirical results partially validate a strategic hypothesis—delivering measurable but below-target improvements—the appropriate response is scope adjustment rather than program termination. Partial validation may warrant narrowing the target domain (e.g., focusing on projects with specific structural characteristics where graph retrieval demonstrably excels), adjusting calibration targets, or hybridizing approaches. Kill conditions are triggered only when results show no statistically significant improvement over the baseline, or when the overhead of the substrate demonstrably exceeds the value it provides.
 
 ### Strategic Planning Handoff
 

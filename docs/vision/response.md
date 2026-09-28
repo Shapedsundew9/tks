@@ -1,269 +1,212 @@
-# Stakeholder Response — Iteration 1
-
-**Reviewer Role:** Stakeholder (Committed Ally, Realist, Pragmatist)
-**Document Under Review:** [`vision.md`](file:///workspaces/tks/docs/vision/vision.md)
-**Date:** 2026-09-28
+# Stakeholder Response — Iteration 2
 
 ---
 
-## Overall Assessment
+## Preamble: Overall Assessment
 
-The vision is **compelling, well-structured, and defensible**. The problem
-framing is sharp, the three failure modes are real and observable daily, and the
-core thesis — that graph-structured traceability will outperform flat vector
-retrieval for agentic workflows — is a bet worth making. The competitive
-landscape is more populated with adjacent tools than might be assumed (code-graph
-engines like Augment and Greptile; requirement-graph tools like SARA and
-Proj-Theseus), but no existing tool combines requirement-level property graphs,
-an agent-facing MCP gateway, and per-node governance into a unified system. The
-niche is defensible.
+The vision is well-constructed. The problem statement is sharp and grounded in
+real, observable failure modes. The invariants are precise. The kill conditions
+are intellectually honest and show disciplined risk management. The
+single-engine PostgreSQL bet is pragmatically sound for early phases, and the
+self-referential bootstrapping strategy is a powerful forcing function. The
+scope boundary between vision and strategic backlog is clean.
 
-That said, I have significant feedback on five fronts: a factual correction, a
-missing foundational principle, strategic scoping aligned with the initiator's
-commentary, a vision-vs-strategy cleanup directive, and a challenge to one
-commitment that could become an early trap.
+I have **three significant concerns**, each of which either proposes a change
+to the vision document or would materially reprioritize a backlog item.
 
 ---
 
-## Feedback Item 1 — CHALLENGE: SQL/PGQ Is a Phantom Dependency
+## Concern 1: The Progression Model Should Front-Load De-Risking of Hypothesis H-1
 
-**Section affected:** §2 Key Capabilities, §2 Conceptual Grounding, §3
-Boundary Contracts
+**Affects:** Vision §6 (Multi-Axis Progression Model), Backlog §2 (Phased
+Execution Roadmap)
 
-**Issue:** The document references "SQL/PGQ" as if it is an available PostgreSQL
-capability (line 89: *"graph topologies (SQL/PGQ)"*). **SQL/PGQ does not exist
-in any released PostgreSQL version.** While SQL/PGQ (SQL:2023 Part 16) was
-briefly merged into the PostgreSQL 19 development branch, it was **officially
-reverted and removed on September 7, 2026** prior to the PG19 release, due to
-severe stability flaws: locking and dependency resolution bugs, backend crashes
-and catalog corruption under concurrent DDL, and security vulnerabilities
-reachable by low-privilege users. Core committers do not guarantee its inclusion
-even in PostgreSQL 20. This is a factual error that could mislead strategy
-planning.
+### The Issue
 
-**What exists today:**
+Hypothesis H-1 — that graph-bounded context envelopes significantly
+outperform flat vector retrieval for preserving architectural invariants — is
+the foundational scientific bet of the entire enterprise. Every other
+capability (governance, audit ledger, decomposition pipeline, MCP gateway)
+derives its value from this premise. If H-1 is false, the project's
+differentiating value proposition collapses regardless of how well the
+infrastructure is built.
 
-- **Apache AGE** — an Apache top-level project adding openCypher graph query
-  support on PostgreSQL 14–16 ([age.apache.org](https://age.apache.org)).
-- **Recursive CTEs (`WITH RECURSIVE`)** — standard SQL, zero extension
-  dependencies, battle-tested for hierarchical/DAG traversal in PostgreSQL.
-- **pgvector** — mature and widely adopted; no concern here.
+The current progression model places H-1 validation at **Phase 2** (CAL-H1:
+"≥70% fewer architectural violations vs. flat-file vector search, Phase 2
+Controlled Trial"). This means the team will design and build the *entire*
+Phase 1 infrastructure — Git document store, PostgreSQL graph schema, assisted
+decomposition pipeline, read-only MCP server, and dogfooding gate — before
+receiving any empirical signal on whether the core thesis holds.
 
-**Recommendation (Vision-level):** Replace the reference to "SQL/PGQ" with a
-technology-neutral framing: *"graph topologies modeled within PostgreSQL"*. The
-specific extension or query approach (AGE, recursive CTEs, or eventual PGQ) is a
-strategy/architecture decision, not a vision commitment. The vision should commit
-to *the property graph model*, not to a specific query dialect that doesn't exist
-yet.
+### What Prior Evidence Tells Us
 
----
+Microsoft's GraphRAG research (2024) demonstrated that graph-based retrieval
+outperforms flat vector RAG specifically for **global summarization** and
+**multi-hop reasoning** across document corpora. However, those results were
+measured on text comprehension tasks, not on code synthesis fidelity or
+architectural constraint preservation. The TKS hypothesis is in a
+**different domain** — whether graph topology helps agents respect structural
+invariants during code generation — and remains genuinely untested.
 
-## Feedback Item 2 — ADD: Bootstrapping Self-Reference as a Foundational Principle
+Critically, the GraphRAG literature also established that graph-based retrieval
+can *degrade* below flat-vector performance when graph construction quality is
+poor (e.g., entity deduplication failures). The quality of TKS's decomposition
+pipeline directly affects H-1 outcomes, creating a compounding dependency.
 
-**Relates to:** Project Initiator Commentary — *"it can define itself... eat our
-own dog food"*
+*(Source: Microsoft Research, "From Local to Global: A Graph RAG Approach to
+Query-Focused Summarization," 2024; industry evaluations summarized at
+[VentureBeat](https://venturebeat.com), [TigerGraph](https://tigergraph.com),
+[Flur.ee](https://flur.ee))*
 
-**Issue:** The initiator explicitly identifies self-reference (using the system
-to manage its own development) as a foundational design principle. This is not
-merely a tactical preference — it is a **vision-level constraint** that should
-shape the problem definition and success criteria. A system that claims to be
-*the* substrate for agentic software engineering but cannot manage its own
-requirements, specifications, and tasks has a credibility problem.
+### Recommendation
 
-**Why this belongs in the vision, not just strategy:**
+**Add a "Spike 0" to Phase 0** (before Phase 1 construction begins): a
+lightweight, throwaway evaluation that tests graph-bounded context retrieval
+vs. flat-vector retrieval on a controlled agentic coding task. This does not
+require the full substrate — it can use an in-memory graph, a small
+hand-curated requirement tree (~50-100 nodes), and a standard embedding model.
+The goal is directional signal, not production benchmarking.
 
-1. It defines a **success criterion**: the system must reach self-hosting
-   capability, analogous to a self-hosting compiler.
-2. It constrains the **minimum viable scope**: Phase 1 must deliver enough
-   capability that Phase 2 planning can be ingested, decomposed, and tracked
-   *within the substrate itself*.
-3. It creates a **forcing function** against over-engineering: if the system's
-   own development team can't use it productively, no external team will either.
+This is not a change to the vision's *destination* — H-1 remains a hypothesis
+to validate — but a change to the *progression model's risk ordering*. The
+vision should state that the highest-risk hypotheses are tested at the
+earliest possible phase, not deferred until substantial infrastructure exists.
 
-**Recommendation:** Add a sixth Key Capability or a new Invariant:
+**Proposed vision change:** Add a sentence to §6 "The Bootstrapping
+Progression Strategy" under Phase 0 Baseline:
 
-> **Self-Referential Bootstrapping (Dogfooding Principle):** The Knowledge
-> Substrate must be capable of managing its own development lifecycle. Each
-> development phase shall produce sufficient capability that the subsequent
-> phase's requirements, specifications, and tasks are tracked within the
-> substrate itself. The system is its own first user.
+> *Phase 0 additionally includes lightweight evaluation spikes to generate
+> early directional signal on the highest-risk strategic hypotheses (H-1,
+> H-4), reducing the probability of significant infrastructure investment on
+> unvalidated premises.*
 
-**Bootstrap risk acknowledgment:** This carries the classic bootstrapping
-chicken-and-egg problem (the system must exist to manage its own creation). The
-vision should acknowledge this explicitly and define the initial bootstrap
-boundary — e.g., *"Phase 0 planning is managed externally; from Phase 1
-completion onward, the substrate manages itself."*
-
----
-
-## Feedback Item 3 — ADD: Git as the Document Ledger Backend
-
-**Relates to:** Project Initiator Commentary — *"Git might be a good backend
-version storage, efficient version storage for text documents"*
-
-**Section affected:** §2 Key Capabilities (item 2), §2 Conceptual Grounding
-("Document Ledger"), §3 Boundary Contracts ("Document Immutability Guarantee")
-
-**Issue:** The vision currently specifies a custom *"content-addressed,
-cryptographically signed (SHA-256) artifact store"* for document storage. The
-initiator proposes using **Git** as this store. This is not a minor tactical
-detail — it is a **vision-level architectural decision** about whether the
-document ledger is a bespoke component or delegates to proven infrastructure.
-
-**The case for Git as document store (vision-level):**
-
-- Git *is* a content-addressed, SHA-256 (or SHA-1, transitioning to SHA-256)
-  object store. It already does what the vision describes building.
-- Git provides diffing, branching, history traversal, and efficient delta
-  compression for text documents *for free*.
-- PostgreSQL stores metadata, graph topology, and references (commit hashes,
-  file paths) to documents in Git — this is the coupling the initiator envisions.
-- The REST API retrieves document content by resolving Git references stored in
-  the database.
-- This eliminates an entire bespoke subsystem from the build scope.
-
-**The case for caution:**
-
-- Git is optimized for source code, not arbitrary binary blobs. The vision should
-  clarify that the document store is scoped to **text-based documents (Markdown,
-  plain text, structured specifications)** — which is consistent with the stated
-  scope.
-- Character-span references into documents become fragile across Git revisions.
-  The vision should acknowledge that span stability across document versions is a
-  design challenge to be resolved at the strategy level.
-
-**Recommendation:** Elevate this to the vision level by amending the Document
-Ledger concept:
-
-> **Document Ledger:** A Git-backed, content-addressed artifact store for
-> text-based specification documents, with PostgreSQL maintaining the relational
-> metadata, graph references, and decomposition mappings. Document identity is
-> anchored to Git commit hashes and object SHAs.
-
-This shifts the vision from "we build a custom content-addressed store" to "we
-compose proven infrastructure (Git + PostgreSQL)" — a far more pragmatic and
-credible foundation for a small team.
+**Proposed backlog addition:** Add "Spike 0: Graph-Bounded vs. Flat-Vector
+Retrieval Directional Evaluation" before Spike 1, scoped to a throwaway
+prototype testable in days, not weeks.
 
 ---
 
-## Feedback Item 4 — CHALLENGE: Vision/Strategy/Tactics Separation Needed
+## Concern 2: Agent Identity and Trust Requires a Vision-Level Invariant
 
-**Relates to:** Project Initiator Commentary — *"a little bit of a mix of
-tactics, strategy, and vision"*
+**Affects:** Vision §3 (Boundary Contracts), Vision §5 (Invariants)
 
-**Issue:** The initiator is correct. The document intermixes three distinct
-layers, and this creates risk: strategy-level details baked into the vision
-become rigid commitments before they've been validated. Specific items that are
-**strategy or tactics masquerading as vision**:
+### The Issue
 
-| Current Location | Content | Proper Layer |
-| --- | --- | --- |
-| §2 Conceptual Grounding | `SHA-256` as the specific hash algorithm | **Strategy** — the vision commits to cryptographic content-addressing; the algorithm choice is implementation |
-| §2 Operational Timescales | `< 50ms` latency target | **Strategy** — the vision commits to real-time responsiveness; the specific SLA is a strategic target |
-| §3 Boundary Contracts | "Single PostgreSQL instance" | **Vision/Strategy boundary** — the vision commits to operational simplicity and single-engine philosophy; "single instance" is a scaling strategy |
-| §4 Communication Contracts | Detailed 9-step workflow | **Tactics** — this is an implementation specification, not a vision statement |
-| §5 Hypotheses | Specific percentage thresholds (`≥ 70%`, `≥ 50%`, `≥ 95%`) | **Strategy** — the vision commits to measurable hypotheses; the specific thresholds are strategic targets to be calibrated |
-| §6 Roadmap | Four-phase execution plan | **Strategy** — the vision defines success criteria and capability progression; the specific phase structure is strategic planning |
-| §7 MVDs | Detailed demonstration scripts | **Tactics** — acceptance criteria belong in strategy/planning |
+The vision defines five invariants and six boundary contracts. Per-node
+governance (I-5) controls *authorization* — what an agent is permitted to do
+at each node. The stateless gateway boundary contract specifies
+"authenticated, isolated transactions." But no invariant or boundary contract
+addresses:
 
-**Recommendation:** The vision document should be refactored into two tiers:
+1. **How agents are identified.** What credential does an agent present? How
+   is an agent distinguished from a human user?
+2. **How agent identity is audited.** The audit ledger records mutations, but
+   does it record *which specific agent instance* made the mutation, with
+   verifiable identity?
+3. **Defense against policy-compliant semantic corruption.** Per-node
+   governance prevents unauthorized *structural* mutations, but a compromised
+   or hallucinating agent operating under `AUTONOMOUS_ELABORATION` can submit
+   mutations that are structurally valid but semantically destructive — subtly
+   rewriting requirement text, introducing contradictory sub-specifications,
+   or creating circular dependency chains. The governance model assumes agents
+   are well-intentioned but need guardrails; it does not address adversarial
+   or corrupted input.
 
-1. **Vision (this document):** Problem space, north star statement, key
-   capabilities, foundational invariants, strategic hypotheses (without specific
-   thresholds), and kill conditions.
-2. **Strategic Planning Backlog (separate document):** Roadmap phases, MVD
-   scripts, operational timescale targets, specific technology choices, and
-   workflow specifications.
+### Why This Is Vision-Level, Not Strategic
 
-This is not a request to delete content — it's a request to *relocate* it so the
-vision remains stable while strategy can iterate freely. The current document
-tries to be both a constitution and an execution plan, and it will become
-unwieldy as strategy evolves.
+The MCP specification itself is actively evolving its security model. The
+July 2026 MCP specification moved to stateless request/response architecture
+and standardized on OAuth 2.1 with PKCE for authentication. An Agent Identity
+Working Group is driving formalization of workload identity federation and
+proof-of-possession tokens (DPoP) for autonomous agent authentication. The
+"confused deputy" problem — where agents are manipulated into performing
+unauthorized actions downstream — is a recognized open challenge in the MCP
+ecosystem.
 
----
+*(Source: MCP specification updates 2025-2026; Agent Identity Working Group
+roadmap at [modelcontextprotocol.io](https://modelcontextprotocol.io))*
 
-## Feedback Item 5 — CHALLENGE: Bitemporal Versioning Complexity vs. "Start Small"
+TKS's vision explicitly positions itself as an "agent-agnostic" substrate
+accepting mutations from arbitrary external agents. This makes agent identity
+and trust a *foundational architectural concern*, not an implementation detail.
+If the audit ledger cannot attributably trace mutations to verified agent
+identities, Invariant I-2 (auditability) is structurally weakened — you can
+audit *what* changed, but not reliably *who* changed it.
 
-**Section affected:** §2 Key Capabilities (item 4), §3 Boundary Contracts, §5
-Invariant I-2
+### Recommendation
 
-**Relates to:** Project Initiator Commentary — *"this needs to start small"*
+**Add Invariant I-7 (Agent Identity Attribution):**
 
-**Issue:** The vision commits to *"append-only bitemporal lineage"* and
-*"Invariant I-2: Destructive in-place updates... strictly prohibited"* as
-foundational, non-negotiable properties. Bitemporal data modeling (tracking both
-*valid time* and *transaction time* across all entities and edges) is a
-well-understood but **notoriously complex** pattern to implement correctly.
+> *Every mutation submitted through the Integration Gateway must be
+> attributable to a verified external identity (human user or autonomous agent
+> instance). Agent identity credentials must be recorded in the audit ledger
+> alongside mutation events. The specific authentication mechanism is resolved
+> at the strategic planning level, but identity attribution is a
+> non-negotiable audit requirement.*
 
-**The tension:** The initiator wants to start small and iterate. Bitemporal
-versioning across a full property graph is one of the hardest data modeling
-problems in database engineering. Building it correctly from day one is a
-multi-month effort that delays the first useful capability. Building it
-incorrectly and retrofitting it later is even more expensive.
+**Add a boundary contract clause** to "Stateless Gateway Boundary":
 
-**Pragmatic recommendation:** The vision should distinguish between:
+> *The gateway must validate caller identity on every request. No mutation may
+> be committed to the audit ledger without a verified identity reference.*
 
-- **The principle** (vision-level): All state changes are auditable, reversible,
-  and historically reconstructible. No data is silently destroyed.
-- **The mechanism** (strategy-level): Whether this is achieved via full
-  bitemporal modeling, simpler event-sourcing/append-only logs, or PostgreSQL
-  temporal tables (available since PG13 via `system_time` versioning) is an
-  implementation decision.
-
-Reframe Invariant I-2 to commit to the *property* (audit trail, reversibility,
-no silent data loss) without prescribing the specific data modeling pattern.
-Let the strategy phase choose the simplest mechanism that satisfies the
-invariant — which might be straightforward event-sourcing with snapshot
-reconstruction, not full bitemporality.
+This keeps the vision appropriately abstract (no OAuth/PKCE/DPoP
+implementation details) while establishing identity attribution as a
+foundational principle alongside traceability and auditability.
 
 ---
 
-## Items Reviewed and NOT Flagged
+## Concern 3: Kill Conditions Are Binary — The Vision Should Acknowledge Graduated Outcomes
 
-For completeness, the following aspects were evaluated and found sound at the
-vision level:
+**Affects:** Vision §7 (Falsification & Termination Criteria)
 
-- **Problem framing (§1):** The three failure modes are real, clearly
-  articulated, and well-differentiated. No changes recommended.
-- **Core vision statement (§2):** Crisp, appropriately scoped, agent-agnostic.
-  No changes recommended.
-- **MCP as integration protocol (§3):** MCP adoption is strong and growing
-  (Claude, Cursor, Windsurf, VS Code/Copilot, JetBrains, OpenAI agents SDK all
-  support or are adopting it). This is a well-founded bet.
-  Source: [modelcontextprotocol.io](https://modelcontextprotocol.io/)
-- **Zero in-database agent execution (Invariant I-3):** Correct and important
-  boundary. No changes recommended.
-- **Per-node governance (Invariant I-5):** Novel and well-motivated. No changes
-  recommended.
-- **Kill conditions (§7):** Well-constructed falsification criteria. These are a
-  sign of intellectual honesty and should be preserved.
-- **Competitive positioning:** The landscape is more populated with adjacent
-  competitors than might be expected, though the vision's specific synthesis
-  remains differentiated:
-  - *Code-graph tools* (Augment Code, Greptile, Qodo, Sourcegraph SCIP,
-    RepoGraph) build AST/call-graph/dependency structures for coding agents —
-    but these operate at the *code* layer, not the *requirement-to-code
-    traceability* layer.
-  - *Requirement-graph tools* exist: **SARA** manages requirements as knowledge
-    graphs using Git + Markdown (notably aligned with the initiator's Git
-    suggestion); **Proj-Theseus** uses Neo4j for multi-level requirement
-    traceability; **Graphiti** tracks temporal knowledge graph mutations.
-  - *Traditional ALM* (IBM DOORS, Jama Connect) provides traceability but
-    without agent-facing APIs.
-  - **No tool found** combines all three of: requirement-level property graph +
-    agent-facing MCP gateway + per-node governance. The vision's niche is
-    defensible but not as empty as it may appear — and SARA in particular
-    warrants close study as a potential prior-art signal for the
-    Git-as-document-store concept.
+### The Issue
+
+The four kill conditions are framed as binary pass/fail gates:
+
+- Kill #2: If graph retrieval shows "comparable rates" to flat-vector, "the
+  graph-native thesis is falsified."
+- Kill #3: If PostgreSQL can't maintain latency, "the single-engine
+  architectural boundary must be abandoned."
+
+But the calibration targets in the backlog define *specific thresholds* on a
+continuous scale (CAL-H1: ≥70% reduction; CAL-H3: <100ms at 10⁶ nodes). What
+happens when results fall in the middle?
+
+- **Scenario A:** Graph retrieval shows 35% fewer architectural violations
+  (not 70%). Is the project dead? The graph provides measurable value but
+  doesn't meet the aspirational target.
+- **Scenario B:** PostgreSQL handles 10⁵ nodes at <100ms but degrades at
+  5×10⁵. The vision says "enterprise scale," but many real projects never
+  exceed 10⁵ nodes.
+
+The current framing creates a false dichotomy: either the hypothesis is
+triumphantly validated or the project is terminated. In practice, partial
+validation is the most likely outcome for any novel system, and the
+appropriate response is *scope adjustment*, not termination.
+
+### Recommendation
+
+**Add a "Graduated Response" clause** to §7, after the kill conditions:
+
+> *If empirical results partially validate a strategic hypothesis — delivering
+> measurable but below-target improvements — the appropriate response is scope
+> adjustment rather than program termination. Partial validation may warrant
+> narrowing the target domain (e.g., focusing on projects with specific
+> structural characteristics where graph retrieval demonstrably excels),
+> adjusting calibration targets, or hybridizing approaches. Kill conditions
+> are triggered only when results show no statistically significant
+> improvement over the baseline, or when the overhead of the substrate
+> demonstrably exceeds the value it provides.*
+
+This preserves the intellectual honesty of the kill conditions while
+acknowledging that the most probable outcome is a spectrum, not a binary.
 
 ---
 
-## Summary of Recommended Vision Changes
+## Summary Table
 
-| # | Type | Item | Action |
-| --- | --- | --- | --- |
-| 1 | **Correct** | SQL/PGQ reference | Replace with technology-neutral "graph topologies modeled within PostgreSQL" |
-| 2 | **Add** | Self-referential bootstrapping principle | Add as Key Capability or Invariant; acknowledge bootstrap boundary |
-| 3 | **Add** | Git as document ledger backend | Amend Document Ledger concept to specify Git-backed store coupled to PostgreSQL |
-| 4 | **Restructure** | Vision/Strategy separation | Relocate roadmap, MVDs, workflow specs, and specific thresholds to a strategic planning document |
-| 5 | **Reframe** | Bitemporal versioning | Commit to the audit/reversibility *property* at vision level; defer mechanism choice to strategy |
+| # | Concern | Vision Section Affected | Action Type |
+| --- | --------- | ------------------------ | ------------- |
+| 1 | H-1 de-risking must precede Phase 1 construction | §6 Progression Model | Modify vision + add backlog item |
+| 2 | Agent identity/trust is a foundational invariant | §3 Boundary Contracts, §5 Invariants | Add invariant I-7 + boundary clause |
+| 3 | Kill conditions need graduated response model | §7 Falsification Criteria | Add graduated response clause |
