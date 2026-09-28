@@ -17,6 +17,7 @@ This backlog is specifically organized around the **"Start Small"**, **"Constrai
 - Eliminate loose Git reference hacks in favor of standard Git branch commits (`refs/heads/specs`) ensuring natural 100% reachability without garbage collection overrides.
 - Strictly reject premature abstractions (distributed databases, distributed consensus, complex OAuth 2.1) during early phases in favor of single-engine PostgreSQL, pre-shared keys, and HMAC tokens.
 - Maximize concurrency using native PostgreSQL row-level locking (`SELECT ... FOR UPDATE`) for leaf attribute updates while reserving global transaction advisory locks strictly for structural DAG edge mutations.
+- Decouple canonical requirement lifecycle from operational job retention (`ON DELETE SET NULL`), eliminate edge lifecycle constraint collisions with surrogate keys and active partial indexes, and guarantee sub-5ms offline search for `query_requirements` via native PostgreSQL full-text search (`tsvector` / GIN).
 - Hold Phase 3 and Phase 4 execution as strictly contingent on empirical validation of foundational hypotheses (H-1, H-4) and successful Phase 1 dogfooding adoption.
 
 ---
@@ -67,22 +68,24 @@ flowchart LR
 
 - **Primary Objective:** Deliver a functioning read-only pipeline that ingests Markdown specifications into a Git-backed document repository, decomposes them into structured requirement nodes in PostgreSQL, and serves bounded context envelopes to external agents via the Model Context Protocol (MCP).
 - **Core Deliverables:**
-  1. **Git-Backed Document Store:** Bare Git repository integration (`git2` crate) for storing raw Markdown/text documents via direct ODB writes, creating commits directly onto a dedicated specifications branch (`refs/heads/specs`). Natural Git commit-tree reachability guarantees permanent blob preservation without loose reference files or prune configuration overrides (addressing LD-12, TB-1).
+  1. **Git-Backed Document Store:** Bare Git repository integration (`git2` crate) for storing raw Markdown/text documents via direct ODB writes, creating commits directly onto a dedicated specifications branch (`refs/heads/specs`). Operations are serialized in-process via an async mutex (`Arc<tokio::sync::Mutex<git2::Repository>>`), preventing `.lock` collisions and non-fast-forward push rejections (addressing LD-12, TB-1; LD-3, iteration 4).
   2. **PostgreSQL Relational & Graph Schema:**
-     - `graph_nodes`: Typed nodes with `lifecycle_state` (`DRAFT`, `ACTIVE`, `SUPERSEDED`, `ARCHIVED`, `NEEDS_REVERIFICATION`) and `job_id UUID REFERENCES ingestion_jobs(job_id)`.
-     - `graph_edges`: Structural edges with explicit `lifecycle_state` (`DRAFT`, `ACTIVE`, `SUPERSEDED`, `REVERTED`) and partial index `idx_graph_edges_active WHERE lifecycle_state = 'ACTIVE'` (addressing LD-1).
-     - `source_spans`: Cryptographic document anchoring with exact 0-based byte offsets (`byte_start INT`, `byte_end INT`) preventing multi-byte UTF-8 string slicing panics (addressing LD-2).
+     - `graph_nodes`: Typed nodes with `lifecycle_state` (`DRAFT`, `ACTIVE`, `SUPERSEDED`, `ARCHIVED`, `NEEDS_REVERIFICATION`), generated full-text search vector `search_tsv` (`tsvector`) with GIN index (addressing LD-6), and non-cascading foreign key `job_id UUID REFERENCES ingestion_jobs(job_id) ON DELETE SET NULL` preventing canonical requirement loss on operational job cleanup (addressing LD-1).
+     - `graph_edges`: Structural edges with surrogate primary key `edge_id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, explicit `lifecycle_state` (`DRAFT`, `ACTIVE`, `SUPERSEDED`, `REVERTED`), and partial unique index `idx_graph_edges_active_unique (from_node_id, to_node_id, edge_type) WHERE lifecycle_state = 'ACTIVE'` preventing constraint collisions during edge re-linking and lifecycle transitions (addressing LD-1, LD-2).
+     - `source_spans`: Cryptographic document anchoring with concrete schema (`span_id UUID PRIMARY KEY`, `node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE`, `doc_hash VARCHAR(64) NOT NULL`, `byte_start INT NOT NULL`, `byte_end INT NOT NULL`, and `idx_source_spans_node` index) enabling instant relational inspection joins and zero-copy UTF-8 safe byte slicing (addressing LD-2, LD-5).
      - `draft_revisions`: Ephemeral revision log tracking intermediate draft edits prior to approval squashing (addressing LD-5).
      - `node_embeddings` & `embedding_queue`: Deduplicated queue (`UNIQUE (node_id)`) and content-hashed optimistic concurrency (`content_hash VARCHAR(64)`) for out-of-band embeddings (addressing LD-6).
-  3. **Two-Stage Assisted Decomposition Pipeline:** Ingestion REST API endpoint orchestrating a durable background queue (`ingestion_jobs`):
+     - `ingestion_jobs`: Durable state machine tracking decomposition lifecycle: `QUEUED` → `PROCESSING` → `STAGED` (decomposition complete, candidates pending review) → `APPROVED` (candidates promoted to `ACTIVE`) or `REJECTED` (candidates discarded), with `FAILED` for errors (addressing LD-7).
+  3. **Two-Stage Assisted Decomposition Pipeline & Cooperative Worker Manager:** Unified background worker manager (`src/worker/mod.rs`) running cooperatively inside `tks serve` orchestrating both decomposition and embedding queues (addressing LD-12). Ingestion REST API endpoint orchestrating `ingestion_jobs`:
      - *Stage 1 (Mechanical Parsing):* Streaming CommonMark AST decomposition (`pulldown-cmark`) segmenting text along heading boundaries, tables, and lists, extracting exact source 0-based byte offsets (`byte_start`, `byte_end`) with zero token cost and deterministic RFC 2119 keyword tagging.
      - *Stage 2 (Targeted Semantic Classification):* Selective LLM invocation on candidate chunks returning compact classification tuples without echoing source text.
+     - *Graceful Degradation:* If external LLM API credentials are not configured or external provider returns errors/timeouts, Stage 1 mechanical extraction still commits candidate chunks to `graph_nodes` as `DRAFT` requirements with default typing (`node_type = 'REQUIREMENT'` for RFC 2119 matches, `'UNCLASSIFIED'` otherwise), logging a warning in `ingestion_jobs.error_message`, preserving full local and offline utility (addressing LD-8).
      - Candidate nodes and draft structural edges written directly to `graph_nodes` and `graph_edges` with `lifecycle_state = 'DRAFT'` and `job_id REFERENCES ingestion_jobs(job_id)`, completely eliminating the quarantine staging table and JSON blob serialization (addressing LD-3, LD-11, retiring TB-3).
-  4. **Read-Only MCP Server, Identity Scaffolding & Terminal Review CLI:** Unified Axum server hosting REST and MCP over HTTP/SSE, paired with a lightweight stdio streaming proxy (`tks mcp-stdio`). Tool `get_context_envelope` implements strict quota allocation: 30 guaranteed deterministic topological nodes, up to 10 vector neighbors (addressing LD-8). To eliminate human review friction during Phase 1 dogfooding and de-risk Kill Condition #1, the `tks` CLI provides a flexible terminal-native staging review workflow supporting granular inclusion and rejection (addressing LD-7):
+  4. **Read-Only MCP Server, Identity Middleware & Terminal Review CLI:** Unified Axum server hosting REST and MCP over HTTP/SSE, paired with a lightweight stdio streaming proxy (`tks mcp-stdio`). Axum integrates Tower middleware and `FromRequestParts` extractor for identity validation (`src/gateway/auth.rs`) against `agent_identities` with in-process `moka` LRU cache, eliminating artificial component boundaries (addressing LD-11). Tool `get_context_envelope` implements strict quota allocation: 30 guaranteed deterministic topological nodes, up to 10 vector neighbors (addressing LD-8). Tool `query_requirements` operates via PostgreSQL native full-text search (`tsvector` / GIN) executing in <5ms without external API dependencies or token costs, meeting SLA-1 and working offline (addressing LD-6). To eliminate human review friction during Phase 1 dogfooding and de-risk Kill Condition #1, the `tks` CLI provides a flexible terminal-native staging review workflow supporting granular inclusion and atomic rejection (addressing LD-7, LD-13):
      - `tks staging list <job_id>`: Displays candidate requirements in formatted tabular/tree hierarchy.
      - `tks staging inspect <node_id>`: Displays candidate node text side-by-side with its exact source document byte span.
-     - `tks staging approve <job_id> [--only <id,...> | --exclude <id,...>]`: Submits granular approval (`POST /api/v1/staging/approve`) and promotes verified nodes to `ACTIVE`.
-     - `tks staging reject <node_id>`: Submits rejection (`POST /api/v1/staging/reject`) to purge false positive candidates cleanly.
+     - `tks staging approve <job_id> [--only <id,...> | --exclude <id,...>]`: Submits granular approval (`POST /api/v1/staging/approve`) and promotes verified nodes to `ACTIVE`. Transactional CTE validates Invariant INV-1 against the union of active requirement nodes and candidate requirement nodes included in the promotion batch (`id = ANY($approved_node_ids)`), preventing false invariant failures on hierarchical trees (addressing LD-4). Transaction acquires `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))` (addressing LD-9).
+     - `tks staging reject [--job-id <job_id> | <node_id>]`: Submits rejection (`POST /api/v1/staging/reject`) to purge candidate drafts cleanly at either individual node level or atomic job level (`DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT'`), marking the job `REJECTED` (addressing LD-7, LD-13).
 - **Dogfooding Milestone (Gate 1):** Ingest the project's own `vision.md` and `strategic-planning-backlog.md` into the Phase 1 substrate, verifying that atomic requirements and constraints can be queried via MCP.
 
 ### Phase 2: Bounded Agent Mutation & Per-Node Governance
@@ -187,11 +190,13 @@ flowchart TD
 - **Preconditions:** Fresh PostgreSQL instance with schema applied; bare Git repository configured with `refs/heads/specs` branch; development identity seeded.
 - **Test Procedure:**
   1. Submit a multi-page Markdown specification (e.g., `vision.md`) to `POST /api/v1/documents/ingest`.
-  2. Verify that the document is committed to the bare Git repository ODB, yielding a verifiable commit SHA and blob hash committed directly to `refs/heads/specs`.
-  3. Verify that the background worker decomposes the document: CommonMark AST parsing (`pulldown-cmark`) mechanically extracts $\ge 10$ distinct requirement chunks with exact 0-based byte offsets (`byte_start`, `byte_end`), and targeted semantic classification tags candidate nodes.
-  4. Verify candidate nodes are written directly into `graph_nodes` with `lifecycle_state = 'DRAFT'` and `job_id REFERENCES ingestion_jobs(job_id)`, inspectable via `tks staging list <job_id>` and `tks staging inspect <node_id>`.
-  5. Human reviewer inspects candidate nodes in their document span context, rejects any false positives via `tks staging reject <node_id>`, and approves verified candidate nodes via `tks staging approve <job_id> [--only <id,...> | --exclude <id,...>]` (executing `POST /api/v1/staging/approve`).
-  6. Connect an MCP client (e.g., Claude Code or test harness) and invoke:
+  2. Verify that the document is committed to the bare Git repository ODB via serialized mutex, yielding a verifiable commit SHA and blob hash committed directly to `refs/heads/specs`.
+  3. Verify that the background worker decomposes the document: CommonMark AST parsing (`pulldown-cmark`) mechanically extracts $\ge 10$ distinct requirement chunks with exact 0-based byte offsets (`byte_start`, `byte_end`), targeted semantic classification tags candidate nodes (or falls back to default typing with warning on missing LLM credentials), and job transitions to `STAGED`.
+  4. Verify candidate nodes are written directly into `graph_nodes` with `lifecycle_state = 'DRAFT'` and `job_id REFERENCES ingestion_jobs(job_id) ON DELETE SET NULL`, inspectable via `tks staging list <job_id>` and `tks staging inspect <node_id>`.
+  5. Human reviewer inspects candidate nodes in their document span context, rejects any false positives via `tks staging reject [--job-id <job_id> | <node_id>]`, and approves verified candidate nodes via `tks staging approve <job_id> [--only <id,...> | --exclude <id,...>]` (executing `POST /api/v1/staging/approve` with batch ancestor union CTE check and advisory locking, transitioning job to `APPROVED`).
+  6. Connect an MCP client (e.g., Claude Code or test harness) and test both full-text search and context retrieval:
+     - Invoke `query_requirements` with text search query (e.g. `{"query": "PostgreSQL single engine"}`); verify matching `ACTIVE` requirement nodes return in $<5\text{ ms}$ via native `tsvector`/GIN index without external API calls.
+     - Invoke `get_context_envelope`:
 
      ```json
      {
@@ -275,36 +280,37 @@ flowchart TD
 
 ### Spike 3: Git-PostgreSQL Storage Coupling Architecture
 
-- **Status:** **Incorporated into Architecture** (`architecture.md` §4 Component Topology, §5.1 State Ownership, §7 Technology Stack, §9 Decision D-29; `technical-backlog.md` TB-1).
+- **Status:** **Incorporated into Architecture** (`architecture.md` §4 Component Topology, §5.1 State Ownership, §5.2 Concurrency Model, §7 Technology Stack, §9 Decisions D-29 and D-33; `technical-backlog.md` TB-1).
 - **Context:** Text specification documents are versioned in Git, while metadata and graph topology reside in PostgreSQL.
-- **Outcome:** Bare Git repository (`git init --bare`) accessed via `git2` direct ODB writes, creating commits directly onto a dedicated specifications branch (`refs/heads/specs`). Guarantees permanent blob reachability via the standard Git commit-tree graph, eliminating bespoke loose refs (`refs/tks/blobs/*`) and removing `gc.pruneExpire never` hacks.
+- **Outcome:** Bare Git repository (`git init --bare`) accessed via `git2` direct ODB writes, creating commits directly onto a dedicated specifications branch (`refs/heads/specs`). Guarantees permanent blob reachability via the standard Git commit-tree graph, eliminating bespoke loose refs (`refs/tks/blobs/*`) and removing `gc.pruneExpire never` hacks. Commits on `refs/heads/specs` are serialized in-process via an async mutex (`Arc<tokio::sync::Mutex<git2::Repository>>`), resolving HEAD and constructing trees sequentially to eliminate `.git/refs/...lock` contention (`GIT_ELOCKED`) and non-fast-forward push rejections (addressing LD-3, iteration 4).
 
 ### Spike 4: Assisted Decomposition & Mechanical AST Pre-Parsing
 
-- **Status:** **Adjusted and Incorporated into Architecture** (`architecture.md` §4 Component Topology, §5.2 Concurrency Model, §7 Technology Stack, §9 Decisions D-15 and D-22; `technical-backlog.md` TB-2).
+- **Status:** **Adjusted and Incorporated into Architecture** (`architecture.md` §4 Component Topology, §5.2 Concurrency Model, §7 Technology Stack, §9 Decisions D-15, D-22, and D-37; `technical-backlog.md` TB-2).
 - **Context:** In response to the Project Initiator's core directive on token minimization and mechanical 80/20 extraction (LD-1), raw LLM text decomposition is replaced by a two-stage pipeline with exact byte offsets to prevent UTF-8 slicing panics (LD-2).
 - **Outcome:**
   1. *Stage 1 (Mechanical Parsing):* Integrated streaming CommonMark AST parser (`pulldown-cmark`) decomposing documents along heading boundaries, tables, and lists. Derives 100% exact 0-based byte offsets (`byte_start`, `byte_end`) directly from source stream and matches RFC 2119 keywords without LLM token cost. Zero-copy byte slicing in Rust prevents UTF-8 panics.
   2. *Stage 2 (Targeted Semantic Classification):* LLM invoked solely on candidate chunks requiring classification, outputting compact classification tuples without echoing source text.
-  3. Candidate nodes written directly to `graph_nodes` with `lifecycle_state = 'DRAFT'` and `job_id REFERENCES ingestion_jobs(job_id)`.
+  3. *Graceful Degradation:* If external LLM API credentials are not configured or the provider request fails/times out, Stage 1 mechanical extraction still commits candidate chunks to `graph_nodes` as `DRAFT` with default typing (`node_type = 'REQUIREMENT'` for RFC 2119 matches, `'UNCLASSIFIED'` otherwise) and logs a warning in `ingestion_jobs.error_message`, ensuring 100% offline utility and CI resilience (addressing LD-8, iteration 4).
+  4. Candidate nodes written directly to `graph_nodes` with `lifecycle_state = 'DRAFT'` and `job_id REFERENCES ingestion_jobs(job_id) ON DELETE SET NULL`.
 
 ### Spike 5: Model Context Protocol (MCP) Tool Schema Design
 
-- **Status:** **Incorporated into Architecture** (`architecture.md` §6 Interfaces & Contracts, §9 Decisions D-17 and D-28).
+- **Status:** **Incorporated into Architecture** (`architecture.md` §6 Interfaces & Contracts, §7 Technology Stack, §9 Decisions D-17, D-28, and D-35).
 - **Context:** Standardized JSON-RPC tools for agent context retrieval and mutation proposals.
-- **Outcome:** Core tools defined (`get_context_envelope`, `propose_node_mutation`, `query_requirements`, `get_document_span`, `revert_mutation_batch`, `revert_agent_session`). Traversal guardrails enforced: depth clamped to $\le 3$, node budget capped at 40 with guaranteed 30-node deterministic topological quota and up to 10 vector neighbors, transaction statement timeout 250ms, and structural priority pruning.
+- **Outcome:** Core tools defined (`get_context_envelope`, `propose_node_mutation`, `query_requirements`, `get_document_span`, `revert_mutation_batch`, `revert_agent_session`). Traversal guardrails enforced: depth clamped to $\le 3$, node budget capped at 40 with guaranteed 30-node deterministic topological quota and up to 10 vector neighbors, transaction statement timeout 250ms, and structural priority pruning. `query_requirements` operates via PostgreSQL native full-text search (`tsvector` / GIN index) executing in <5ms without external API dependencies or token costs, preserving SLA-1 (<50ms) and offline workflows (addressing LD-6, iteration 4).
 
 ### Spike 6: Agent Identity, Workload Authentication & Semantic Defenses (Invariant I-7)
 
-- **Status:** **Incorporated into Architecture** (`architecture.md` §4 Identity Validator, §5.2 Concurrency Model, §9 Decisions D-11, D-20, and D-30).
+- **Status:** **Incorporated into Architecture** (`architecture.md` §4 Component Topology, §5.2 Concurrency Model, §7 Technology Stack, §9 Decisions D-11, D-20, D-30, D-38, and D-39).
 - **Context:** Invariant I-7 mandates non-repudiable caller attribution; multi-agent races risk cyclic DAG corruption and lock collisions.
-- **Outcome:** Adopted pragmatic two-tier identity model (pre-shared API keys and HMAC tokens for Phase 1–2; OAuth 2.1 deferred to Phase 4). Structural edge mutations and cycle checks serialized via global transaction advisory lock (`pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`), eliminating cycle creation races across disjoint subtrees. Leaf attribute updates utilize native PostgreSQL row-level locks (`SELECT id FROM graph_nodes WHERE id = $1 FOR UPDATE`), eliminating 32-bit hash collision bottlenecks.
+- **Outcome:** Adopted pragmatic two-tier identity model (pre-shared API keys and HMAC tokens for Phase 1–2; OAuth 2.1 deferred to Phase 4). Identity validation is consolidated directly into Axum Tower middleware and `FromRequestParts` extractor (`src/gateway/auth.rs`) with in-process `moka` LRU cache, eliminating artificial component boundaries (addressing LD-11, iteration 4). Structural edge mutations, DAG cycle checks, batch staging approvals (`POST /api/v1/staging/approve`), and administrative rollbacks (`revert_mutation_batch`, `revert_agent_session`) serialize via a global transaction advisory lock (`pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`), eliminating cycle creation races across disjoint subtrees (addressing LD-9, iteration 4). Leaf attribute updates utilize native PostgreSQL row-level locks (`SELECT id FROM graph_nodes WHERE id = $1 FOR UPDATE`), eliminating 32-bit hash collision bottlenecks.
 
 ### Spike 7: Node & Edge Lifecycle State Management & Context Envelope Pruning
 
-- **Status:** **Incorporated into Architecture** (`architecture.md` §5.1 State Ownership, §9 Decisions D-9, D-16, D-21, D-23, and D-25).
+- **Status:** **Incorporated into Architecture** (`architecture.md` §5.1 State Ownership, §9 Decisions D-9, D-16, D-21, D-23, D-25, D-31, D-32, D-34, and D-36).
 - **Context:** Lifecycle states prevent obsolete requirements from polluting agent context envelopes and enable non-destructive reversibility.
-- **Outcome:** Added strongly typed `lifecycle_state` column to `graph_nodes` and `graph_edges` (`DRAFT`, `ACTIVE`, `SUPERSEDED`, `ARCHIVED`, `NEEDS_REVERIFICATION`, `REVERTED`). Candidate requirements write directly into `graph_nodes` as drafts (retiring `staging_queue`). Production context queries filter on `lifecycle_state = 'ACTIVE'` by default; intermediate draft edits log to `draft_revisions` and undergo draft event compaction on approval.
+- **Outcome:** Added strongly typed `lifecycle_state` column to `graph_nodes` and `graph_edges` (`DRAFT`, `ACTIVE`, `SUPERSEDED`, `ARCHIVED`, `NEEDS_REVERIFICATION`, `REVERTED`). Candidate requirements write directly into `graph_nodes` as drafts with non-cascading foreign key `job_id REFERENCES ingestion_jobs(job_id) ON DELETE SET NULL`, preventing accidental requirement deletion on operational job queue cleanup (addressing LD-1, iteration 4). Structural edges in `graph_edges` utilize a dedicated surrogate key (`edge_id UUID PRIMARY KEY`) and partial unique index (`WHERE lifecycle_state = 'ACTIVE'`), eliminating constraint collisions during edge re-linking and lifecycle transitions (addressing LD-2, iteration 4). Ingestion jobs track explicit states `QUEUED` → `PROCESSING` → `STAGED` → `APPROVED` / `REJECTED` (addressing LD-7, iteration 4). Batch promotion validates Invariant INV-1 against the union of active requirements and promotion batch candidates (addressing LD-4, iteration 4). Intermediate draft edits log to `draft_revisions` and undergo draft event compaction on approval.
 
 ---
 
@@ -360,37 +366,44 @@ sequenceDiagram
     actor Engineer as Human Engineer / Lead
     participant Git as Git Document Repository (refs/heads/specs)
     participant API as Axum Gateway & Ingestion API
-    participant Worker as Decomposition Worker (pulldown-cmark + LLM)
+    participant Worker as Cooperative Worker Manager (pulldown-cmark + LLM)
     participant DB as PostgreSQL Substrate (graph_nodes, graph_edges, draft_revisions)
     participant MCP as MCP Gateway (Axum / Stdio Proxy)
     actor Agent as External Autonomous Agent
 
     Note over Engineer, DB: 1. Mechanical Ingestion & Decomposition Loop
     Engineer->>API: Upload specification (Markdown)
-    API->>Git: Commit raw document to specs branch (refs/heads/specs)
+    API->>Git: Commit raw document to specs branch via async mutex (refs/heads/specs)
     API->>DB: Enqueue job in ingestion_jobs (return 202 Accepted with job_id)
     Worker->>DB: Claim job (FOR UPDATE SKIP LOCKED)
     Worker->>Git: Stream raw document text from Git commit
     Worker->>Worker: Stage 1: pulldown-cmark AST parse (extract blocks, 0-based byte spans, RFC 2119 keywords)
-    Worker->>Worker: Stage 2: Targeted LLM classification (compact tuples without source text)
-    Worker->>DB: Insert candidate nodes directly into graph_nodes (DRAFT state, job_id FK)
+    Worker->>Worker: Stage 2: Targeted LLM classification (or fallback to default typing on error/unconfigured)
+    Worker->>DB: Insert candidate nodes into graph_nodes (DRAFT state, job_id FK ON DELETE SET NULL)
+    Worker->>DB: Transition ingestion_jobs status to STAGED
     Engineer->>API: Review candidate nodes via CLI (tks staging list / inspect)
-    Engineer->>API: Granular approval/rejection (tks staging approve [--only/--exclude] or reject)
-    API->>DB: Atomic squash: write canonical APPROVED event to audit_ledger & promote nodes to ACTIVE
+    Engineer->>API: Granular approval or atomic rejection (tks staging approve [--only/--exclude] or reject [--job-id])
+    API->>DB: Acquire global advisory lock & validate INV-1 batch union CTE
+    API->>DB: Atomic squash: write canonical APPROVED event to audit_ledger, promote nodes to ACTIVE, mark job APPROVED
 
     Note over Agent, DB: 2. Agent Execution & Governed Mutation Loop
+    Agent->>MCP: Search requirements or request context envelope
+    opt Full-Text Search
+        MCP->>DB: Execute native full-text query (websearch_to_tsquery against GIN search_tsv, ACTIVE only)
+        DB-->>MCP: Return matching active requirements (<5ms, offline)
+    end
     Agent->>MCP: Request context envelope (target: Task-101)
     MCP->>DB: Execute bounded recursive CTE (quota: 30 topological + 10 vector, depth<=3, statement_timeout 250ms)
     DB-->>MCP: Return bounded ancestor & sibling envelope (ACTIVE nodes only)
     MCP-->>Agent: Deliver context envelope JSON
     Agent->>Agent: Execute local synthesis (code, sub-specs)
     Agent->>MCP: Submit proposed mutation with caller auth token
-    MCP->>MCP: Validate caller identity (Invariant I-7)
+    MCP->>MCP: Validate caller identity via Tower middleware / extractor (Invariant I-7)
     MCP->>DB: Check target node governance_policy & acquire lock
     alt Policy = AUTONOMOUS_ELABORATION (Draft Subtree / Leaf Edit)
         alt Structural Edge Mutation
             DB->>DB: Acquire global advisory lock (tks_structural_mutation) & verify DAG acyclicity
-            DB->>DB: Write node/edge to graph_nodes & graph_edges with DRAFT lifecycle state
+            DB->>DB: Write node/edge to graph_nodes & graph_edges with DRAFT lifecycle state (surrogate edge_id)
         else Leaf Attribute Mutation
             DB->>DB: Acquire native row lock (SELECT ... FOR UPDATE)
             DB->>DB: Update node & append ephemeral patch to draft_revisions
@@ -409,9 +422,9 @@ sequenceDiagram
 
 ### Detailed Sequence Description
 
-1. **Upload & Versioning:** The human engineer uploads a Markdown specification to the REST API. The document is committed directly to a dedicated specifications branch (`refs/heads/specs`) in the bare Git repository object database via direct ODB writes (`git_blob_create_from_buffer`), generating cryptographic blob identifiers and ensuring 100% reachability via the Git commit-tree graph. An ingestion job record is inserted into `ingestion_jobs` and returns `202 Accepted` with a `job_id`.
-2. **Two-Stage Mechanical Decomposition:** A persistent background worker claims the job. Stage 1 mechanically parses the CommonMark AST using `pulldown-cmark`, extracting structural blocks (headings, tables, lists), exact 0-based byte offsets (`byte_start`, `byte_end`), and RFC 2119 keywords with zero LLM token cost. Stage 2 invokes external LLM classification only on ambiguous fragments, instructing the model to output compact classification tuples without echoing source text. Candidate nodes and draft structural edges are written directly into `graph_nodes` and `graph_edges` with `lifecycle_state = 'DRAFT'` and `job_id REFERENCES ingestion_jobs(job_id)`.
-3. **Staging & Granular Human Verification:** Candidate requirements exist directly in `graph_nodes` as drafts linked to `job_id`. The engineer inspects job status, hierarchical structure, and source byte spans using ergonomic CLI review commands (`tks staging list <job_id>`, `tks staging inspect <node_id>`) or direct API query (`GET /api/v1/documents/ingest/{job_id}`). False positives are discarded via `tks staging reject <node_id>`, while valid requirements are approved via granular CLI commands (`tks staging approve <job_id> [--only <id,...> | --exclude <id,...>]`) without manual SQL or curl manipulation.
-4. **Graph Materialization & Draft Compaction:** Approved items are promoted to `ACTIVE` in `graph_nodes`. For draft proposals, intermediate modifications stored in `draft_revisions` are squashed into a single canonical `APPROVED` event in `audit_ledger` with `draft_evolution_summary` JSONB, and `draft_revisions` rows are purged.
-5. **Context Request:** External agents connecting over MCP (via HTTP/SSE or streaming stdio proxy) request context for assigned tasks. The substrate executes a bounded recursive CTE query with a partitioned quota: guaranteed 30 deterministic topological nodes, up to 10 vector neighbors (depth clamped $\le 3$, node budget $\le 40$, 250ms statement timeout, and priority pruning), retrieving parent requirements, direct architectural constraints, and vector-similar contextual nodes without fan-out DoS or prompt noise pollution.
-6. **Execution, Identity Validation & Governed Mutation:** The agent runs locally, then submits proposed updates via MCP presenting its workload credentials. The MCP gateway statelessly validates caller identity (Invariant I-7). For structural mutations, the transaction acquires a global advisory lock (`pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`), executes an in-database recursive cycle check, and writes the draft node/edges. For leaf attribute mutations, the transaction acquires a native PostgreSQL row-level lock (`SELECT id FROM graph_nodes WHERE id = $1 FOR UPDATE`) and logs to `draft_revisions`. If autonomous elaboration is authorized, the change commits as `DRAFT` in `graph_nodes`; if human review is required, it is flagged for review; if a cyclic dependency or invariant violation is detected, it is deterministically rejected.
+1. **Upload & Versioning:** The human engineer uploads a Markdown specification to the REST API. The document is committed directly to a dedicated specifications branch (`refs/heads/specs`) in the bare Git repository object database via direct ODB writes (`git_blob_create_from_buffer`), synchronized in-process via an async mutex (`Arc<tokio::sync::Mutex<git2::Repository>>`) that resolves HEAD and builds tree objects sequentially to eliminate `.git/refs/...lock` collisions and non-fast-forward push rejections. An ingestion job record is inserted into `ingestion_jobs` and returns `202 Accepted` with a `job_id`.
+2. **Two-Stage Mechanical Decomposition & Cooperative Worker:** The unified background worker manager (`src/worker/mod.rs`) claims the job. Stage 1 mechanically parses the CommonMark AST using `pulldown-cmark`, extracting structural blocks (headings, tables, lists), exact 0-based byte offsets (`byte_start`, `byte_end`), and RFC 2119 keywords with zero LLM token cost. Stage 2 invokes external LLM classification only on ambiguous fragments, instructing the model to output compact classification tuples without echoing source text. If LLM credentials are not configured or the external API call fails, the worker gracefully degrades by assigning default typing (`node_type = 'REQUIREMENT'` or `'UNCLASSIFIED'`) and logging a warning. Candidate nodes and draft structural edges are written directly into `graph_nodes` and `graph_edges` with `lifecycle_state = 'DRAFT'` and `job_id REFERENCES ingestion_jobs(job_id) ON DELETE SET NULL`. The worker transitions the job status to `STAGED`.
+3. **Staging & Granular Human Verification:** Candidate requirements exist directly in `graph_nodes` as drafts linked to `job_id`. The engineer inspects job status, hierarchical structure, and source byte spans using ergonomic CLI review commands (`tks staging list <job_id>`, `tks staging inspect <node_id>`) or direct API query (`GET /api/v1/documents/ingest/{job_id}`). False positives are discarded via individual or job-level rejection commands (`tks staging reject [--job-id <job_id> | <node_id>]`, executing `POST /api/v1/staging/reject`), while valid requirements are approved via granular CLI commands (`tks staging approve <job_id> [--only <id,...> | --exclude <id,...>]`).
+4. **Graph Materialization & Draft Compaction:** Staging approval acquires `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))` and evaluates Invariant INV-1 ancestor paths against the union of currently `ACTIVE` requirement nodes and candidate requirement nodes included in the promotion batch (`id = ANY($approved_node_ids)`). Approved items are promoted to `ACTIVE` in `graph_nodes` and `graph_edges`, and `ingestion_jobs.status` transitions to `APPROVED`. For draft proposals, intermediate modifications stored in `draft_revisions` are squashed into a single canonical `APPROVED` event in `audit_ledger` with `draft_evolution_summary` JSONB, and `draft_revisions` rows are purged.
+5. **Context Request & Requirement Querying:** External agents connecting over MCP (via HTTP/SSE or streaming stdio proxy) query requirements or request context for assigned tasks. Requirements search (`query_requirements`) executes via PostgreSQL native full-text search (`tsvector` / GIN index) in <5ms without external API tokens or network latency. Context envelope retrieval (`get_context_envelope`) executes a bounded recursive CTE query with a partitioned quota: guaranteed 30 deterministic topological nodes, up to 10 vector neighbors (depth clamped $\le 3$, node budget $\le 40$, 250ms statement timeout, and priority pruning), retrieving parent requirements, direct architectural constraints, and vector-similar contextual nodes without fan-out DoS or prompt noise pollution.
+6. **Execution, Identity Validation & Governed Mutation:** The agent runs locally, then submits proposed updates via MCP presenting its workload credentials. The MCP gateway statelessly validates caller identity via Axum Tower middleware and request extractor (`src/gateway/auth.rs`) against `agent_identities` (Invariant I-7). For structural mutations, the transaction acquires a global advisory lock (`pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`), executes an in-database recursive cycle check, and writes the draft node and edges with surrogate `edge_id` and partial unique indexing. For leaf attribute mutations, the transaction acquires a native PostgreSQL row-level lock (`SELECT id FROM graph_nodes WHERE id = $1 FOR UPDATE`) and logs to `draft_revisions`. If autonomous elaboration is authorized, the change commits as `DRAFT` in `graph_nodes`; if human review is required, it is flagged for review; if a cyclic dependency or invariant violation is detected, it is deterministically rejected.
