@@ -1,5 +1,5 @@
 {
-	"name": "Rust Template",
+	"name": "The Knowledge Substrate",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"dockerComposeFile": [
 		"docker-compose.yml",
@@ -8,7 +8,8 @@
 	"service": "app",
 	// Add "neo4j" and/or "postgres" for experiments that need them.
 	"runServices": [
-		"app"
+		"app",
+		"postgres"
 	],
 	"workspaceFolder": "/workspace",
 	"postCreateCommand": "bash .devcontainer/post-create.sh",
