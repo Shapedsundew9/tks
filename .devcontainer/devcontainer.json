@@ -32,7 +32,7 @@
 				"rust-lang.rust-analyzer",
 				"tamasfe.even-better-toml",
 				"vadimcn.vscode-lldb",
-				"serayuzgur.crates",
+				"fill-labs.dependi",
 				"eamodio.gitlens",
 				"bierner.markdown-mermaid",
 				"DavidAnson.vscode-markdownlint",

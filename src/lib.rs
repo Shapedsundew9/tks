@@ -1,4 +1,4 @@
-//! Rust Base Template Library.
+//! TKS Template Library.
 
 /// Returns the default greeting message.
 #[must_use]
