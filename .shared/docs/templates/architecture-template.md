@@ -3,7 +3,6 @@
 <!--
 Architecture template. Keep every level-2 heading below, in this order, even if a section is brief.
 Replace {placeholders}. Delete these guidance comments once a section is written.
-Diagrams follow .shared/docs/guides/mermaid-style-guide.md. Maths follows .shared/docs/guides/math-style-guide.md.
 Architecture covers topology, boundaries, contracts, state and invariants. Component-level design,
 library evaluation and sprint-level work belong in technical-backlog.md. Business intent belongs in vision.md.
 -->
