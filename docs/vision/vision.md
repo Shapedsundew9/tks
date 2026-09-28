@@ -55,6 +55,10 @@ In modern delivery lifecycles, project vision documents, product requirements (P
 
 As agent synthesis speed outpaces human reading capacity, human supervisors face an unscalable verification burden: reviewing massive, multi-file code diffs generated in seconds. Humans cannot verify whether thousands of lines of synthesized code adhere to twenty subtle non-functional constraints, cross-cutting security policies, and accepted product requirements. Software engineering risks shifting from an intentional design discipline into an opaque quality-assurance bottleneck.
 
+### The Build-vs-Leverage Imperative (Operational Substrate vs. Retrospective ALM)
+
+Existing Application Lifecycle Management (ALM) platforms (e.g., IBM DOORS Next, Jama Connect, Siemens Polarion) and issue-tracker traceability matrix extensions treat requirements traceability primarily as a retrospective reporting and compliance concern. Autonomous software engineering, however, requires traceability to function as an active, forward-looking operational substrate for real-time agent context assembly. Extending legacy ALM tools via external adapters is architecturally insufficient: agent workflows require sub-second topological graph traversals, co-located vector search, and programmatic mutation governance at the storage layer. Purpose-building the Knowledge Substrate around a unified graph-relational engine ensures that topological provenance is the primary operational data structure rather than an afterthought export.
+
 ---
 
 ## 2. The North Star Vision
@@ -141,10 +145,11 @@ flowchart LR
 
 ```
 
+* **Resource-Constrained Execution Model:** The project operates under an explicitly constrained resource model. The phased roadmap is engineered so that each progression phase delivers standalone operational value and can be evaluated or falsified independently. Phase 0 and Phase 1 are scoped to be achievable by a small team (or individual developer) utilizing commodity infrastructure. Subsequent milestones (Phases 3 and 4) are aspirational targets whose investment is strictly contingent on the demonstrated viability and dogfooding adoption of earlier phases.
 * **Single-Engine Operational Footprint:** All topology data, vector embeddings, relational metadata, and audit records reside in a single PostgreSQL instance. Distributed multi-database setups (e.g., maintaining an external vector database or separate graph DBMS alongside PostgreSQL) are prohibited, eliminating distributed transaction failures and synchronization drift. Raw text specifications are version-governed via Git and referenced relationally.
 * **Externalized Cognitive Compute:** The core Knowledge Substrate never directly invokes LLM inference for its internal operational loops. External agents supply their own compute and models. LLM interaction within the substrate is restricted to human-directed document ingestion and decomposition pipelines.
 * **Stateless Gateway Boundary:** The MCP and REST interfaces maintain no persistent session memory. Each operation is an authenticated, isolated transaction targeting explicit node identifiers and payloads. The gateway must validate caller identity on every request; no mutation may be committed to the audit ledger without a verified external identity reference.
-* **Document Immutability & Provenance Guarantee:** Uploaded text specifications (Markdown, plain text) are stored in a Git-backed document repository and content-addressed via cryptographic hashes. Requirements derived from them reference the document commit/blob identity and source character spans. Span stability and revision reconciliation are managed at the strategic implementation level.
+* **Document Immutability & Provenance Guarantee:** Uploaded text specifications (Markdown, plain text) are stored in a Git-backed document repository and content-addressed via cryptographic hashes. Requirements derived from them reference the document commit/blob identity and source character spans. Span stability, deterministic boundary re-anchoring, and revision reconciliation are managed at the strategic implementation level.
 * **Schema Flexibility via Progressive Layering:** Core system tables enforce only foundational structural edges (`DERIVED_FROM`, `CONSTRAINED_BY`, `FULFILLS`, `VERIFIED_BY`). Domain-specific attributes and evolving project taxonomy are managed via typed JSONB fields to avoid costly schema migrations during early project phases.
 * **Bootstrap Boundary Contract:** Initial system design and Phase 0 development occur using conventional developer tooling. From the completion of foundational ingestion and context retrieval capabilities onward, all subsequent requirements, architectural decisions, and development tasks must be tracked and governed within the substrate itself.
 
@@ -302,11 +307,11 @@ quadrantChart
 
 ### The Bootstrapping Progression Strategy
 
-To honor the principle to "start small" and iterate, development follows a strict self-referential bootstrapping path:
+To honor the principle to "start small" under a constrained resource model, development follows a strict self-referential bootstrapping path where each milestone delivers standalone utility before subsequent phases are attempted:
 
 * **Phase 0 Baseline:** Initial architecture and storage foundations are built externally using standard tools. Phase 0 additionally includes lightweight evaluation spikes to generate early directional signal on the highest-risk strategic hypotheses (H-1, H-4), reducing the probability of significant infrastructure investment on unvalidated premises.
 * **Phase 1 Self-Hosting Gate:** Upon completing the core ingestion and read-only MCP gateway, the project's own documentation (`vision.md`, backlogs) is ingested into the substrate.
-* **Phase 2+ Evolution:** All subsequent requirements and tasks are managed within the substrate itself, using autonomous agents operating via MCP to advance the codebase.
+* **Phase 2+ Evolution:** All subsequent requirements and tasks are managed within the substrate itself, using autonomous agents operating via MCP to advance the codebase. Phases 3 and 4 remain aspirational targets contingent on the demonstrated operational viability of earlier phases.
 
 *(Note: Specific phase deliverables, engineering schedules, and operational dependencies are detailed in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
 

@@ -6,10 +6,11 @@
 
 This document is the execution, tactical, and architectural companion to the [Technical Vision](file:///workspaces/tks/docs/vision/vision.md). While the vision document defines the enduring North Star, foundational principles, environmental boundaries, and falsification criteria, this backlog details the phased execution roadmap, technical evaluation spikes, operational metrics, and concrete implementation workflows.
 
-This backlog is specifically organized around the **"Start Small"** and **"Self-Referential Dogfooding"** directives:
+This backlog is specifically organized around the **"Start Small"**, **"Constrained Resource Model"**, and **"Self-Referential Dogfooding"** directives:
 
 - Minimize premature architectural complexity during early phases.
 - Build the simplest viable mechanisms that satisfy the core vision invariants.
+- Scope Phase 0 and Phase 1 to be fully achievable by a small team or solo developer using commodity infrastructure, ensuring each phase delivers standalone value.
 - Reach self-hosting as early as possible so the system defines, tracks, and governs its own ongoing development.
 
 ---
@@ -62,7 +63,7 @@ flowchart LR
 - **Core Deliverables:**
   1. **Git-Backed Document Store:** Local/server-side Git repository integration for storing raw Markdown/text documents, generating commit and blob object references.
   2. **PostgreSQL Relational & Graph Schema:** Core tables for requirement entities, structural edges (`DERIVED_FROM`, `CONSTRAINED_BY`), source text span references (document hash, character start/end), and vector embeddings (`pgvector`).
-  3. **Assisted Decomposition Pipeline:** Ingestion REST API endpoint orchestrating prompt-based requirement extraction via external LLM APIs, with a staging table for human review before graph insertion.
+  3. **Assisted Decomposition Pipeline:** Ingestion REST API endpoint orchestrating prompt-based requirement extraction via external LLM APIs, featuring a deterministic span re-anchoring post-processor (resolving exact byte/character offsets in source documents from extracted requirement text) and a staging table for human review before graph insertion.
   4. **Read-Only MCP Server & Identity Scaffolding:** MCP endpoint exposing tool `get_context_envelope` that performs directed graph traversals and vector neighbor lookups, with stateless caller identity verification scaffolding (Invariant I-7).
 - **Dogfooding Milestone (Gate 1):** Ingest the project's own `vision.md` and `strategic-planning-backlog.md` into the Phase 1 substrate, verifying that atomic requirements and constraints can be queried via MCP.
 
@@ -237,11 +238,11 @@ flowchart TD
 
 ### Spike 1: Graph Storage & Query Strategy in PostgreSQL
 
-- **Context:** SQL/PGQ (SQL:2023 Part 16) was removed from PostgreSQL 19 development branches in September 2026 due to catalog stability, concurrency, and security concerns. The project requires an alternative graph query approach within PostgreSQL.
+- **Context:** SQL/PGQ (SQL:2023 Part 16) was reverted from the PostgreSQL 19 release cycle due to design, catalog stability, and security concerns. Native SQL/PGQ support may reappear in a future major release (earliest PostgreSQL 20). The project requires an alternative graph query approach for initial phases. Re-evaluate native SQL/PGQ feasibility when PostgreSQL 20 reaches beta.
 - **Options Under Evaluation:**
   1. **Apache AGE (openCypher Extension):**
      - *Pros:* Rich Cypher query syntax, native graph storage model, optimized for multi-hop graph traversals.
-     - *Cons:* External C extension; compatibility restricted to specific PostgreSQL major versions (currently 14–16); added deployment complexity.
+     - *Cons:* External C extension; compatibility currently spans PostgreSQL 11–18 (with PG 19 support pending stable release); added deployment complexity.
   2. **Standard Recursive CTEs (`WITH RECURSIVE` on Relational Schema):**
      - *Pros:* Zero external dependencies, runs on any vanilla PostgreSQL version, completely stable, fully covered by standard ACID guarantees.
      - *Cons:* More verbose SQL queries for complex path matching; performance requires careful indexing on adjacency tables.
@@ -279,15 +280,16 @@ flowchart TD
   3. **Retrieval Interface:**
      - REST API provides raw text retrieval by resolving the Git reference (`git cat-file` or `libgit2` bindings) for external agents and UI rendering.
 
-### Spike 4: Assisted Decomposition Prompting & Prior Art Analysis
+### Spike 4: Assisted Decomposition Prompting & Deterministic Span Re-Anchoring
 
-- **Context:** Automated requirement extraction from unstructured Markdown documents must produce coherent, atomic graph nodes with high precision.
+- **Context:** Automated requirement extraction from unstructured Markdown documents must produce coherent, atomic graph nodes with high precision. External research (e.g., LLMStructBench 2026) and practitioner consensus indicate that while LLMs reliably generate schema-compliant JSON, they remain fundamentally challenged by character-level coordinate precision due to subword tokenization boundaries, UTF-8 multibyte characters, and whitespace normalization artifacts. Relying solely on raw LLM offsets risks violating Invariant I-4 (Cryptographic Source Anchoring).
 - **Prior Art to Analyze:**
   - **SARA:** Analyzes requirements as knowledge graphs using Git and Markdown. Study its document parsing conventions and edge taxonomies.
   - **Proj-Theseus:** Multi-level requirement traceability models; inspect its schema conventions for specification decomposition.
-- **Evaluation Tasks:**
+- **Evaluation Tasks & Deterministic Fallback Architecture:**
   - Benchmark few-shot prompts against diverse Markdown structures (tables, bulleted lists, RFC 2119 keyword sections).
-  - Validate character span accuracy returned by LLMs (e.g., handling UTF-8 multibyte offsets and newline normalization).
+  - Measure LLM character span precision/recall against ground-truth source offsets across UTF-8 multibyte text and Markdown formatting.
+  - **Deterministic Span Re-Anchoring Fallback:** If direct LLM-produced character offsets fall below the CAL-H4 threshold ($\ge 95\%$), implement a deterministic post-processing pipeline. Under this pattern, the LLM outputs extracted verbatim requirement text snippets and structural section headers, and a deterministic text-search / fuzzy byte alignment algorithm (e.g., Myers diff, Boyer-Moore, or localized string search) maps the extracted snippet back to the source document byte stream to re-derive verified `[char_start, char_end]` coordinates. This preserves Invariant I-4 without requiring LLMs to calculate token-to-byte offsets.
 
 ### Spike 5: Model Context Protocol (MCP) Tool Schema Design
 
@@ -338,7 +340,7 @@ In alignment with the Technical Vision's graduated response model (§7), empiric
 | **CAL-H1** (Constraint Preservation) | $\ge 70\%$ violation reduction vs. flat vector | **$30\% - 69\%$ reduction:** Narrow domain to deeply coupled architectures or modular microservices; hybridize topological envelopes with local lexical retrieval. | $\le 0\%$ or non-significant improvement vs. flat vector (Triggers Kill #2). |
 | **CAL-H2** (Supervisory Review Overhead) | $\ge 50\%$ review time reduction | **$25\% - 49\%$ reduction:** Streamline supervisory UI staging workflows and enrich topological blast-radius visualizations. | $\le 0\%$ reduction (supervisory graph review equals or exceeds diff review time; Triggers Kill #1). |
 | **CAL-H3** (Single-Engine Scalability) | Sustained $< 100\text{ ms}$ at $10^6$ nodes | **$< 100\text{ ms}$ at $10^5$ nodes, degrading at $10^6$:** Satisfies small-to-mid enterprise repos; apply read-replica offloading, partition audit ledger, and optimize CTE indexes. | $> 500\text{ ms}$ latency at $\le 10^5$ nodes despite index optimization (Triggers Kill #3). |
-| **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95\%$ precision/recall on spans | **$80\% - 94\%$ precision/recall:** Enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60\%$ precision/recall or severe span hallucination (Triggers Kill #1). |
+| **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95\%$ precision/recall on spans | **$80\% - 94\%$ precision/recall:** Engage deterministic span re-anchoring post-processor (fuzzy byte alignment against source) to correct offset drift; enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60\%$ precision/recall or severe span hallucination despite deterministic re-anchoring (Triggers Kill #1). |
 
 ---
 
@@ -409,7 +411,7 @@ sequenceDiagram
 ### Detailed Sequence Description
 
 1. **Upload & Versioning:** The human engineer uploads a Markdown specification to the REST API. The document is immediately committed to the underlying Git repository, preserving byte-for-byte fidelity and generating cryptographic commit and blob identifiers.
-2. **Parsing & Character Span Tagging:** The ingestion service formats the document for the decomposition LLM prompt. The model segments the text into atomic requirement items, returning character coordinate spans (`[start, end]`) corresponding to the source text in Git.
+2. **Parsing & Character Span Tagging:** The ingestion service formats the document for the decomposition LLM prompt. The model segments the text into atomic requirement items, returning extracted text and candidate spans. A deterministic post-processing step matches the extracted requirement text against the source document byte stream, resolving verified character coordinate spans (`[start, end]`) pointing to the immutable Git source blob.
 3. **Staging & Human Verification:** Parsed requirements enter a staging state. The engineer reviews the extracted nodes, adjusts governance flags, and approves insertion.
 4. **Graph Materialization:** Approved items are committed to PostgreSQL, writing records to the live graph topology, embedding tables, and append-only audit ledger.
 5. **Context Request:** External agents connecting over MCP request context for assigned tasks. The substrate executes a directed graph query retrieving parent requirements, linked architectural constraints, and vector-similar contextual nodes.
