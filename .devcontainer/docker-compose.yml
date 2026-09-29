@@ -9,6 +9,8 @@ services:
     volumes:
       - ..:/workspace:cached
       - tks-gitdata:/git
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
     command: sleep infinity
 
   neo4j:

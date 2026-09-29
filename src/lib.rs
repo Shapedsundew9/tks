@@ -12,6 +12,10 @@ pub struct Cli {
     /// Run pending database migrations against $DATABASE_URL and exit.
     #[arg(long)]
     pub migrate_only: bool,
+
+    /// Optional database connection URL (overrides $DATABASE_URL).
+    #[arg(long)]
+    pub database_url: Option<String>,
 }
 
 /// Returns the default greeting message.
@@ -48,9 +52,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// Returns an error if migration or database connection fails.
 pub async fn run_with_args(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     if cli.migrate_only {
-        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://postgres:postgres@localhost:5432/postgres".to_string()
-        });
+        let database_url = cli.database_url.unwrap_or_else(db::resolve_database_url);
 
         tracing::info!("Connecting to database for migrations...");
         let (mut client, _handle) = db::connect(&database_url).await?;
@@ -87,6 +89,7 @@ mod tests {
     async fn test_run_default() {
         let cli = Cli {
             migrate_only: false,
+            database_url: None,
         };
         assert!(run_with_args(cli).await.is_ok());
     }

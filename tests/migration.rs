@@ -4,8 +4,7 @@ use tks::db;
 
 #[tokio::test]
 async fn test_migration_and_schema_verification() {
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/postgres".to_string());
+    let database_url = db::resolve_database_url();
 
     let (mut client, _handle) = db::connect(&database_url)
         .await
@@ -20,6 +19,11 @@ async fn test_migration_and_schema_verification() {
         "Applied migrations count: {}",
         report.applied_migrations().len()
     );
+
+    // Clean up any leftover test records from prior runs
+    let _ = client
+        .execute("DELETE FROM graph_nodes WHERE node_key LIKE 'TEST-%';", &[])
+        .await;
 
     // 1. Verify required tables exist in information_schema.tables
     let expected_tables = vec![
@@ -121,10 +125,33 @@ async fn test_migration_and_schema_verification() {
         "UNCLASSIFIED must be rejected when lifecycle_state is ACTIVE"
     );
 
-    // 5. Clean up test records
+    // 5. Verify vector(384) column and HNSW index compatibility on node_embeddings (D-77)
+    let node_row = client
+        .query_one(
+            "INSERT INTO graph_nodes (node_key, node_type, title, content, lifecycle_state, created_by)
+             VALUES ('TEST-VEC-001', 'REQUIREMENT', 'Vector Node', 'Testing vector column', 'ACTIVE', 'test_user')
+             RETURNING id;",
+            &[],
+        )
+        .await
+        .expect("Failed to insert test requirement node for vector test");
+    let test_node_id: uuid::Uuid = node_row.get(0);
+
+    let insert_embedding = client
+        .execute(
+            "INSERT INTO node_embeddings (node_id, content_hash, embedding, status)
+             VALUES ($1, 'dummy_hash', array_fill(0.0::real, ARRAY[384])::vector, 'COMPLETED');",
+            &[&test_node_id],
+        )
+        .await;
+    if let Err(e) = &insert_embedding {
+        panic!("vector(384) embedding insert failed: {e}");
+    }
+
+    // 6. Clean up test records
     let _ = client
         .execute(
-            "DELETE FROM graph_nodes WHERE node_key IN ('TEST-DRAFT-001', 'TEST-ACTIVE-001');",
+            "DELETE FROM graph_nodes WHERE node_key IN ('TEST-DRAFT-001', 'TEST-ACTIVE-001', 'TEST-VEC-001');",
             &[],
         )
         .await;

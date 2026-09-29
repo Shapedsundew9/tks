@@ -8,6 +8,39 @@ mod embedded {
     embed_migrations!("migrations");
 }
 
+/// Resolves the database connection string.
+///
+/// Priority:
+/// 1. `TKS_DATABASE_URL` environment variable if set and non-empty.
+/// 2. `DATABASE_URL` environment variable if set and non-empty, unless it points to an
+///    external host without pgvector (e.g. host LAN leak).
+/// 3. Devcontainer internal service hostname `postgres:5432` if resolvable.
+/// 4. Localhost fallback `localhost:5432`.
+#[must_use]
+pub fn resolve_database_url() -> String {
+    use std::net::ToSocketAddrs;
+
+    if let Ok(url) = std::env::var("TKS_DATABASE_URL")
+        && !url.trim().is_empty()
+    {
+        return url;
+    }
+
+    if let Ok(url) = std::env::var("DATABASE_URL")
+        && !url.trim().is_empty()
+        && !url.contains("192.168.")
+        && !url.contains("shapedsundew9")
+    {
+        return url;
+    }
+
+    if ("postgres", 5432).to_socket_addrs().is_ok() {
+        "postgresql://postgres:postgres@postgres:5432/postgres".to_string()
+    } else {
+        "postgresql://postgres:postgres@localhost:5432/postgres".to_string()
+    }
+}
+
 /// Runs embedded database migrations asynchronously using refinery.
 ///
 /// # Errors
