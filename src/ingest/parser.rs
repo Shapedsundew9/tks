@@ -26,6 +26,8 @@ pub struct ExtractedChunk {
     pub canonical_keys: Vec<String>,
     /// Flag indicating whether this chunk contains RFC 2119 keywords or canonical keys requiring semantic classification.
     pub is_candidate: bool,
+    /// Exact sliced text content from the source span.
+    pub content: Option<String>,
 }
 
 /// Errors that can occur during CommonMark AST decomposition.
@@ -235,6 +237,7 @@ pub fn parse_markdown_blocks(
                             rfc2119_keywords,
                             canonical_keys,
                             is_candidate,
+                            content: Some(chunk_text.to_string()),
                         };
 
                         chunks.push(chunk);
@@ -274,6 +277,7 @@ pub fn parse_markdown_blocks(
                             rfc2119_keywords,
                             canonical_keys,
                             is_candidate,
+                            content: Some(chunk_text.to_string()),
                         };
 
                         chunks.push(chunk);

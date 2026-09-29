@@ -8,6 +8,9 @@
 | DEC-0.2 | WP-0.2 | Enclosing Section Heading Attribution for Non-Heading Structural Chunks | API/Contract Elaboration | architecture.md §5.2, technical-backlog.md TB-2 | Implemented |
 | DEC-0.3 | WP-0.2 | Deterministic AST Anchor Generation and Root Pre-Heading Scope Indexing | Specification Gap | technical-backlog.md TB-2.4, architecture.md §5.2 | Implemented |
 | DEC-0.4 | WP-0.2 | Standalone Benchmark Harness Execution on Stable Rust Toolchain | Technical Trade-off | technical-backlog.md TB-2.7, phase0-plan.md WP-0.2 | Implemented |
+| DEC-0.5 | WP-0.3 | ExtractedChunk In-Memory Content Retention for Zero-Source Classification Prompting | API/Contract Elaboration | architecture.md §5.2, technical-backlog.md TB-2 | Implemented |
+| DEC-0.6 | WP-0.3 | Compact Ordinal Aliasing and Dual Anchor Resolution in Classification Tuples | Specification Gap | architecture.md §1 C-11, phase0-plan.md WP-0.3 | Implemented |
+| DEC-0.7 | WP-0.3 | Dual-Mode Evaluation Harness Supporting Offline Mock Simulation and Live REST Invocations | Technical Trade-off | architecture.md §7, technical-backlog.md TB-2 | Implemented |
 
 ---
 
@@ -60,4 +63,41 @@
   * *Option B:* Configure `[[bench]]` with `harness = false` in `Cargo.toml` and implement a deterministic benchmark binary in `benches/ast_decomposition_bench.rs` using `std::time::Instant`. (Pros: Zero third-party dependencies, builds and executes cleanly with `cargo bench --bench ast_decomposition_bench` on stable Rust, satisfies all verification criteria with precise token reduction and latency calculations).
 * **Decision Taken & Rationale:** Adopted Option B. Aligns strictly with dependency minimization (C-10) and stable Rust toolchain rules while delivering deterministic benchmark verification.
 * **Upstream Impact & Target Document:** `technical-backlog.md` TB-2.7, `docs/vision/phase0-plan.md` WP-0.2.
+* **Status:** Implemented
+
+### DEC-0.5: ExtractedChunk In-Memory Content Retention for Zero-Source Classification Prompting
+
+* **Work Package:** WP-0.3
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** The `ExtractedChunk` struct contract in WP-0.2 originally recorded only byte boundaries (`byte_start`, `byte_end`) to demonstrate raw zero-copy slicing directly against source bytes. Downstream semantic classification in Stage 2 (`build_classification_prompt(chunks: &[ExtractedChunk]) -> String`), however, requires chunk text to compose prompt payloads. If `ExtractedChunk` lacks in-memory text, prompt construction would require passing raw source text buffers or re-reading files, breaking the pure `&[ExtractedChunk]` signature and complicating multi-document evaluation.
+* **Options Considered:**
+  * *Option A:* Require callers to pass `(&[ExtractedChunk], &str)` or `(&[ExtractedChunk], &[u8])` to `build_classification_prompt`. (Pros: Preserves struct byte-only minimalism. Cons: Breaks the contract signature `build_classification_prompt(chunks: &[ExtractedChunk]) -> String` defined in `phase0-plan.md`; fragile when chunks originate from disparate document buffers).
+  * *Option B:* Add `pub content: Option<String>` to `ExtractedChunk`, populated during `parse_markdown_blocks` with sliced UTF-8 text while preserving 0-based byte offsets for zero-copy slicing validation. (Pros: Self-contained candidate representation in memory; perfectly matches the prompt builder signature; backwards-compatible with all existing tests).
+* **Decision Taken & Rationale:** Adopted Option B. Enables self-contained chunks that can be passed directly to classification, serialization, and evaluation routines without carrying raw file buffers, while preserving 100% roundtrip span coordinate fidelity.
+* **Upstream Impact & Target Document:** `architecture.md` §5.2, `technical-backlog.md` TB-2.
+* **Status:** Implemented
+
+### DEC-0.6: Compact Ordinal Aliasing and Dual Anchor Resolution in Classification Tuples
+
+* **Work Package:** WP-0.3
+* **Category:** Specification Gap
+* **Context & Problem:** `phase0-plan.md` WP-0.3 specifies a compact JSON schema `[{"chunk_id": "c1", ...}]` and requires output tokens to represent <10% of document input tokens. CommonMark AST anchors (`doc#h1/h2#block-0`) can be 30–60 characters long. Prompting the LLM to output full anchors in response tuples would inflate output token consumption by 3–4x and risk model hallucination of anchor slugs. Conversely, downstream database writes need absolute AST anchors for topological linking.
+* **Options Considered:**
+  * *Option A:* Force the LLM to output full AST anchors in the `chunk_id` field. (Pros: Direct identity mapping. Cons: Ballooning output tokens violating the <10% token ratio constraint; high risk of model typos/hallucinations on long anchor strings).
+  * *Option B:* Assign compact ordinal aliases (`c1`, `c2`, ...) in the classification prompt, instruct the LLM to output only ordinal aliases, and provide bidirectional mapping in `map_classifications_to_chunks` supporting both ordinal aliases and absolute AST anchors. (Pros: Minimizes LLM output tokens [<3% across full corpus], prevents hallucination, provides seamless mapping back to originating `ExtractedChunk`).
+* **Decision Taken & Rationale:** Adopted Option B. Strictly enforces the Project Initiator directive on output token minimization and ensures robust deserialization.
+* **Upstream Impact & Target Document:** `architecture.md` §1 C-11, `docs/vision/phase0-plan.md` WP-0.3.
+* **Status:** Implemented
+
+### DEC-0.7: Dual-Mode Evaluation Harness Supporting Offline Mock Simulation and Live REST Invocations
+
+* **Work Package:** WP-0.3
+* **Category:** Technical Trade-off
+* **Context & Problem:** `phase0-plan.md` WP-0.3 requires evaluation runner `tests/extraction_eval.rs` supporting both mock and live API execution against hand-labeled ground-truth fixtures with optional `$LLM_API_KEY`. Adding heavy HTTP client dependencies to core runtime dependencies would violate constraint C-10 and inflate binary size before the gateway layer is built.
+* **Options Considered:**
+  * *Option A:* Depend solely on mock simulation with no live API invocation pathway. (Pros: Zero dependencies. Cons: Fails to satisfy the explicit requirement for supporting live API execution when credentials are provided).
+  * *Option B:* Add `reqwest` to workspace runtime `[dependencies]`. (Pros: Live API anywhere. Cons: Bloats runtime binary prior to Phase 1 gateway construction, violating C-10).
+  * *Option C:* Add `reqwest` strictly to `[dev-dependencies]` and implement conditional live evaluation gated by `LLM_API_KEY` and `TKS_LIVE_EVAL=1`, defaulting to deterministic offline mock simulation for CI and local test suites. (Pros: Zero bloat on production runtime library; enables live API validation against external OpenAI-compatible endpoints when desired; ensures deterministic, offline execution with zero network dependency during automated test runs).
+* **Decision Taken & Rationale:** Adopted Option C. Preserves minimal runtime footprint while fulfilling the live and offline test harness requirements.
+* **Upstream Impact & Target Document:** `architecture.md` §7, `technical-backlog.md` TB-2.
 * **Status:** Implemented
