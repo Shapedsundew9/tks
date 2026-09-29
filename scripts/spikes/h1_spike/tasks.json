@@ -1,0 +1,542 @@
+[
+  {
+    "task_id": "TASK-EVAL-01",
+    "title": "Gateway MCP Envelope Dispatcher with Context Propagation",
+    "target_node_id": "node-task-gate-01",
+    "subsystem": "gateway",
+    "description": "Implement the get_context_envelope dispatch function for the MCP protocol gateway. The function must extract the target node ID from request parameters, retrieve the envelope from storage, and return a JSON-RPC response.",
+    "local_context": "// Gateway MCP Context Envelope Handler\nuse serde_json::Value;\n\npub struct McpRequest {\n    pub id: String,\n    pub method: String,\n    pub params: Value,\n    pub headers: std::collections::HashMap<String, String>,\n}\n\npub async fn dispatch_envelope(req: McpRequest) -> Result<Value, String> {\n    let target_node_id = req.params.get(\"target_node_id\").and_then(Value::as_str).ok_or(\"missing target_node_id\")?;\n    // TODO: assemble envelope and return\n    Ok(serde_json::json!({\"status\": \"ok\", \"target\": target_node_id}))\n}",
+    "invariants_tested": ["INV-TRACE-01", "INV-ERR-03"],
+    "rubric": [
+      {
+        "id": "RUBRIC-01-A",
+        "name": "Trace ID Context Propagation",
+        "invariant_key": "INV-TRACE-01",
+        "required_patterns": ["trace_id", "x-trace-id"],
+        "forbidden_patterns": ["Uuid::new_v4() // ignore incoming", "\"no-trace\""],
+        "description": "Must extract and propagate trace_id from headers into request context."
+      },
+      {
+        "id": "RUBRIC-01-B",
+        "name": "Canonical Error Envelope Hierarchy",
+        "invariant_key": "INV-ERR-03",
+        "required_patterns": ["JsonRpcError", "GATEWAY_INVALID_REQUEST"],
+        "forbidden_patterns": ["Result<Value, String>", "unwrap()"],
+        "description": "Must format errors into canonical JsonRpcError envelope with typed code instead of raw strings."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-02",
+    "title": "Storage Node Insertion with Embedded Spans & Author Attribution",
+    "target_node_id": "node-task-store-01",
+    "subsystem": "storage",
+    "description": "Implement node insertion into graph_nodes table. The handler takes a new node input including document source coordinates, validates boundaries, and persists the entity.",
+    "local_context": "// Storage Node Persistence Handler\nuse uuid::Uuid;\nuse tokio_postgres::Client;\n\npub struct NewNodeInput {\n    pub node_key: String,\n    pub title: String,\n    pub content: String,\n    pub doc_path: String,\n    pub byte_start: usize,\n    pub byte_end: usize,\n}\n\npub async fn insert_node(client: &Client, input: NewNodeInput) -> Result<Uuid, Box<dyn std::error::Error>> {\n    // TODO: persist node\n    Ok(Uuid::new_v4())\n}",
+    "invariants_tested": ["INV-AUTH-02", "INV-SPAN-07"],
+    "rubric": [
+      {
+        "id": "RUBRIC-02-A",
+        "name": "Non-Repudiable Author Attribution",
+        "invariant_key": "INV-AUTH-02",
+        "required_patterns": ["created_by", "actor_id"],
+        "forbidden_patterns": ["'system' /* hardcoded anonymous */", "DEFAULT 'system'"],
+        "description": "Must explicitly bind created_by author attribution from session actor."
+      },
+      {
+        "id": "RUBRIC-02-B",
+        "name": "Multi-Byte Character Boundary Validation",
+        "invariant_key": "INV-SPAN-07",
+        "required_patterns": ["is_char_boundary", "byte_start <= byte_end"],
+        "forbidden_patterns": ["&content[input.byte_start..input.byte_end] // unchecked"],
+        "description": "Must assert character boundary safety before slicing document text."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-03",
+    "title": "Audit Event Append with Monotonic Sequencing and Batch Correlation",
+    "target_node_id": "node-task-ledg-01",
+    "subsystem": "ledger",
+    "description": "Implement audit log append routine recording an entity state change. The function must insert into audit_ledger and return the generated event identifier.",
+    "local_context": "// Audit Ledger Appender\nuse uuid::Uuid;\nuse serde_json::Value;\nuse tokio_postgres::Client;\n\npub struct AuditEntry {\n    pub entity_id: Uuid,\n    pub entity_type: String,\n    pub event_type: String,\n    pub delta: Value,\n}\n\npub async fn append_audit_entry(client: &Client, entry: AuditEntry) -> Result<i64, Box<dyn std::error::Error>> {\n    // TODO: insert audit record\n    Ok(1)\n}",
+    "invariants_tested": ["INV-AUDIT-05", "INV-AUTH-02"],
+    "rubric": [
+      {
+        "id": "RUBRIC-03-A",
+        "name": "Atomic Batch Correlation Key",
+        "invariant_key": "INV-AUDIT-05",
+        "required_patterns": ["batch_id", "event_seq"],
+        "forbidden_patterns": ["Uuid::nil()", "batch_id: None"],
+        "description": "Must correlate transaction with batch_id UUID and record monotonic event_seq."
+      },
+      {
+        "id": "RUBRIC-03-B",
+        "name": "Actor Attribution & Token Fingerprint Recording",
+        "invariant_key": "INV-AUTH-02",
+        "required_patterns": ["actor_id", "token_fingerprint"],
+        "forbidden_patterns": ["token_fingerprint: \"none\"", "actor_id: \"anonymous\""],
+        "description": "Must record verified actor_id and SHA-256 token_fingerprint on audit log entry."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-04",
+    "title": "Auth Bearer Header Parser with Secret Redaction",
+    "target_node_id": "node-task-auth-01",
+    "subsystem": "auth",
+    "description": "Implement bearer token parser extracting the token from an Authorization header value. Must log extraction status and handle malformed headers cleanly.",
+    "local_context": "// Auth Header Parser\npub fn parse_bearer_token(auth_header: Option<&str>) -> Result<String, String> {\n    let header = auth_header.ok_or(\"Missing header\")?;\n    if let Some(token) = header.strip_prefix(\"Bearer \") {\n        Ok(token.to_string())\n    } else {\n        Err(\"Invalid bearer prefix\".to_string())\n    }\n}",
+    "invariants_tested": ["INV-SEC-08", "INV-ERR-03"],
+    "rubric": [
+      {
+        "id": "RUBRIC-04-A",
+        "name": "Credential & Token Redaction",
+        "invariant_key": "INV-SEC-08",
+        "required_patterns": ["[REDACTED]", "redact"],
+        "forbidden_patterns": ["println!(\"Token: {}\", token)", "tracing::info!(\"Bearer {}\", token)"],
+        "description": "Must never log or expose raw bearer token; diagnostic logs must redact secrets."
+      },
+      {
+        "id": "RUBRIC-04-B",
+        "name": "Canonical Error Envelope Mapping",
+        "invariant_key": "INV-ERR-03",
+        "required_patterns": ["AUTH_UNAUTHORIZED", "AuthError"],
+        "forbidden_patterns": ["Result<String, String>", "panic!"],
+        "description": "Must map parsing failures to canonical AUTH_UNAUTHORIZED typed error."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-05",
+    "title": "DAG Edge Mutation with Advisory Lock Hierarchy",
+    "target_node_id": "node-task-store-03",
+    "subsystem": "storage",
+    "description": "Implement graph edge linking with DAG cycle prevention. The function creates a directed relationship between from_node_id and to_node_id.",
+    "local_context": "// Storage Edge Linking\nuse uuid::Uuid;\nuse tokio_postgres::Transaction;\n\npub async fn link_graph_edge(tx: &Transaction<'_>, from_id: Uuid, to_id: Uuid, edge_type: &str) -> Result<Uuid, Box<dyn std::error::Error>> {\n    // TODO: cycle check and insert\n    Ok(Uuid::new_v4())\n}",
+    "invariants_tested": ["INV-CONCUR-06", "INV-ERR-03"],
+    "rubric": [
+      {
+        "id": "RUBRIC-05-A",
+        "name": "Transaction Advisory Lock Acquisition",
+        "invariant_key": "INV-CONCUR-06",
+        "required_patterns": ["pg_advisory_xact_lock", "tks_structural_mutation"],
+        "forbidden_patterns": ["// lock omitted", "tx.execute(\"INSERT INTO graph_edges\""],
+        "description": "Must acquire pg_advisory_xact_lock(hashtext('tks_structural_mutation')) before cycle checks."
+      },
+      {
+        "id": "RUBRIC-05-B",
+        "name": "Canonical Conflict Error Mapping",
+        "invariant_key": "INV-ERR-03",
+        "required_patterns": ["STORE_CONFLICT", "StoreError"],
+        "forbidden_patterns": ["panic!(\"Cycle detected\")", "Err(\"cycle\")"],
+        "description": "Must map detected cycle to canonical STORE_CONFLICT error variant."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-06",
+    "title": "Gateway Auth Middleware with Trace Header Injection",
+    "target_node_id": "node-task-gate-04",
+    "subsystem": "gateway",
+    "description": "Implement authentication middleware for HTTP gateway routes. Must authenticate bearer token and attach caller context.",
+    "local_context": "// Gateway Auth Middleware\nuse axum::{http::Request, middleware::Next, response::Response};\n\npub async fn auth_middleware(req: Request<axum::body::Body>, next: Next) -> Response {\n    // TODO: authenticate request\n    next.run(req).await\n}",
+    "invariants_tested": ["INV-TRACE-01", "INV-AUTH-02"],
+    "rubric": [
+      {
+        "id": "RUBRIC-06-A",
+        "name": "Trace ID Header Injection",
+        "invariant_key": "INV-TRACE-01",
+        "required_patterns": ["x-trace-id", "trace_id"],
+        "forbidden_patterns": ["// ignore trace", "req.headers().remove(\"x-trace-id\")"],
+        "description": "Must propagate incoming x-trace-id or inject generated trace_id into context."
+      },
+      {
+        "id": "RUBRIC-06-B",
+        "name": "Token Fingerprint Calculation",
+        "invariant_key": "INV-AUTH-02",
+        "required_patterns": ["token_fingerprint", "Sha256"],
+        "forbidden_patterns": ["token_fingerprint: raw_token", "raw_token.clone()"],
+        "description": "Must compute SHA-256 token_fingerprint and bind ActorContext to request extensions."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-07",
+    "title": "Draft Revision Compaction on Staging Approval",
+    "target_node_id": "node-task-ledg-03",
+    "subsystem": "ledger",
+    "description": "Implement staging approval compaction. When draft nodes are promoted to ACTIVE status, compact the draft history into the canonical audit ledger.",
+    "local_context": "// Draft Approval Compactor\nuse uuid::Uuid;\nuse tokio_postgres::Transaction;\n\npub async fn approve_draft_nodes(tx: &Transaction<'_>, job_id: Uuid, node_ids: &[Uuid]) -> Result<(), Box<dyn std::error::Error>> {\n    // TODO: update lifecycle state and compact\n    Ok(())\n}",
+    "invariants_tested": ["INV-STATE-04", "INV-AUDIT-05"],
+    "rubric": [
+      {
+        "id": "RUBRIC-07-A",
+        "name": "Draft Lifecycle Evolution Summary Compaction",
+        "invariant_key": "INV-STATE-04",
+        "required_patterns": ["draft_evolution_summary", "APPROVED"],
+        "forbidden_patterns": ["DELETE FROM audit_ledger", "drop_history: true"],
+        "description": "Must compact draft revisions into single APPROVED event with draft_evolution_summary."
+      },
+      {
+        "id": "RUBRIC-07-B",
+        "name": "Atomic Promotion Batch Correlation",
+        "invariant_key": "INV-AUDIT-05",
+        "required_patterns": ["batch_id", "Uuid::new_v4()"],
+        "forbidden_patterns": ["batch_id: None", "event_seq: 0"],
+        "description": "Must bind all compacted nodes and edge promotions to a single transaction batch_id."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-08",
+    "title": "Document Span Zero-Copy Slicer with Boundary Safety",
+    "target_node_id": "node-task-store-07",
+    "subsystem": "storage",
+    "description": "Implement zero-copy byte slicer taking raw document bytes and start/end offsets, returning a borrowed &str slice.",
+    "local_context": "// Document Span Slicer\npub fn slice_source_span<'a>(bytes: &'a [u8], start: usize, end: usize) -> Result<&'a str, String> {\n    if start > end || end > bytes.len() {\n        return Err(\"Out of bounds\".to_string());\n    }\n    // TODO: slice safely\n    std::str::from_utf8(&bytes[start..end]).map_err(|e| e.to_string())\n}",
+    "invariants_tested": ["INV-SPAN-07", "INV-ERR-03"],
+    "rubric": [
+      {
+        "id": "RUBRIC-08-A",
+        "name": "UTF-8 Character Boundary Verification",
+        "invariant_key": "INV-SPAN-07",
+        "required_patterns": ["is_char_boundary", "from_utf8"],
+        "forbidden_patterns": ["unsafe { std::str::from_utf8_unchecked", "&bytes[start..end] // unchecked"],
+        "description": "Must explicitly check is_char_boundary for both start and end offsets."
+      },
+      {
+        "id": "RUBRIC-08-B",
+        "name": "Typed Span Error Hierarchy",
+        "invariant_key": "INV-ERR-03",
+        "required_patterns": ["SpanError", "InvalidUtf8Boundary"],
+        "forbidden_patterns": ["Result<&'a str, String>", "panic!"],
+        "description": "Must return strongly typed SpanError variants rather than ad-hoc String errors."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-09",
+    "title": "Audit Delta Snapshot Builder with Credential Sanitization",
+    "target_node_id": "node-task-ledg-02",
+    "subsystem": "ledger",
+    "description": "Implement delta snapshot builder comparing prior and revised entity attributes to produce an audit delta JSON object.",
+    "local_context": "// Audit Delta Builder\nuse serde_json::Value;\n\npub fn build_audit_delta(before: &Value, after: &Value) -> Result<Value, String> {\n    // TODO: compute diff and return delta\n    Ok(serde_json::json!({\"before\": before, \"after\": after}))\n}",
+    "invariants_tested": ["INV-SEC-08", "INV-AUDIT-05"],
+    "rubric": [
+      {
+        "id": "RUBRIC-09-A",
+        "name": "Secret & Token Field Redaction in Delta",
+        "invariant_key": "INV-SEC-08",
+        "required_patterns": ["redact", "[REDACTED]"],
+        "forbidden_patterns": ["\"token\": after[\"token\"]", "\"secret\": after[\"secret\"]"],
+        "description": "Must sanitize sensitive keys (token, secret, key, password) before writing delta snapshot."
+      },
+      {
+        "id": "RUBRIC-09-B",
+        "name": "Batch ID Correlation Embedding",
+        "invariant_key": "INV-AUDIT-05",
+        "required_patterns": ["batch_id", "delta"],
+        "forbidden_patterns": ["batch_id: \"\"", "untracked: true"],
+        "description": "Must correlate delta payload with transaction batch_id."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-10",
+    "title": "Gateway Canonical Error Envelope Serializer",
+    "target_node_id": "node-task-gate-05",
+    "subsystem": "gateway",
+    "description": "Implement error serializer converting internal gateway domain errors into external JSON response payloads.",
+    "local_context": "// Gateway Error Serializer\nuse serde_json::Value;\n\npub enum GatewayError {\n    Unauthorized,\n    Conflict(String),\n    Internal(String),\n}\n\npub fn serialize_error(err: &GatewayError) -> Value {\n    serde_json::json!({\"error\": format!(\"{:?}\", err)})\n}",
+    "invariants_tested": ["INV-ERR-03", "INV-SEC-08"],
+    "rubric": [
+      {
+        "id": "RUBRIC-10-A",
+        "name": "Canonical Error Code Mapping",
+        "invariant_key": "INV-ERR-03",
+        "required_patterns": ["AUTH_UNAUTHORIZED", "STORE_CONFLICT"],
+        "forbidden_patterns": ["format!(\"{:?}\", err)", "code: 500"],
+        "description": "Must output canonical standardized error strings (AUTH_UNAUTHORIZED, STORE_CONFLICT)."
+      },
+      {
+        "id": "RUBRIC-10-B",
+        "name": "Internal Detail Leak Prevention",
+        "invariant_key": "INV-SEC-08",
+        "required_patterns": ["trace_id", "sanitized_message"],
+        "forbidden_patterns": ["sql_error", "stack_trace"],
+        "description": "Must suppress internal database errors, sql queries, and stack traces from external output."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-11",
+    "title": "Active Requirement Query Filter with Draft Isolation",
+    "target_node_id": "node-task-store-06",
+    "subsystem": "storage",
+    "description": "Construct SQL query for requirement search, respecting lifecycle states and draft visibility options.",
+    "local_context": "// Active Requirement Query Builder\npub fn build_query(include_drafts: bool) -> String {\n    if include_drafts {\n        \"SELECT * FROM graph_nodes\".to_string()\n    } else {\n        \"SELECT * FROM graph_nodes WHERE lifecycle_state = 'ACTIVE'\".to_string()\n    }\n}",
+    "invariants_tested": ["INV-STATE-04", "INV-AUTH-02"],
+    "rubric": [
+      {
+        "id": "RUBRIC-11-A",
+        "name": "Caller-Scoped Draft Isolation",
+        "invariant_key": "INV-STATE-04",
+        "required_patterns": ["created_by", "lifecycle_state = 'ACTIVE'"],
+        "forbidden_patterns": ["SELECT * FROM graph_nodes /* unconstrained */", "WHERE 1=1"],
+        "description": "Draft visibility MUST be strictly restricted to caller's created_by author credentials."
+      },
+      {
+        "id": "RUBRIC-11-B",
+        "name": "Actor Identity Filtering",
+        "invariant_key": "INV-AUTH-02",
+        "required_patterns": ["actor_id", "created_by = $"],
+        "forbidden_patterns": ["created_by = 'system'", "allow_all_drafts: true"],
+        "description": "Must require verified actor_id when include_drafts is enabled."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-12",
+    "title": "Inter-Subsystem Gateway Dispatcher with Trace Propagation",
+    "target_node_id": "node-task-gate-03",
+    "subsystem": "gateway",
+    "description": "Implement inter-subsystem call dispatcher routing gateway requests to the storage or ledger actors over channels.",
+    "local_context": "// Subsystem Dispatcher\nuse serde_json::Value;\n\npub struct SubsystemDispatcher {\n    // channels\n}\n\nimpl SubsystemDispatcher {\n    pub async fn dispatch(&self, subsystem: &str, action: &str, payload: Value) -> Result<Value, String> {\n        // TODO: route payload\n        Ok(payload)\n    }\n}",
+    "invariants_tested": ["INV-TRACE-01", "INV-ERR-03"],
+    "rubric": [
+      {
+        "id": "RUBRIC-12-A",
+        "name": "Trace Context Propagation Across Channels",
+        "invariant_key": "INV-TRACE-01",
+        "required_patterns": ["trace_id", "with_trace_id"],
+        "forbidden_patterns": ["trace_id: None", "drop_trace: true"],
+        "description": "Must embed trace_id into message envelope sent across subsystem channel."
+      },
+      {
+        "id": "RUBRIC-12-B",
+        "name": "Canonical Dispatch Error Mapping",
+        "invariant_key": "INV-ERR-03",
+        "required_patterns": ["GATEWAY_DISPATCH_FAILED", "GatewayError"],
+        "forbidden_patterns": ["Result<Value, String>", "panic!"],
+        "description": "Must map channel timeouts and errors to GATEWAY_DISPATCH_FAILED typed error."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-13",
+    "title": "Token Fingerprint Verifier with Secret Redaction",
+    "target_node_id": "node-task-auth-02",
+    "subsystem": "auth",
+    "description": "Implement token validation against database agent_identities table using SHA-256 fingerprinting.",
+    "local_context": "// Token Verifier\nuse tokio_postgres::Client;\n\npub async fn verify_token(client: &Client, raw_token: &str) -> Result<String, Box<dyn std::error::Error>> {\n    // TODO: verify token\n    Ok(\"human\".to_string())\n}",
+    "invariants_tested": ["INV-AUTH-02", "INV-SEC-08"],
+    "rubric": [
+      {
+        "id": "RUBRIC-13-A",
+        "name": "SHA-256 Token Fingerprint Computation",
+        "invariant_key": "INV-AUTH-02",
+        "required_patterns": ["token_fingerprint", "Sha256"],
+        "forbidden_patterns": ["WHERE token = raw_token", "SELECT * FROM agent_identities WHERE token_hash = raw_token"],
+        "description": "Must query agent_identities using computed SHA-256 token_fingerprint hash, never raw token."
+      },
+      {
+        "id": "RUBRIC-13-B",
+        "name": "Raw Token Leakage Prevention",
+        "invariant_key": "INV-SEC-08",
+        "required_patterns": ["[REDACTED]", "redact"],
+        "forbidden_patterns": ["tracing::info!(\"Checking token {}\", raw_token)", "eprintln!(\"{}\", raw_token)"],
+        "description": "Must never log or print raw token in log output or errors."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-14",
+    "title": "Multi-Node Edge Insertion with Batch ID & Advisory Lock",
+    "target_node_id": "node-task-store-02",
+    "subsystem": "storage",
+    "description": "Implement bulk edge creation linking multiple requirements under an atomic transaction.",
+    "local_context": "// Bulk Edge Creator\nuse uuid::Uuid;\nuse tokio_postgres::Transaction;\n\npub struct EdgeSpec {\n    pub from_id: Uuid,\n    pub to_id: Uuid,\n    pub edge_type: String,\n}\n\npub async fn create_edges(tx: &Transaction<'_>, edges: &[EdgeSpec]) -> Result<Vec<Uuid>, Box<dyn std::error::Error>> {\n    // TODO: insert edges\n    Ok(vec![])\n}",
+    "invariants_tested": ["INV-AUDIT-05", "INV-CONCUR-06"],
+    "rubric": [
+      {
+        "id": "RUBRIC-14-A",
+        "name": "Global Advisory Lock Acquisition",
+        "invariant_key": "INV-CONCUR-06",
+        "required_patterns": ["pg_advisory_xact_lock", "tks_structural_mutation"],
+        "forbidden_patterns": ["// lock not needed", "for edge in edges { tx.execute"],
+        "description": "Must acquire pg_advisory_xact_lock before processing batch edge insertions."
+      },
+      {
+        "id": "RUBRIC-14-B",
+        "name": "Atomic Batch ID Correlation Across Edges",
+        "invariant_key": "INV-AUDIT-05",
+        "required_patterns": ["batch_id", "Uuid::new_v4()"],
+        "forbidden_patterns": ["batch_id: None", "Uuid::nil()"],
+        "description": "Must bind all inserted edges in batch to single batch_id UUID."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-15",
+    "title": "Audit Ledger Batch Reversion Handler",
+    "target_node_id": "node-task-ledg-06",
+    "subsystem": "ledger",
+    "description": "Implement revert_mutations function rolling back a previously committed transaction batch.",
+    "local_context": "// Batch Reversion Handler\nuse uuid::Uuid;\nuse tokio_postgres::Transaction;\n\npub async fn revert_batch(tx: &Transaction<'_>, batch_id: Uuid) -> Result<usize, Box<dyn std::error::Error>> {\n    // TODO: fetch events and invert deltas\n    Ok(0)\n}",
+    "invariants_tested": ["INV-AUDIT-05", "INV-TRACE-01"],
+    "rubric": [
+      {
+        "id": "RUBRIC-15-A",
+        "name": "Reverse Monotonic Event Sequence Processing",
+        "invariant_key": "INV-AUDIT-05",
+        "required_patterns": ["event_seq DESC", "batch_id"],
+        "forbidden_patterns": ["event_seq ASC", "ORDER BY created_at ASC"],
+        "description": "Must process events in reverse monotonic order (event_seq DESC) to invert deltas safely."
+      },
+      {
+        "id": "RUBRIC-15-B",
+        "name": "Trace ID Attribution on Reversion Events",
+        "invariant_key": "INV-TRACE-01",
+        "required_patterns": ["trace_id", "x-trace-id"],
+        "forbidden_patterns": ["trace_id: None", "\"untraced-revert\""],
+        "description": "Must record caller's trace_id on newly emitted reversion audit events."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-16",
+    "title": "Token Expiration Validator with Clock Skew",
+    "target_node_id": "node-task-auth-03",
+    "subsystem": "auth",
+    "description": "Implement token expiration checker with clock skew tolerance window.",
+    "local_context": "// Token Expiry Checker\nuse chrono::{DateTime, Utc};\n\npub struct TokenClaims {\n    pub exp: i64,\n    pub sub: String,\n}\n\npub fn verify_expiration(claims: &TokenClaims, now: DateTime<Utc>) -> Result<(), String> {\n    if now.timestamp() > claims.exp {\n        Err(\"Token expired\".to_string())\n    } else {\n        Ok(())\n    }\n}",
+    "invariants_tested": ["INV-ERR-03", "INV-AUTH-02"],
+    "rubric": [
+      {
+        "id": "RUBRIC-16-A",
+        "name": "Canonical Expiration Error Mapping",
+        "invariant_key": "INV-ERR-03",
+        "required_patterns": ["AUTH_TOKEN_EXPIRED", "AuthError"],
+        "forbidden_patterns": ["Result<(), String>", "Err(\"expired\")"],
+        "description": "Must return canonical AUTH_TOKEN_EXPIRED error variant."
+      },
+      {
+        "id": "RUBRIC-16-B",
+        "name": "Clock Skew Window & Actor Attribution",
+        "invariant_key": "INV-AUTH-02",
+        "required_patterns": ["60", "actor_id"],
+        "forbidden_patterns": ["skew = 0", "tolerance = 0"],
+        "description": "Must apply 60-second clock skew tolerance and attribute check to actor_id."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-17",
+    "title": "Draft Candidate Node Insertion with Author Attribution",
+    "target_node_id": "node-task-store-04",
+    "subsystem": "storage",
+    "description": "Implement candidate requirement draft persistence during document ingestion.",
+    "local_context": "// Draft Candidate Ingestion\nuse uuid::Uuid;\nuse tokio_postgres::Client;\n\npub struct CandidateNode {\n    pub node_key: String,\n    pub node_type: String,\n    pub content: String,\n}\n\npub async fn insert_candidate(client: &Client, candidate: CandidateNode) -> Result<Uuid, Box<dyn std::error::Error>> {\n    // TODO: insert candidate\n    Ok(Uuid::new_v4())\n}",
+    "invariants_tested": ["INV-STATE-04", "INV-AUTH-02"],
+    "rubric": [
+      {
+        "id": "RUBRIC-17-A",
+        "name": "Draft Lifecycle State Assignment",
+        "invariant_key": "INV-STATE-04",
+        "required_patterns": ["DRAFT", "lifecycle_state"],
+        "forbidden_patterns": ["lifecycle_state: \"ACTIVE\"", "DEFAULT 'ACTIVE'"],
+        "description": "Must enforce lifecycle_state = 'DRAFT' for unapproved candidate nodes."
+      },
+      {
+        "id": "RUBRIC-17-B",
+        "name": "Author Attribution Scoping",
+        "invariant_key": "INV-AUTH-02",
+        "required_patterns": ["created_by", "actor_id"],
+        "forbidden_patterns": ["created_by: \"system\"", "anonymous: true"],
+        "description": "Must set created_by to verified actor_id from caller session."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-18",
+    "title": "Gateway Mutation Proposal Handler with Trace & Concurrency Guard",
+    "target_node_id": "node-task-gate-07",
+    "subsystem": "gateway",
+    "description": "Handle incoming propose_node_mutation MCP tool call.",
+    "local_context": "// Mutation Proposal Handler\nuse serde_json::Value;\nuse tokio_postgres::Transaction;\n\npub async fn handle_proposal(tx: &Transaction<'_>, params: Value) -> Result<Value, String> {\n    // TODO: process proposal\n    Ok(serde_json::json!({\"status\": \"proposed\"}))\n}",
+    "invariants_tested": ["INV-TRACE-01", "INV-CONCUR-06"],
+    "rubric": [
+      {
+        "id": "RUBRIC-18-A",
+        "name": "Trace ID Propagation on Proposals",
+        "invariant_key": "INV-TRACE-01",
+        "required_patterns": ["trace_id", "x-trace-id"],
+        "forbidden_patterns": ["trace_id: None", "drop_trace: true"],
+        "description": "Must extract and pass trace_id through proposal execution."
+      },
+      {
+        "id": "RUBRIC-18-B",
+        "name": "Advisory Lock Acquisition on Structural Proposals",
+        "invariant_key": "INV-CONCUR-06",
+        "required_patterns": ["pg_advisory_xact_lock", "tks_structural_mutation"],
+        "forbidden_patterns": ["// lock skipped", "tx.commit() /* without lock */"],
+        "description": "Must acquire pg_advisory_xact_lock before writing structural candidate edges."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-19",
+    "title": "Audit Query Filter with Actor Identity Boundary",
+    "target_node_id": "node-task-ledg-07",
+    "subsystem": "ledger",
+    "description": "Implement audit log query handler filtering events by authorized actor permissions.",
+    "local_context": "// Audit Log Query Handler\nuse uuid::Uuid;\nuse tokio_postgres::Client;\nuse serde_json::Value;\n\npub async fn query_audit_log(client: &Client, entity_id: Uuid) -> Result<Vec<Value>, Box<dyn std::error::Error>> {\n    // TODO: query audit records\n    Ok(vec![])\n}",
+    "invariants_tested": ["INV-AUTH-02", "INV-SEC-08"],
+    "rubric": [
+      {
+        "id": "RUBRIC-19-A",
+        "name": "Actor Authorization Boundary Check",
+        "invariant_key": "INV-AUTH-02",
+        "required_patterns": ["actor_id", "ADMIN"],
+        "forbidden_patterns": ["// public audit access", "SELECT * FROM audit_ledger WHERE entity_id = $1 /* without actor check */"],
+        "description": "Must verify caller actor_id and role permissions when querying audit events."
+      },
+      {
+        "id": "RUBRIC-19-B",
+        "name": "Snapshot Secret Redaction in Audit Responses",
+        "invariant_key": "INV-SEC-08",
+        "required_patterns": ["[REDACTED]", "redact"],
+        "forbidden_patterns": ["\"token\": row.delta", "\"password\": row.snapshot"],
+        "description": "Must sanitize and redact any secret fields from returned audit snapshots."
+      }
+    ]
+  },
+  {
+    "task_id": "TASK-EVAL-20",
+    "title": "MCP query_requirements Handler with Sanitized Search & Draft Isolation",
+    "target_node_id": "node-task-gate-06",
+    "subsystem": "gateway",
+    "description": "Implement query_requirements MCP tool handling full-text search over active requirements.",
+    "local_context": "// MCP Requirements Query Handler\nuse serde_json::Value;\nuse tokio_postgres::Client;\n\npub async fn handle_query_requirements(client: &Client, query: &str) -> Result<Value, String> {\n    // TODO: search requirements\n    Ok(serde_json::json!([]))\n}",
+    "invariants_tested": ["INV-ERR-03", "INV-STATE-04"],
+    "rubric": [
+      {
+        "id": "RUBRIC-20-A",
+        "name": "Canonical Query Error Envelope",
+        "invariant_key": "INV-ERR-03",
+        "required_patterns": ["GATEWAY_INVALID_QUERY", "JsonRpcError"],
+        "forbidden_patterns": ["Result<Value, String>", "panic!"],
+        "description": "Must format search syntax errors into canonical GATEWAY_INVALID_QUERY envelope."
+      },
+      {
+        "id": "RUBRIC-20-B",
+        "name": "Active Status Draft Exclusion",
+        "invariant_key": "INV-STATE-04",
+        "required_patterns": ["lifecycle_state = 'ACTIVE'", "ACTIVE"],
+        "forbidden_patterns": ["SELECT * FROM graph_nodes /* unfiltered */", "include_unapproved_drafts: true"],
+        "description": "Must exclude unapproved DRAFT entities from public requirement search."
+      }
+    ]
+  }
+]

@@ -35,6 +35,10 @@ path = "src/lib.rs"
 name = "tks"
 path = "src/main.rs"
 
+[[bin]]
+name = "h1_spike_eval"
+path = "scripts/spikes/h1_spike/main.rs"
+
 [[bench]]
 name = "ast_decomposition_bench"
 harness = false

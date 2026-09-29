@@ -11,6 +11,9 @@
 | DEC-0.5 | WP-0.3 | ExtractedChunk In-Memory Content Retention for Zero-Source Classification Prompting | API/Contract Elaboration | architecture.md §5.2, technical-backlog.md TB-2 | Implemented |
 | DEC-0.6 | WP-0.3 | Compact Ordinal Aliasing and Dual Anchor Resolution in Classification Tuples | Specification Gap | architecture.md §1 C-11, phase0-plan.md WP-0.3 | Implemented |
 | DEC-0.7 | WP-0.3 | Dual-Mode Evaluation Harness Supporting Offline Mock Simulation and Live REST Invocations | Technical Trade-off | architecture.md §7, technical-backlog.md TB-2 | Implemented |
+| DEC-0.8 | WP-0.4 | In-Memory Property Graph Topology and Depth-2 Upstream Lineage Traversal | API/Contract Elaboration | architecture.md §6.1, strategic-planning-backlog.md §5 Spike 0 | Implemented |
+| DEC-0.9 | WP-0.4 | Zero-Dependency Process-Isolated Live Evaluation Runner | Technical Trade-off | architecture.md §7, strategic-planning-backlog.md §5 Spike 0 | Implemented |
+| DEC-0.10 | WP-0.4 | Dual Rubric Rule Violation Scoping and Directional Decision Gate | Specification Gap | strategic-planning-backlog.md §6 CAL-H1, architecture.md §10 R-1 | Implemented |
 
 ---
 
@@ -100,4 +103,40 @@
   * *Option C:* Add `reqwest` strictly to `[dev-dependencies]` and implement conditional live evaluation gated by `LLM_API_KEY` and `TKS_LIVE_EVAL=1`, defaulting to deterministic offline mock simulation for CI and local test suites. (Pros: Zero bloat on production runtime library; enables live API validation against external OpenAI-compatible endpoints when desired; ensures deterministic, offline execution with zero network dependency during automated test runs).
 * **Decision Taken & Rationale:** Adopted Option C. Preserves minimal runtime footprint while fulfilling the live and offline test harness requirements.
 * **Upstream Impact & Target Document:** `architecture.md` §7, `technical-backlog.md` TB-2.
+* **Status:** Implemented
+
+### DEC-0.8: In-Memory Property Graph Topology and Depth-2 Upstream Lineage Traversal
+
+* **Work Package:** WP-0.4
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** `phase0-plan.md` WP-0.4 requires `assemble_in_memory_envelope(graph: &InMemoryGraph, target_node_id: &str, depth: usize) -> ContextEnvelope` extracting ancestor requirements up to depth 2 plus immediate sibling `CONSTRAINED_BY` rules. In-memory graphs can have multi-parent upward edges (`DERIVED_FROM`, `FULFILLS`) and bidirectional constraint associations. The traversal mechanics required explicit definition to avoid unbounded cycles, prevent duplicate node inclusions, and guarantee that sibling architectural constraints sharing the parent requirement are captured in the context envelope.
+* **Options Considered:**
+  * *Option A:* Unbounded depth-first search collecting all reachable nodes across all edge types. (Pros: Simple recursive function. Cons: Risks cyclic recursion and context envelope token explosion, violating prompt boundedness).
+  * *Option B:* Breadth-first frontier traversal bounded strictly by `depth` across upward lineage edges (`DERIVED_FROM`, `FULFILLS`), combined with targeted constraint harvesting that collects nodes linked via `CONSTRAINED_BY` to the target and its extracted ancestors, plus sibling invariants sharing the target's immediate parent; with full deduplication. (Pros: Deterministic node envelope bounds, captures all relevant cross-cutting architectural invariants, matches SLA-1 traversal topology constraints).
+* **Decision Taken & Rationale:** Adopted Option B. Ensures deterministic context envelope assembly, bounds token consumption, and directly provides the non-local invariant context necessary to test Hypothesis H-1.
+* **Upstream Impact & Target Document:** `architecture.md` §6.1, `strategic-planning-backlog.md` §5 Spike 0.
+* **Status:** Implemented
+
+### DEC-0.9: Zero-Dependency Process-Isolated Live Evaluation Runner
+
+* **Work Package:** WP-0.4
+* **Category:** Technical Trade-off
+* **Context & Problem:** Spike 0 evaluation binary `h1_spike_eval` needs to support both deterministic offline simulation and live REST LLM invocations against OpenAI-compatible endpoints when `LLM_API_KEY` and `TKS_LIVE_EVAL=1` are configured. Adding HTTP client dependencies (`reqwest`) to the workspace's runtime `[dependencies]` would inflate runtime binary footprint prior to Phase 1 gateway construction, while Cargo binary targets (`[[bin]]`) cannot access `[dev-dependencies]`.
+* **Options Considered:**
+  * *Option A:* Move `reqwest` into workspace runtime `[dependencies]`. (Pros: Native Rust HTTP calls. Cons: Violates constraint C-10 and bloats release binaries with an unnecessary networking stack).
+  * *Option B:* Execute live HTTP requests via subprocess invocation of the standard system `/usr/bin/curl` utility when `TKS_LIVE_EVAL=1` is specified, defaulting to deterministic offline simulation otherwise. (Pros: Zero third-party crate dependencies in `[dependencies]`, 100% offline self-sufficient test runs, robust execution in containerized environments. Cons: Requires `curl` binary on host/container).
+* **Decision Taken & Rationale:** Adopted Option B. Preserves zero added dependency bloat in runtime `Cargo.toml`, maintains full offline testability for CI and local verification, and enables live validation in containerized developer environments.
+* **Upstream Impact & Target Document:** `architecture.md` §7, `strategic-planning-backlog.md` §5 Spike 0.
+* **Status:** Implemented
+
+### DEC-0.10: Dual Rubric Rule Violation Scoping and Directional Decision Gate
+
+* **Work Package:** WP-0.4
+* **Category:** Specification Gap
+* **Context & Problem:** `phase0-plan.md` WP-0.4 specifies evaluating coding agents across 20 synthetic tasks against non-local contracts with rubrics measuring constraint violation reduction against CAL-H1 ($\ge 30\%$). In synthetic coding evaluation, rubric rules test both positive required patterns and negative forbidden patterns; if multiple patterns in a single rule trigger, counting them as multiple independent violations per rule distorts violation rates and exceeds 100% baseline failure.
+* **Options Considered:**
+  * *Option A:* Record independent violations for every pattern mismatch within a rule. (Pros: Highly granular diagnostic strings. Cons: Overcounts violations per rule, producing violation rates exceeding 100% of checked rules and distorting the relative reduction denominator).
+  * *Option B:* Scope violations to at most one violation per rubric rule (recording either the first missing required pattern or the first encountered forbidden pattern as the failure reason), calculating total rule checks as the denominator. (Pros: Mathematically sound violation percentages bounded by 100% [$V / \text{Rules}$], producing an accurate and defensible measurement of the relative violation reduction [$[V_A - V_B] / V_A \times 100\%$]).
+* **Decision Taken & Rationale:** Adopted Option B. Strictly guarantees valid mathematical rate bounds, eliminates duplicate penalty distortion, and produces consistent metrics across all 20 tasks.
+* **Upstream Impact & Target Document:** `strategic-planning-backlog.md` §6 CAL-H1, `architecture.md` §10 R-1.
 * **Status:** Implemented
