@@ -84,8 +84,7 @@ Follow this iterative workflow:
 
 * Require the Project Initiator (user) to provide the path to `docs/vision/phase<N>-plan.md` (or the phase numeric index `<N>`) in a Git repository. If the plan file does not exist, stop and ask the user to clarify; do not guess or create a plan automatically (use `phase-plan.prompt.md` to generate plans).
 * Before starting, inspect the Git status (`git status --porcelain`) for uncommitted changes or unrelated staged changes. Stop and ask the user how to proceed if the working tree is dirty. Leave all unrelated worktree files untouched throughout the workflow.
-* The Project Initiator (user) shall identify one available model ID for the Implementer Sub-Agents (defaulting to `claude-opus-4-6-thinking` or `gemini-3.8-flash-high` if not specified).
-* Verify that the intended model ID is available in the current environment and resolve it to the exact identifier accepted by the sub-agent invocation tool. If ambiguous, ask the user to clarify before beginning. Always invoke sub-agents pinned to the resolved model; never fall back silently to substitute models.
+* The Project Initiator (user) shall identify one available model ID for the Implementer Sub-Agents
 * Inspect `docs/vision/phase<N>-plan.md` to extract:
   * The Phase Name and Primary Objective (Section 1).
   * The ordered sequence and dependency flow of Work Packages (`WP-<N>.1`, `WP-<N>.2`, ...) from Section 2.

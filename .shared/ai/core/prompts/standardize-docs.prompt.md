@@ -2,7 +2,7 @@
 
 Execute these steps to standardize documentation:
 
-- Only apply these style guides. *DO NOT* *apply* any other style guides.
+- Only apply these style guides. *DO NOT apply* any other style guides.
   - Use Mermaid for embedded markdown charts and diagrams where possible. Follow `.shared/docs/guides/mermaid-style-guide.md`.
   - Follow the mathematical notation style and compatibility rules in `.shared/docs/guides/math-style-guide.md`.
 - Run `npx markdownlint-cli2 --fix "**/*.md"`.

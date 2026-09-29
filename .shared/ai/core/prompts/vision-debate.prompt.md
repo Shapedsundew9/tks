@@ -53,7 +53,6 @@ Follow this iterative workflow:
 * Require the Project Initiator (user) to provide the path to `vision.md` in a Git repository. If no path is provided, or the file is not named `vision.md`, stop and ask the user to clarify; do not find or migrate it automatically.
 * Before starting, check the four designated document paths for uncommitted changes and the Git index for unrelated staged changes. Stop and ask the user how to proceed if either is present. Leave all unrelated worktree files untouched throughout the workflow.
 * The Project Initiator (user) shall identify one available model ID for the Visionary Agent and an ordered, non-empty sequence of available model IDs for the Stakeholder Agents. The sequence length defines the number of iterations.
-* Verify that each intended model ID is available in the current environment. Model ID's provided may not be exact matches but should be resolvable to available models. If a model ID is ambiguous or cannot be resolved, ask the user to clarify and do not begin the workflow.
 * The Project Initiator (user) may provide additional context or opinion relevant to the vision to be passed verbatim to the Visionary and Stakeholder agents on the first iteration only.
 * Before starting Phase 2 present the user with the complete unrolled workflow, confirming the exact Visionary model, each Stakeholder model in order, the iteration count, and that each completed iteration will be committed. Begin Phase 2 immediately without waiting for approval.
 
