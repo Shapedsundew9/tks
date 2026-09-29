@@ -20,6 +20,8 @@ tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_j
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["serde", "v4"] }
+pulldown-cmark = "0.13"
+regex = "1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -31,3 +33,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "tks"
 path = "src/main.rs"
+
+[[bench]]
+name = "ast_decomposition_bench"
+harness = false

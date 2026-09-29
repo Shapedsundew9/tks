@@ -4,6 +4,7 @@ use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod db;
+pub mod ingest;
 
 /// Command-line arguments for the TKS CLI.
 #[derive(Parser, Debug)]
