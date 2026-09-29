@@ -37,5 +37,9 @@ You may read local files ONLY at these explicitly provided paths. Do not inspect
   - A table with one row per `LD-n`: `ID | Severity | Bucket (Adopt/Defer/Rebut) | Location` where Location is the changed `architecture.md` section heading, the `TB-n` ID, the `strategic-planning-backlog.md` item, or the `rebuttal.md` heading.
   - An "Upstream Issues" section listing problems in `vision.md` for the Project Initiator, or `None`.
 - Preserve still-valid architecture and backlog content. Write `docs/vision/rebuttal.md` fresh, containing only substantive rebuttals to the current `docs/vision/response.md`; do not create or leave `rebuttal.md` if there are no rebuttals.
-- **Output:** End the final message with exactly one status line:
-`STATUS: RECONCILED <comma-separated paths of files written>`
+- **Output & Token Economy:** Write and update all substantive changes strictly into the designated files.
+  - **DO NOT** summarize, explain, or list your changes, decisions, or triage table in your chat response.
+  - **DO NOT** output commentary, markdown headers, or narrative reports in chat.
+  - All substantive architectural work belongs strictly in the designated files.
+  - Your entire final response message MUST contain EXCLUSIVELY the single status line and nothing else:
+    `STATUS: RECONCILED <comma-separated paths of files written>`

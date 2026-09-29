@@ -31,8 +31,11 @@ You may read local files ONLY at these explicitly provided paths. Do not inspect
   - *Critique:* the implementation problem.
   - *Proposed Alternative:* a concrete alternative or the specification needed.
 - **Focus:** Report at most 10 findings, ranked by severity, plus at most 3 simplifications that remove or consolidate whole components (also numbered `LD-n`). Stylistic preferences and duplicate observations are not findings. Do not get implementation detail obsessed; this is architecture. Detailed specifications will be done in the next phase.
-- **Output:** Write `docs/vision/response.md` only if at least one finding is `Blocker` or `Major`.
-- End the final message with exactly one status line:
-`STATUS: RESPONSE_WRITTEN docs/vision/response.md`
-or
-`STATUS: NO_SIGNIFICANT_FEEDBACK`
+- **Output & Token Economy:** Write `docs/vision/response.md` only if at least one finding is `Blocker` or `Major`.
+  - **DO NOT** summarize, explain, or list your findings in your chat response.
+  - **DO NOT** output commentary, markdown headers, or narrative reports in chat.
+  - All substantive findings belong strictly in `docs/vision/response.md`.
+  - Your entire final response message MUST contain EXCLUSIVELY the single status line and nothing else:
+    `STATUS: RESPONSE_WRITTEN docs/vision/response.md`
+    or
+    `STATUS: NO_SIGNIFICANT_FEEDBACK`
