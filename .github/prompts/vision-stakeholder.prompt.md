@@ -1,0 +1,1 @@
+../../.shared/ai/core/prompts/vision-stakeholder.prompt.md
