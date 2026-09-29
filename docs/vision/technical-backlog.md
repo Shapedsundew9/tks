@@ -24,13 +24,16 @@ This document captures vital component-level designs, library evaluation tasks, 
 
 * **ID:** TB-2
 * **Title:** Mechanical CommonMark AST Parsing, Structural Hierarchy Edge Generation, RFC 2119 Lexical Extraction Benchmark, and Zero-Copy Byte Slicing (`pulldown-cmark`)
-* **Origin:** LD-1, iteration 2; LD-2, iteration 3; LD-3, LD-9, iteration 7
+* **Origin:** LD-1, iteration 2; LD-2, iteration 3; LD-3, LD-9, iteration 7; LD-8, iteration 8
 * **Status:** Active
 * **Description/Tactical Details:**
   1. **Streaming CommonMark Parser Implementation:** In the document ingestion module (`src/ingest/parser.rs`), implement a streaming Markdown parser using `pulldown-cmark`. Traverse the CommonMark event stream to segment ingested documents along structural boundaries (headings H1–H4, tables, blockquotes, and bulleted lists).
   2. **Zero-Token Deterministic Byte Span Capture:** For each structural block event, extract exact 0-based byte offsets (`byte_start`, `byte_end`) directly from the source stream offset tracking provided by `pulldown-cmark`'s `OffsetIter`. Pointers are pinned with 100% precision without LLM inference cost.
   3. **AST Structural Hierarchy Edge Generation Rule:** During Stage 1 streaming AST parsing, maintain an active heading stack tracking nesting levels (H1 through H4). Every extracted child heading or sub-block mechanically records a directed upward structural edge (`DERIVED_FROM`) pointing from the child node to its immediate parent heading node (`child_id -DERIVED_FROM-> parent_id`). When Stage 2 classifies child chunks as `SPECIFICATION` or `TASK`, this mechanical edge guarantees an unbroken path to the enclosing requirement section, ensuring the transactional ancestor CTE during staging promotion succeeds without manual edge authoring (addressing LD-3, iteration 7).
-  4. **Hierarchical Heading Anchor Generation (`ast_anchor`):** Concurrently with heading stack tracking, generate a deterministic slugified heading path anchor for each block (e.g. `specs/vision.md#section-1/subsection-a`), stored in `graph_nodes.attributes->'ast_anchor'`. This deterministic structural anchor serves as the second-tier correlation key during document revision diffing when canonical `node_key` is not defined (addressing LD-9, iteration 7).
+  4. **Hierarchical Heading Anchor Generation with Disambiguation (`ast_anchor`):** Concurrently with heading stack tracking, generate a deterministic slugified heading path anchor for each block (e.g. `specs/vision.md#section-1/subsection-a`), stored in `graph_nodes.attributes->'ast_anchor'`. To prevent duplicate anchor collisions across identical section titles and sub-blocks within CommonMark documents (addressing LD-8, iteration 8):
+     * *Heading Slug Disambiguation:* When duplicate heading titles occur within the same parent section scope (e.g., repeated "Overview", "Rationale", or "Implementation" subsections), append an occurrence counter suffix (e.g., `doc_path#section/overview-1`, `doc_path#section/overview-2`).
+     * *Ordinal Block Indexing for Non-Heading Sub-Blocks:* For non-heading structural blocks (bullet lists, tables, paragraphs) extracted under an enclosing heading, append an ordinal block index suffix (e.g., `doc_path#section/heading#block-0`, `doc_path#section/heading#block-1`).
+     This guarantees that every extracted AST block generates a globally unique, deterministic `ast_anchor` within the document, ensuring Tier 2 reconciliation diffing does not conflate distinct chunks or corrupt span re-anchoring across revisions.
   5. **Zero-Copy Byte Slicing & UTF-8 Safety:** Standardize span extraction in the Rust service layer on raw byte slicing against the source buffer (`&source_bytes[byte_start..byte_end]`) prior to UTF-8 validation (`std::str::from_utf8`), eliminating string slicing panics on multi-byte UTF-8 sequences (em-dashes, curly quotes, math symbols).
   6. **Rule-Based RFC 2119 & Entity Lexical Matcher:** Implement a deterministic scanner matching RFC 2119 keywords (`MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`, `MAY`, `OPTIONAL`) and project entity tags (`REQ-*`, `INV-*`, `DR-*`, `C-*`, `TB-*`). Structural chunks containing these patterns are tagged as candidate requirements.
   7. **Benchmarking & Token Reduction Calibration:** Benchmark parsing throughput, memory footprint, and token reduction across representative PRDs and specification documents of varying sizes (3,000 to 10,000 words). Verify that mechanical extraction handles $\ge 80$% of structural decomposition before any external LLM invocation, measuring output token savings.
@@ -95,7 +98,7 @@ This document captures vital component-level designs, library evaluation tasks, 
 * **Status:** Active
 * **Description/Tactical Details:**
   1. **Target Node Query Vector Resolution:** In `src/storage/envelope.rs`, implement query vector resolution for vector neighbor retrieval in `get_context_envelope(target_node_id, depth)`. When allocating slots for vector neighbor ranking, the repository queries `node_embeddings` for `target_node_id` (`SELECT embedding FROM node_embeddings WHERE node_id = $1`) to serve as the reference query vector for similarity search against other active nodes.
-  2. **Ancestor Requirement Embedding Fallback for Newly Elaborated Tasks:** If `target_node_id` lacks an embedding record in `node_embeddings` (e.g. for a newly created or elaborated execution task, since candidate tasks do not enqueue embeddings until active and newly claimed tasks may have embeddings pending in `embedding_queue`), resolve the reference query vector from its immediate parent requirement node:
+  2. **Ancestor Requirement Embedding Fallback for Newly Elaborated Tasks:** If `target_node_id` lacks an embedding record in `node_embeddings` (e.g. for a newly created or elaborated execution task, since candidate tasks do not enqueue embeddings until active and newly claimed tasks may have embeddings pending in `node_embeddings` with `status = 'PENDING'`), resolve the reference query vector from its immediate parent requirement node:
 
      ```sql
      SELECT embedding FROM node_embeddings
@@ -103,11 +106,11 @@ This document captures vital component-level designs, library evaluation tasks, 
          SELECT to_node_id FROM graph_edges
          WHERE from_node_id = $1 AND edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM')
          LIMIT 1
-     );
+     ) AND status = 'COMPLETED';
      ```
 
      This allows newly created tasks to immediately benefit from vector-enriched cross-cutting governance constraints without requiring synchronous embedding calculation.
-  3. **Pending Embedding Graceful Fallback:** If both `target_node_id` and its parent requirement node lack an embedding in `node_embeddings` (because asynchronous embedding generation is pending, throttled by backoff, or external embedding API is disabled), the repository layer must gracefully skip vector similarity search.
+  3. **Pending Embedding Graceful Fallback:** If both `target_node_id` and its parent requirement node lack an embedding in `node_embeddings` with `status = 'COMPLETED'` (because asynchronous embedding generation is pending, throttled by backoff, or external embedding API is disabled), the repository layer must gracefully skip vector similarity search.
   4. **Dynamic Quota Reallocation:** When vector neighbor search is skipped, reallocate the full 40-node context envelope budget to deterministic topological recursive CTE traversal. This ensures external agents always receive a rich, bounded context envelope of ancestor requirements and sibling constraints without failing, waiting on external APIs, or timing out.
 
 ---
@@ -116,7 +119,7 @@ This document captures vital component-level designs, library evaluation tasks, 
 
 * **ID:** TB-7
 * **Title:** Canonical Node Key Lexical Extraction, Polymorphic Identifier Resolution, Query Sanitization, and Document Revision Reconciliation
-* **Origin:** LD-2, LD-5, iteration 6; LD-7, LD-8, LD-9, LD-11, iteration 7
+* **Origin:** LD-2, LD-5, iteration 6; LD-7, LD-8, LD-9, LD-11, iteration 7; LD-1, LD-6, LD-8, LD-9, iteration 8
 * **Status:** Active
 * **Description/Tactical Details:**
   1. **Canonical Node Key Extraction & Ingestion Tagging:** In `src/ingest/parser.rs`, extend the deterministic RFC 2119 keyword scanner (TB-2) to extract human-readable canonical identifiers (`REQ-*`, `INV-*`, `DR-*`, `C-*`, `TASK-*`) from section headings and block labels, populating `graph_nodes.node_key VARCHAR(64)` during mechanical decomposition.
@@ -135,10 +138,18 @@ This document captures vital component-level designs, library evaluation tasks, 
      This guarantees sub-5ms exact resolution for standard keys (e.g. `REQ-CORE-001`, `INV-2`) while preserving natural language full-text search (addressing LD-7, iteration 7).
   4. **AST Revision Diffing & 3-Tier Reconciliation:** In the document decomposition worker (`src/worker/decomp.rs` / `src/ingest/reconcile.rs`), on re-ingestion of a document at persistent `doc_path`, correlate extracted CommonMark AST structural blocks against existing active nodes anchored to that `doc_path` using a strict three-tier priority hierarchy:
      * *Tier 1 (Canonical Key Match):* Match by explicit `node_key` if defined.
-     * *Tier 2 (Structural Heading Anchor Match):* Match by deterministic hierarchical heading anchor (`ast_anchor` from TB-2, e.g. `specs/vision.md#architecture/storage`).
+     * *Tier 2 (Structural Heading Anchor Match):* Match by deterministic, disambiguated hierarchical heading anchor (`ast_anchor` with heading slug disambiguation and ordinal block indexing per TB-2, e.g. `doc_path#section/overview-1`, `doc_path#section/heading#block-0`).
      * *Tier 3 (Content Hash Match):* Match by normalized SHA-256 hash of title and text content.
-  5. **In-Place Embedded Span Re-Anchoring:** Following the elimination of the standalone `source_spans` table (LD-11, iteration 7), document span coordinates are stored directly as columns on `graph_nodes` (`doc_path`, `doc_hash`, `byte_start`, `byte_end`). When an active node's text content is identical across document revisions and only byte offsets shifted:
-     * Update `graph_nodes` columns (`doc_hash = $2, byte_start = $3, byte_end = $4`) in place.
-     * Do NOT generate candidate replacement nodes or orphan drafts.
-     * For modified content, stage candidate `DRAFT` nodes referencing `replaces_node_id`. Upon staging approval, supersede previous active nodes and mark downstream child tasks `NEEDS_REVERIFICATION`.
-     * For deleted sections, transition active nodes anchored to `doc_path` missing from the approved revision to `SUPERSEDED`.
+  5. **Staged Candidate Span Re-Anchoring & Atomic Approval Execution:** Following the consolidation of document span coordinates directly as columns on `graph_nodes` (`doc_path`, `doc_hash`, `byte_start`, `byte_end`), span re-anchoring must NEVER mutate active production requirements prior to human approval (addressing LD-1, iteration 8):
+     * *Candidate Coordinate Staging:* When an active node's text content matches across document revisions and only byte offsets shifted, the decomposition worker records candidate re-anchored coordinates within `ingestion_jobs` candidate attributes (or candidate metadata). The active node row in `graph_nodes` remains untouched and continues to reference the approved Git blob and byte offsets during the staging window.
+     * *Atomic Approval Execution:* The physical in-place update of `doc_hash`, `byte_start`, and `byte_end` on active nodes executes strictly inside the atomic staging approval transaction (`POST /api/v1/staging/approve` or `POST /api/v1/documents/ingest/{job_id}/approve`) under `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`.
+     * *Audit Attribution:* The atomic update generates a discrete `SPAN_REANCHORED` audit event in `audit_ledger` with monotonic `event_seq` and transaction correlation `batch_id`.
+     * *Zero Residue on Rejection:* If the supervisor rejects or cancels the ingestion job, the candidate coordinates are discarded, leaving active production nodes completely unmutated.
+     * *Modified & Deleted Content:* For modified content, stage candidate `DRAFT` nodes referencing `replaces_node_id`. Upon staging approval, supersede previous active nodes and mark downstream child tasks `NEEDS_REVERIFICATION`. For deleted sections, transition active nodes anchored to `doc_path` missing from the approved revision to `SUPERSEDED`.
+  6. **Worker Concurrency Hardening & Timeout Reclaim Draft Purging:** To prevent race conditions and duplicate draft accumulation during background decomposition (addressing LD-6, iteration 8):
+     * *Conditional Terminal Transition:* When the background worker finishes Stage 2 decomposition, it executes a conditional status update:
+       `UPDATE ingestion_jobs SET status = 'STAGED', updated_at = NOW() WHERE job_id = $1 AND status = 'PROCESSING';`
+       If zero rows are updated (because the job was superseded by a document re-ingestion sweep or cancelled), the worker immediately aborts and purges its candidate draft nodes:
+       `DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT';`
+     * *Atomic Timeout Reclaim Purge:* When a background worker reclaims a timed-out `PROCESSING` job (`updated_at < NOW() - INTERVAL '180s'`), the worker atomically purges any existing partial candidate draft nodes (`DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT';`) before restarting AST parsing and semantic classification, preventing duplicate candidate draft rows.
+  7. **Governance Policy Inheritance for Autonomous Tasks:** In `src/storage/mutation.rs`, when a verified agent elaborates an execution sub-task (`node_type = 'TASK'`) directly into `ACTIVE` state under a parent node with `governance_policy = 'AUTONOMOUS_ELABORATION'`, the newly created task inherits the parent's `governance_policy` (`AUTONOMOUS_ELABORATION`) by default unless explicitly overridden in the mutation payload (addressing LD-9, iteration 8). This ensures that the agent retains permission to update its own task status (`IN_PROGRESS`, `COMPLETED`) under native row locks without requiring supervisory intervention or violating NOT NULL check constraints.

@@ -1,29 +1,24 @@
-# Triage Ledger: Architectural Review Alignment
+# Triage Ledger
 
-This ledger catalogs the architectural triage and disposition of all findings and simplifications presented by the Lead Developer in `response.md` (Iteration 7).
+This triage ledger tracks the architectural disposition of critique findings LD-1 through LD-12 from `docs/vision/response.md` (iteration 8). Every finding has been evaluated from first principles and sorted into Adopt, Defer, or Rebut.
 
-## Triage Table
+## Findings Triage Table
 
 | ID | Severity | Bucket | Location |
 | :--- | :--- | :--- | :--- |
-| LD-1 | Blocker | Adopt | `architecture.md` §5.1 (Entity Typing and Relational Constraints), §5.2 (Two-Stage Mechanical Ingestion), §9 (Decision D-62) |
-| LD-2 | Blocker | Adopt | `architecture.md` §3 (Invariants INV-1, INV-5), §5.1 (Disambiguated Mutation Pathways), §6 (Interfaces & Contracts: `get_context_envelope`, `propose_node_mutation`), §9 (Decision D-63) |
-| LD-3 | Major | Adopt | `architecture.md` §4 (Decomposition Pipeline), §5.2 (Two-Stage Mechanical Ingestion), §9 (Decision D-64); `technical-backlog.md` TB-2 |
-| LD-4 | Major | Adopt | `architecture.md` §5.1 (Relational Constraints: `audit_ledger`), §6 (Interfaces & Contracts: `revert_mutations`), §9 (Decision D-65) |
-| LD-5 | Major | Adopt | `architecture.md` §5.2 (Concurrency Model), §9 (Decision D-66); `strategic-planning-backlog.md` §7 (Sequence Diagram) |
-| LD-6 | Major | Adopt | `architecture.md` §5.1 (State Ownership: Ingestion Jobs & Document Revision Reconciliation), §5.2 (Two-Stage Mechanical Ingestion), §9 (Decision D-67) |
-| LD-7 | Major | Adopt | `architecture.md` §5.1 (Entity Typing: `search_tsv`), §6 (Interfaces & Contracts: `query_requirements`), §9 (Decision D-68); `technical-backlog.md` TB-7 |
-| LD-8 | Major | Adopt | `architecture.md` §5.1 (State Ownership & Document Revision Reconciliation), §9 (Decision D-69); `technical-backlog.md` TB-7 |
-| LD-9 | Minor | Defer | `technical-backlog.md` TB-7 (Document Revision Reconciliation & AST Heading Anchors) |
-| LD-10 | Minor | Rebut | `rebuttal.md` §LD-10; `architecture.md` §9 (Decision D-70 [Rejected]) |
-| LD-11 | Major (Simplification) | Adopt | `architecture.md` §4 (Component Topology), §5.1 (State Ownership: Embedded Spans), §7 (Technology Stack), §9 (Decision D-71) |
-| LD-12 | Major (Simplification) | Adopt | `architecture.md` §4 (Dedicated Git Actor Task), §5.2 (Concurrency Model: Git Read/Write Split), §7 (Technology Stack), §9 (Decision D-72); `technical-backlog.md` TB-1 |
-| LD-13 | Minor (Simplification) | Adopt | `architecture.md` §5.1 (Rollback Cascade Mechanics), §6 (Interfaces & Contracts: `revert_mutations`), §7 (Technology Stack), §9 (Decision D-73) |
-
----
+| LD-1 | Blocker | Adopt | `architecture.md` §2.2 (C-4), §3 (INV-2), §5.1 (Document Revision Reconciliation), §6 (Staging Approval), §9 (D-74); `technical-backlog.md` TB-7; `strategic-planning-backlog.md` §1, §4, §7 |
+| LD-2 | Major | Adopt | `architecture.md` §2.2 (C-13, C-21), §3 (INV-7), §5.1 (Entity Typing and Relational Constraints), §5.2 (Context Envelope Traversal Guardrails), §6 (`get_context_envelope`, `propose_node_mutation`), §9 (D-75); `strategic-planning-backlog.md` §1, §2, §4 |
+| LD-3 | Major | Adopt | `architecture.md` §3 (INV-1), §4, §5.1 (Reverification Interface & Operational Unblocking), §5.2 (Degraded Node Inspection), §6 (`reverify_node`, `get_context_envelope`), §7, §8, §9 (D-76); `strategic-planning-backlog.md` §1, §2, §4 |
+| LD-4 | Major | Adopt | `architecture.md` §2.2 (C-22), §5.1 (State Ownership, Entity Typing DDL), §5.2 (Asynchronous Out-of-Band Embedding Generation), §7, §9 (D-77), §11 (Q-4); `strategic-planning-backlog.md` §2 |
+| LD-5 | Major | Adopt | `architecture.md` §2.2 (C-21), §4, §5.1 (Entity Typing DDL), §5.2 (Context Envelope Traversal Guardrails), §9 (D-78); `strategic-planning-backlog.md` §2 |
+| LD-6 | Major | Adopt | `architecture.md` §5.1 (State Ownership), §5.2 (Two-Stage Mechanical Ingestion), §8 (Failure & Recovery), §9 (D-79); `technical-backlog.md` TB-7; `strategic-planning-backlog.md` §1, §7 |
+| LD-7 | Minor | Adopt | `architecture.md` §3 (INV-2), §5.1 (Rollback Cascade Mechanics), §6 (`revert_mutations`), §7, §8, §9 (D-80); `strategic-planning-backlog.md` §1, §2, §4 |
+| LD-8 | Minor | Defer | `technical-backlog.md` TB-2 (CommonMark AST Document Decomposition Pipeline), TB-7 (AST Revision Diffing & 3-Tier Reconciliation) |
+| LD-9 | Minor | Adopt | `architecture.md` §3 (INV-5), §5.1 (Disambiguated Mutation Pathways), §6 (`propose_node_mutation`), §9 (D-81); `technical-backlog.md` TB-7; `strategic-planning-backlog.md` §1, §2 |
+| LD-10 | Minor | Adopt | `architecture.md` §10 (R-1); `strategic-planning-backlog.md` §6 (Quantitative Operational Targets: CAL-H1) |
+| LD-11 | Major | Adopt | `architecture.md` §2.2 (C-17), §4 (Topology diagram and Component table), §5.1 (State Ownership, Consolidated DDL), §5.2 (Worker polling), §6, §7, §8, §9 (D-82), §11 (Q-8); `technical-backlog.md` TB-6; `strategic-planning-backlog.md` §1, §2, §7 |
+| LD-12 | Minor | Adopt | `architecture.md` §4, §5.1, §6 (Staging Approval and Staging Rejection), §8, §9 (D-83) |
 
 ## Upstream Issues
 
-None.
-
-The governing vision (`vision.md`) remains fully sound and aligned with the architectural specifications. Key capabilities—including Attribute-Based Node Governance (Key Capability #5), Immutable Audit Ledger & Historical Reversibility (Key Capability #4), Cryptographic Source Anchoring (Invariant I-4), and Bidirectional Traceability (Invariant I-1)—provide the necessary conceptual foundation for the adopted schema enhancements, lock hierarchies, and interface consolidations.
+None
