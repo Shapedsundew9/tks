@@ -28,7 +28,7 @@ You may read repository files as needed to implement the work package. You may c
 - **Delivery & Testing Ownership:** Code presence alone is never sufficient for completion. You own delivery and verification end-to-end:
   - Implement comprehensive automated tests (unit, integration, doc tests, or benchmarks) covering functional requirements, edge cases, and error paths.
   - Execute all deterministic commands defined in the Work Package's "Verification & Proof Criteria" (e.g., test suites, benchmarks, CLI invocations).
-  - Run and ensure clean passes for repository quality gates: `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` with zero warnings.
+  - Run and ensure clean lint and test passes for repository quality gates with zero warnings.
   - All tests and verification commands must pass cleanly before reporting completion.
 - **Autonomy & Decision Record Protocol (`docs/vision/phase<N>-decisions.md`):**
   - *Implementer Freedom to Decide:* You are explicitly empowered and expected to make tactical engineering decisions in order to achieve the work package goal without stalling when encountering specification gaps, multiple viable technical paths, or tactical trade-offs.

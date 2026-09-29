@@ -91,12 +91,9 @@ Process each Work Package sequentially according to the dependency flow establis
 Once all Work Packages are completed and committed, the Orchestrator executes Section 4 of `docs/vision/phase<N>-plan.md` to confirm phase readiness.
 
 1. **Global Quality & Sanity Check:**
-   * Execute project-wide formatting check:
-     `cargo fmt --check`
-   * Execute project-wide linter check:
-     `cargo clippy --all-targets --all-features -- -D warnings`
-   * Execute all unit, integration, and doc tests:
-     `cargo test --all-targets`
+   * Execute project-wide formatting checks
+   * Execute project-wide linter checks
+   * Execute all unit, integration, and doc tests
    * If any check fails, do NOT fix the code. Dispatch an Implementer Sub-Agent with the failing output to resolve the regression before continuing.
 
 2. **Milestone Demonstration (Section 4.2):**
