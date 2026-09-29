@@ -69,6 +69,7 @@
 		}
 	},
 	"remoteEnv": {
+		"DATABASE_URL": "${localEnv:DATABASE_URL:postgresql://postgres:postgres@postgres:5432/postgres}",
 		"GITHUB_TOKEN": "${localEnv:COPILOT_GITHUB_TOKEN}",
 		"GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
 		"ARC_AGI_API": "${localEnv:ARC_AGI_API}",

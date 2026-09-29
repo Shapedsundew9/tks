@@ -8,6 +8,7 @@ services:
       pull: true
     volumes:
       - ..:/workspace:cached
+      - tks-gitdata:/git
     command: sleep infinity
 
   neo4j:
@@ -24,11 +25,12 @@ services:
       - "7687:7687"
 
   postgres:
-    image: postgres:18
-    pull_policy: always
+    image: pgvector/pgvector:pg16
+    pull_policy: if_not_present
     shm_size: 128mb
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - tks-pgdata:/var/lib/postgresql/data
+      - tks-gitdata:/git
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
@@ -44,7 +46,8 @@ services:
 volumes:
   neo4j_data:
   neo4j_logs:
-  postgres_data:
+  tks-pgdata:
+  tks-gitdata:
 
 networks:
   default:

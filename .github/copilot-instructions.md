@@ -1,5 +1,7 @@
 # Project Guidelines
 
+Read `.shared/ai/core/service-instructions.md`.
+
 ## Repository Layout
 
 - This is a pure Rust package repository.
@@ -10,6 +12,12 @@
 - Put one-off developer utilities or scripts in `scripts/`.
 - Keep build artifacts such as `target/` out of commits unless the repository explicitly tracks them.
 - Be explicitly aware that GEMINI.md is a symbolic link to .github/copilot-instructions.md
+
+## Development Environment
+
+- Development is containerized and configured strictly via `.devcontainer/` (`.devcontainer/devcontainer.json`, `.devcontainer/docker-compose.yml`).
+- Supporting services (such as PostgreSQL 16+ with `pgvector` and persistent storage volumes) are defined and managed through the devcontainer Docker Compose configuration.
+- Do not create or expect a standalone `docker-compose.yml` in the repository root; all containerized service and tool dependencies belong within `.devcontainer/`.
 
 ## Rust Development
 
@@ -36,16 +44,6 @@
 - Prefer well-established, maintained crates when a dependency is genuinely needed.
 - Add every new dependency to the appropriate section of `Cargo.toml` and verify with `cargo check`.
 - Avoid introducing a dependency for functionality that is small and clear to implement with the standard library.
-
-## Services Available
-
-- Postgres `$DATABASE_URL`
-- Neo4j `$NEO4J_URI`, `$NEO4J_USER`, `$NEO4J_PASSWORD`
-- Crates.io `$CARGO_REGISTRY_TOKEN`
-- GitHub `$GITHUB_TOKEN`
-- Arc AGI `$ARC_AGI_API`
-- Hugging Face `$HF_READ_TOKEN`
-- Emergent Mind `$EMERGENT_MIND_BASE_URL`, `$EMERGENT_MIND_OPENAPI_SPEC_URL`, `$EMERGENT_MIND_TOKEN`
 
 ## Documentation
 
