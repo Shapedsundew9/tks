@@ -73,11 +73,15 @@ Software engineering is fundamentally more than a static cascade of functional r
 
 Furthermore, existing paradigms lack the topological reachability to detect *architectural gaps*. When traversing a user workflow, engineering teams expect presentation-layer actions to link systematically to corresponding functional specifications, domain logic, and service contracts. Current tooling cannot determine whether those cross-layer links exist, whether critical workflows were ever formally considered, or where systemic omissions lie. Autonomous agents generate code in a procedural and topological vacuum, leaving critical organizational processes unexecuted and architectural discontinuities unflagged until production failure.
 
+### The Specification Void & The Cold-Start Adoption Barrier (The Upstream Intent Prerequisite)
+
+Autonomous agents cannot align with intent if no externalized intent exists. Today, the vast majority of engineering organizations lack structured requirement graphs, relying instead on ephemeral chat threads, fragmented issue tickets, and implicit knowledge in developers' heads. TKS is fundamentally an intent provenance substrate, not an autonomous mind-reader: it solves the structural problem of anchoring agent execution to specifications, but it presupposes that engineering teams possess—or are willing to articulate—text-based specifications. The upfront cognitive and operational investment required to author, decompose, and curate requirement graphs represents an acute adoption cold-start barrier: before the substrate can provide topological guidance, initial intent must be formulated and ingested. TKS directly confronts this barrier via assisted mechanical decomposition, yet the structural boundary remains absolute: without externalized seed specifications, agentic reasoning operates in an intent vacuum.
+
 ### The Build-vs-Leverage Imperative (Operational Intent Substrate vs. Code-Level Orchestration & Retrospective ALM)
 
 The contemporary engineering ecosystem presents two divergent paradigms, neither of which addresses the foundational intent-fidelity gap:
 
-1. **AI-Native Development Tools (Thin Code Orchestration):** AI-native IDEs (e.g., Cursor, Windsurf, Devin Desktop) and terminal-first agentic harnesses (e.g., Claude Code, Codex CLI) operate as thin orchestration layers over raw code artifacts. Through Language Server Protocol (LSP) integration, Abstract Syntax Tree (AST) search, and multi-tool agentic retrieval, they excel at discovering and manipulating existing syntax. However, they structurally cannot reconstruct the "why" behind the code—the upstream business constraints, non-functional requirements, and architectural trade-offs that dictate correct behavior. Ad-hoc Model Context Protocol (MCP) bridges to issue trackers or flat documentation stores offer only fragmented, unverified context without topological coherence or mutation governance.
+1. **AI-Native Development Tools (Thin Code Orchestration):** AI-native IDEs (e.g., Cursor, Windsurf, Devin Desktop) and terminal-first agentic harnesses (e.g., Claude Code, Codex CLI) operate as thin orchestration layers over raw code artifacts. Through Language Server Protocol (LSP) integration, Abstract Syntax Tree (AST) search, and multi-tool agentic retrieval, they excel at discovering and manipulating existing syntax. Even when augmented with automated codebase graph generators (e.g., Graphify, AST knowledge graphs), code-derived graphs merely reflect current syntactic implementation; they remain structurally blind to governing business intent, non-functional requirements, architectural contracts, and organizational procedures. Ad-hoc Model Context Protocol (MCP) bridges to issue trackers or flat documentation stores offer only fragmented, unverified context without topological coherence or mutation governance.
 2. **Legacy ALM Platforms (Retrospective Compliance):** Traditional Application Lifecycle Management suites (e.g., IBM DOORS Next, Jama Connect, Siemens Polarion) and issue-tracker traceability matrix plugins treat requirements traceability as a human-facing, retrospective reporting and compliance exercise. They were never designed to serve as an active, sub-second operational substrate for machine agents requiring topological graph traversals, co-located vector search, and transactional mutation governance.
 
 TKS occupies the critical gap between these two extremes: it is neither a code-editing assistant nor a compliance database. It is a purpose-built **knowledge and intent provenance substrate** that anchors external agent reasoning directly to a version-governed property graph of requirements, operational processes, and architectural relationships, supplying the institutional guidance and topological coherence that code-level tooling structurally lacks.
@@ -195,6 +199,7 @@ flowchart LR
 ```
 
 * **Resource-Constrained Execution Model:** The project operates under an explicitly constrained resource model. The phased roadmap is engineered so that each progression phase delivers standalone operational value and can be evaluated or falsified independently. Phase 0 and Phase 1 are scoped to be achievable by a small team (or individual developer) utilizing commodity infrastructure. Subsequent milestones (Phases 3 and 4) are aspirational targets whose investment is strictly contingent on the demonstrated viability and dogfooding adoption of earlier phases.
+* **Specification Prerequisite & Cold-Start Operational Boundary:** The Knowledge Substrate operates on the foundational premise that human engineering teams provide or curate text-based specifications (PRDs, architecture RFCs, SOPs). TKS is not an autonomous requirements generator or reverse-engineering scanner; it anchors execution to externalized human intent. For teams lacking documented specifications, the initial value curve exhibits an inevitable cold-start barrier: the substrate requires upfront specification intake before downstream agent leverage is realized. Minimizing this cold-start latency through low-friction assisted decomposition is a primary architectural imperative, but the prerequisite of documented intent is an explicit environmental boundary.
 * **Single-Engine Operational Footprint:** All topology data, vector embeddings, relational metadata, and audit records reside in a single PostgreSQL instance. Distributed multi-database setups (e.g., maintaining an external vector database or separate graph DBMS alongside PostgreSQL) are prohibited, eliminating distributed transaction failures and synchronization drift. Raw text specifications are version-governed via Git and referenced relationally.
 * **Externalized Cognitive Compute:** The core Knowledge Substrate never directly invokes LLM inference for its internal operational loops. External agents supply their own compute and models. LLM interaction with the substrate is restricted to human-directed document ingestion and decomposition pipelines, and externalized analytical agents or supervisory copilots consulted as third-party auditors (e.g., traversing graph subgraphs to discover architectural gaps, missing cross-layer bindings, or unconsidered edge cases). The substrate database engine remains strictly deterministic and inference-free.
 * **Stateless Gateway Boundary:** The MCP and REST interfaces maintain no persistent session memory. Each operation is an authenticated, isolated transaction targeting explicit node identifiers and payloads. The gateway must validate caller identity on every request; no mutation may be committed to the audit ledger without a verified external identity reference.
@@ -302,8 +307,8 @@ flowchart TD
 
 ### Strategic Hypotheses (Scientific Bets to De-Risk)
 
-* **Hypothesis H-1 (Topological Retrieval vs. Code-Level Agentic Context Assembly):**
-  *We hypothesize that* supplying agents with graph-bounded context envelopes (ancestor requirements plus direct architectural constraints) significantly reduces downstream architectural contract violations compared to best-available agentic context assembly (multi-tool code exploration, AST/symbol analysis, and lexical/semantic search lacking graph-structured requirement context).
+* **Hypothesis H-1 (Governed Requirement Topologies vs. Ad-Hoc Agentic Retrieval):**
+  *We hypothesize that* anchoring external agents to a *purpose-built, version-governed, human-curated* requirement graph provides decisive advantage over best-available code-level agentic context assembly—including multi-tool code exploration, AST symbol traversal, and ad-hoc or auto-generated code knowledge graphs lacking requirement provenance—by supplying authoritative intent provenance, operational policies, and audit lineage that code-level syntax exploration structurally lacks, thereby significantly reducing downstream architectural contract violations and intent drift.
 * **Hypothesis H-2 (Sublinear Human Oversight Overhead):**
   *We hypothesize that* managing autonomous agents through structured requirement graphs and topological impact analyses significantly reduces human supervisory overhead compared to manual inspection of agent-generated code diffs.
 * **Hypothesis H-3 (Single-Engine Relational Scalability):**
@@ -399,7 +404,7 @@ To honor the principle to "start small" under a constrained resource model, deve
 
 ### Key Observables
 
-Progression across capability milestones is evaluated using six directional metrics:
+Progression across capability milestones is evaluated using seven directional metrics:
 
 * **Retrieval Boundedness & Relevance:** Ratio of required context tokens delivered to external agents versus irrelevant noise, measuring the efficiency of the topological context envelope.
 * **Decomposition Lineage Fidelity:** Percentage of extracted requirement nodes that correctly resolve to exact, verifiable source spans within the signed source documents.
@@ -407,6 +412,7 @@ Progression across capability milestones is evaluated using six directional metr
 * **Supervisory Decision Latency:** Time required for an engineering lead to evaluate, approve, or reject an agent-proposed requirement mutation via the supervisory interface.
 * **Topological Gap Detection Yield & Precision:** Ratio of verified architectural gaps (e.g., missing layer bindings, orphan workflows, unconsidered edge cases) identified by graph traversal and LLM auditing relative to total flagged anomalies.
 * **Procedural Compliance Fidelity:** Percentage of agent-elaborated tasks (e.g., dependency additions, architecture extensions) that demonstrably satisfy institutional checklists before promotion to human review.
+* **Time-to-First-Value Latency:** Elapsed wall-clock and supervisory time from initial repository deployment to the first verified agent task execution guided by a substrate context envelope, measured starting from unstructured seed text or zero ingested specifications, quantifying and bounding the cold-start adoption barrier.
 
 ### Demonstration Milestones (MVD Overview)
 
@@ -423,10 +429,10 @@ The path to the North Star is gated by four Minimum Viable Demonstrations:
 
 The program should be halted, redirected, or fundamentally restructured if any of the following failure conditions occur:
 
-1. **The Ingestion Friction Falsification:**
-   If the overhead of ingesting, decomposing, and verifying markdown specifications in the graph exceeds the time required for engineering teams to manually write tickets and code, the core value proposition of an automated knowledge substrate is disproven.
+1. **The Ingestion Friction & Cold-Start Falsification:**
+   If the total lifecycle overhead of formulating, ingesting, decomposing, and verifying specifications in the graph—measured from zero structured intent to the first usable context envelope—consistently exceeds the manual effort required for engineering teams to write tickets, prompt agents ad-hoc, and supervise code, the core economic premise of an automated knowledge substrate is disproven.
 2. **The Graph RAG Inefficacy Falsification (Hypothesis H-1 Failure):**
-   If controlled benchmarks reveal that external agents operating over graph-structured context envelopes exhibit comparable rates of architectural drift and hallucination to agents using best-available multi-tool agentic context assembly without requirement graphs, the graph-native thesis is falsified.
+   If controlled benchmarks reveal that external agents operating over governed, graph-structured context envelopes exhibit no statistically significant advantage in preserving architectural contracts and preventing intent drift compared to agents using best-available multi-tool retrieval or auto-generated code graphs lacking requirement provenance, the graph-native intent thesis is falsified.
 3. **The Single-Engine Relational Bottleneck (Hypothesis H-3 Failure):**
    If graph traversals over versioned tables in PostgreSQL fail to maintain acceptable interactive latencies at scale, and this bottleneck cannot be resolved through index optimization, the single-engine architectural boundary must be abandoned in favor of a specialized graph database.
 4. **The Bootstrapping Failure Falsification:**

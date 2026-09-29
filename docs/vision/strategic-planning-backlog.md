@@ -26,6 +26,30 @@ This backlog is specifically organized around the **"Start Small"**, **"Constrai
 - Consolidate governance evaluation into a unified storage repository layer and standardize background processing on cooperative `FOR UPDATE SKIP LOCKED` polling with backoff, eliminating bespoke `LISTEN/NOTIFY` triggers.
 - Align dogfooding with the phased progression model: Phase 1 establishes read-only self-hosting for context querying, while Phase 2 enables autonomous self-evolution. Hold Phase 3 and Phase 4 execution as strictly contingent on empirical validation of foundational hypotheses (H-1, H-4) and successful Phase 1 dogfooding adoption.
 
+### Architectural Governance Notation: Binding Strategic Invariants vs. Tactical Implementation Preferences
+
+To maintain implementation agility and prevent this backlog from acting as an overly rigid architectural straightjacket, engineering decisions are categorized across two operational tiers:
+
+1. **Binding Strategic Invariants:** Foundational commitments derived directly from the Technical Vision that require explicit stakeholder alignment and formal revision to change:
+   - Single-engine PostgreSQL operational footprint (zero distributed database complexity or secondary DBMS synchronization in Phases 0–2).
+   - Externalized cognitive compute (zero in-database LLM inference execution inside operational transactions).
+   - Append-only audit ledger with draft lifecycle compaction upon approval (eliminating audit bloat while preserving lineage).
+   - Strict bidirectional traceability (Invariant I-1) and non-repudiable agent identity attribution (Invariant I-7).
+   - Phased self-referential bootstrapping (read-only self-hosting at Phase 1; autonomous self-evolution at Phase 2).
+2. **Tactical Implementation Preferences:** Concrete design choices and operational parameters:
+   - Specific column names and relational constraint identifiers.
+   - Exact JSONB attribute paths (e.g. `attributes->'draft_revisions'`).
+   - Advisory lock hash constants and Tokio channel buffer sizes.
+   - Worker polling backoff intervals and cache TTL configurations.
+
+These tactical details represent battle-tested directional guidance. Implementers and autonomous coding agents are fully empowered to refine, optimize, or adjust these tactical specifics during development without requiring formal backlog amendments, provided the underlying binding strategic invariants, environmental boundaries, and performance SLAs are upheld.
+
+### Strategic Risk Context & Deferred Considerations
+
+- **External Embedding Provider Dependency & Offline Operation:** While context envelopes allocate 30 nodes to deterministic topological retrieval and only 10 nodes to vector neighbors, vector generation currently assumes an external API provider. In fully air-gapped or offline environments, or during external API throttling, vector generation is disabled or degraded (falling back to ancestor requirement embeddings or pure topology per TB-6). To eliminate external gating and establish complete operational self-sufficiency, Phase 0 includes a technical investigation (Spike 8) evaluating local, CPU-efficient embedded model runtimes (e.g., ONNX runtime / `fastembed-rs`).
+- **Phased Sequencing of Institutional Process & Procedural Modeling:** While the Technical Vision establishes procedural entities and compliance checklists as foundational to organizational memory (Key Capability #8), execution is strictly phased. In Phases 1–2, the property graph schema accommodates procedural concepts via flexible JSONB node attributes and foundational edge types (`GOVERNED_BY_PROCEDURE`), while ingestion, context retrieval, and MVD acceptance testing focus cleanly on the core **Requirement $\to$ Specification $\to$ Task** traceability loop. Dedicated procedural validation engines, mandatory checklist gates (licensing, CVEs), and cross-layer gap detection algorithms are deferred to Phase 3+, after the core requirement-to-task loop is empirically proven.
+- **Enterprise Multi-Tenancy & Project Isolation (Deferred to Phase 3+):** Phases 0–2 intentionally operate under a single-tenant, single-project model to preserve developer velocity under the constrained resource model. To ensure future enterprise viability without disruptive schema migrations, Phase 1–2 database entities (`graph_nodes`, `ingestion_jobs`, `audit_ledger`, `agent_identities`) include an optional `project_id VARCHAR(64) DEFAULT 'default'` discriminator column, enabling forward-compatibility for row-level security (RLS) and multi-tenancy in Phase 3+.
+
 ---
 
 ## 2. Phased Execution Roadmap
@@ -82,6 +106,7 @@ flowchart LR
   1. **Spike 0 (H-1 Directional Validation Spike):** Rapid throwaway test comparing graph-bounded context retrieval against a competent multi-tool agentic retrieval baseline (file reading, grep, AST symbol search, and semantic search without graph-structured requirement context) on an in-memory graph of hand-curated requirement nodes (~50–100 nodes), measuring constraint violation reduction during agentic code synthesis.
   2. **Early Extraction & AST Pre-Parsing Spike (H-4 Pre-Validation):** Empirical benchmarking of mechanical CommonMark parsing (`pulldown-cmark`) paired with targeted commodity LLM classification prompts against representative technical Markdown specs to verify 0-based byte offset extraction accuracy and token reduction.
   3. **Foundational Architecture Scaffolding:** Initial repository setup, developer tooling, Docker compose definition for PostgreSQL with `pgvector`, and baseline migration harness.
+  4. **Local & Embedded Vector Generation Spike (Spike 8):** Evaluation of embedded local model runtimes (e.g., `fastembed-rs` or ONNX runtime) on commodity CPU hardware as an alternative to external embedding APIs, benchmarking latency (<50ms/node), binary footprint, and offline zero-dependency viability.
 
 ### Phase 1: Substrate Core, Git Document Ingestion & Context Gateway
 
@@ -127,7 +152,7 @@ flowchart LR
 
 - **Primary Objective:** Provide human engineering leads with high-level observability and automated impact analysis when upstream requirements change.
 - **Core Deliverables:**
-  1. **Web-Based Supervisory Portal:** Interactive UI for visual graph exploration, node status inspection, and human review queues for `PENDING_REVIEW` mutations and staged ingestion candidates linked via `job_id`.
+  1. **Minimal Read-Only Supervisory Web Explorer & Review Interface:** A lightweight, single-page read-only visualization tool and triage interface (or terminal-first TUI companion / MCP-connected supervisory copilot) focused strictly on topological inspection, invalidation blast-radius exploration, and staging review queues, consuming standard Axum REST and MCP endpoints and deferring heavy custom portal development in favor of core graph observability.
   2. **Automated Invalidation Cascading:** Graph traversal algorithms that detect modifications to upstream requirements, recursively mark downstream specifications and tasks as `NEEDS_REVERIFICATION`, and block dependent agent execution until resolved.
   3. **Impact Analysis Dashboard:** Visual diff tool showing the topological blast radius of a proposed requirement revision.
 
@@ -137,7 +162,7 @@ flowchart LR
 - **Core Deliverables:**
   1. **VCS Commit Linking:** Webhooks connecting repository commits and pull requests directly to task nodes (`IMPLEMENTED_BY` edges).
   2. **Automated Test Verification:** CI pipeline integration mapping test suite execution results to verification nodes (`VERIFIED_BY` edges), enforcing automated proof of requirement satisfaction prior to release sign-off.
-  3. **Spec-Driven Release Gateways:** Formal release validation gates preventing deployment if unresolved or invalidated requirement paths remain in the graph.
+  3. **Spec-Driven Release Readiness Webhooks & Status API:** Lightweight inspection endpoints (`GET /api/v1/release/readiness`) and status webhooks that export graph verification status, traceability coverage, and unresolved invalidation paths to external CI/CD platforms (e.g., GitHub Actions, GitLab CI, ArgoCD, OPA/Gatekeeper). TKS functions strictly as the authoritative intent and verification data provider, delegating active gate enforcement and deployment blocking to existing, purpose-built delivery infrastructure.
 
 ---
 
@@ -310,8 +335,9 @@ flowchart TD
 ### Spike 1: Graph Storage & Query Strategy in PostgreSQL
 
 - **Status:** **Incorporated into Architecture** (`architecture.md` §7 Technology Stack, §9 Decision D-2).
-- **Context:** SQL/PGQ (SQL:2023 Part 16) was reverted from the PostgreSQL 19 release cycle due to design, catalog stability, and security concerns. Native SQL/PGQ support may reappear in a future major release (earliest PostgreSQL 20).
+- **Context:** SQL/PGQ (SQL:2023 Part 16) was reverted from the PostgreSQL 19 release cycle due to design, catalog stability, and security concerns. Native SQL/PGQ support may reappear in a future major release (earliest PostgreSQL 20). Furthermore, while a dedicated Neo4j graph instance is pre-configured and available in the environment (`$NEO4J_URI`), maintaining a dual-database architecture would violate the Single-Engine Operational Footprint.
 - **Outcome:** Adopted standard recursive CTEs (`WITH RECURSIVE`) on typed relational adjacency tables (`graph_nodes`, `graph_edges`) under `READ COMMITTED` isolation. Eliminates external C extension dependencies (Apache AGE) and satisfies SLA-1 (<50ms for $k \le 3$).
+- **Decision Record (Neo4j Rejection & Revisit Trigger):** Deliberately rejected Neo4j during Phases 0–2 in favor of operational simplicity. Managing dual-database consistency across relational audit logs, vector indices, and graph topology introduces distributed transaction overhead, two-phase commit failure modes, and state synchronization drift during rollbacks. Recursive CTEs on indexed relational tables satisfy SLA-1 and SLA-2 with zero secondary database operational overhead. *Revisit Trigger:* If Phase 2 empirical benchmarks fail to meet SLA-1 (<50ms for $k \le 3$) or SLA-2 (<100ms at $10^5$ nodes) despite index tuning and recursive query optimization, re-evaluate Neo4j strictly as a read-replica graph query engine with unidirectional change-data-capture (CDC) replication from PostgreSQL as the single authoritative state store.
 
 ### Spike 2: State Versioning Mechanism (Simplicity vs. Bitemporality)
 
@@ -353,6 +379,19 @@ flowchart TD
 - **Context:** Lifecycle states prevent obsolete requirements from polluting agent context envelopes and enable non-destructive reversibility.
 - **Outcome:** Added strongly typed `lifecycle_state` column to `graph_nodes` and `graph_edges` (`DRAFT`, `ACTIVE`, `SUPERSEDED`, `ARCHIVED`, `NEEDS_REVERIFICATION`, `REVERTED`). Candidate requirements write directly into `graph_nodes` as drafts with non-cascading foreign key `job_id REFERENCES ingestion_jobs(job_id) ON DELETE SET NULL`. Added canonical `node_key VARCHAR(64)` with partial unique index on active nodes (D-58). Structural edges in `graph_edges` utilize a dedicated surrogate key (`edge_id UUID PRIMARY KEY`) and partial unique index (`WHERE lifecycle_state = 'ACTIVE'`). Candidate draft nodes never enqueue embedding generation tasks until approved, preserving tokens (D-44). Staging approval atomically purges unapproved candidate draft nodes (`DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT' AND id != ALL($approved_node_ids)`), eliminating orphaned draft residue (D-46). Candidate draft edges promote to `ACTIVE` only if both endpoints are active, and conflicting active edges are automatically superseded to prevent unique index collisions (D-47). On document re-ingestion, replaced active nodes transition to `SUPERSEDED` and dependent child tasks are swept to `NEEDS_REVERIFICATION` (D-54). Obsolete vector embeddings are purged from `node_embeddings` upon node supersession (D-59). Intermediate draft edits append to `attributes->'draft_revisions'` and squash on approval, eliminating the standalone table (D-61). Embedding queue retries are scheduled with exponential backoff via `scheduled_at` to prevent tight-loop API throttling (D-48).
 
+### Spike 8: Local & Embedded Vector Generation Feasibility (Air-Gapped Operation)
+
+- **Status:** **Active Phase 0 Pre-Construction Spike**.
+- **Context:** To eliminate external API provider rate limits (HTTP 429), cost overhead, and dependency failure in air-gapped or offline development environments, evaluate local embedding inference directly within the Rust binary.
+- **Experimental Setup & Investigation:** Benchmark embedded ONNX runtime / `fastembed-rs` executing lightweight embedding models (e.g., `all-MiniLM-L6-v2` [384-d] or `bge-small-en-v1.5` [384-d]) on commodity CPU hardware.
+- **Evaluation Criteria:**
+  1. *Inference Latency:* $\le 50\text{ ms}$ per requirement chunk on standard commodity CPU.
+  2. *Binary & Memory Footprint:* Added binary size $\le 50\text{ MB}$, runtime memory consumption $\le 256\text{ MB}$.
+  3. *Retrieval Parity:* Evaluate Top-10 vector neighbor overlap against commercial API baselines on technical Markdown documentation.
+- **Decision Thresholds:**
+  - Satisfying all criteria designates embedded local inference as the default Phase 1 vector provider, making TKS 100% operationally self-sufficient offline.
+  - Partial performance (latency 50–100ms) establishes local inference as an offline fallback to external API providers.
+
 ---
 
 ## 6. Quantitative Operational Targets & Metric Calibrations
@@ -367,6 +406,7 @@ While the technical vision defines qualitative hypotheses, this backlog establis
 | **CAL-H2** | Human Review Overhead Reduction (Hypothesis H-2) | $\ge 50$% reduction in supervisory review time per feature | Phase 3 User Study |
 | **CAL-H3** | Single-Engine Scalability Bound (Hypothesis H-3) | Sustained $< 100\text{ ms}$ query latency at $10^6$ nodes | Phase 3 Stress Test |
 | **CAL-H4** | Extraction Fidelity Benchmark (Hypothesis H-4) | $\ge 95$% precision/recall on atomic requirement spans | Phase 1 Ingestion Eval |
+| **CAL-TTFV** | Time-to-First-Value Latency (Observable 7) | $\le 30\text{ minutes}$ from raw markdown specification upload to first active agent context retrieval | Phase 1 Benchmark |
 
 ### Graduated Evaluation Framework & Calibration Interpretation
 
@@ -378,6 +418,7 @@ In alignment with the Technical Vision's graduated response model (§7), empiric
 | **CAL-H2** (Supervisory Review Overhead) | $\ge 50$% review time reduction | **25%–49% reduction:** Streamline supervisory UI staging workflows and enrich topological blast-radius visualizations. | $\le 0$% reduction (supervisory graph review equals or exceeds diff review time; Triggers Kill #1). |
 | **CAL-H3** (Single-Engine Scalability) | Sustained $< 100\text{ ms}$ at $10^6$ nodes | **$< 100\text{ ms}$ at $10^5$ nodes, degrading at $10^6$:** Satisfies small-to-mid enterprise repos; apply read-replica offloading, partition audit ledger, and optimize CTE indexes. | $> 500\text{ ms}$ latency at $\le 10^5$ nodes despite index optimization (Triggers Kill #3). |
 | **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95$% precision/recall on spans | **80%–94% precision/recall:** Engage deterministic span re-anchoring post-processor (fuzzy byte alignment against source) to correct offset drift; enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60$% precision/recall or severe span hallucination despite deterministic re-anchoring (Triggers Kill #1). |
+| **CAL-TTFV** (Time-to-First-Value) | $\le 30\text{ minutes}$ total onboarding | **30–60 minutes:** Refine CommonMark AST block extraction and streamline CLI review commands. | $> 120\text{ minutes}$ or manual curation required before first context envelope (Triggers Kill #1). |
 
 ---
 
