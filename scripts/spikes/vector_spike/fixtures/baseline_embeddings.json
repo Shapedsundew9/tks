@@ -1,0 +1,343 @@
+{
+  "corpus_description": "Curated technical requirement chunks from TKS docs/vision specifications for Spike 8 local vector retrieval parity evaluation",
+  "chunks": [
+    {
+      "id": "chunk-vec-01",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-77: Explicit Vector Dimensionality (384) and Partial HNSW Index DDL",
+      "canonical_key": "D-77",
+      "cluster": "vector_search",
+      "text": "Explicitly define the vector column on node_embeddings as embedding vector(384), standardizing on 384-dimensional embeddings (matching all-MiniLM-L6-v2 / fastembed-rs local CPU inference). Add a partial HNSW cosine distance index: CREATE INDEX idx_node_embeddings_vector ON node_embeddings USING hnsw (embedding vector_cosine_ops) WHERE status = 'COMPLETED'. Enables sub-10ms approximate nearest neighbor search via pgvector HNSW indexing, prevents indexing incomplete queue rows, eliminates runtime full table scans, and grounds Phase 1 on fast, local, zero-token-cost CPU embeddings."
+    },
+    {
+      "id": "chunk-vec-02",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-82: Consolidate embedding_queue into node_embeddings Table",
+      "canonical_key": "D-82",
+      "cluster": "vector_search",
+      "text": "Consolidate embedding_queue directly into node_embeddings. Add queue management columns: status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')), retry_count INT NOT NULL DEFAULT 0, scheduled_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(), and error_message TEXT. When a node activates or updates content, upsert into node_embeddings with status = 'PENDING'. Workers batch-claim rows with WHERE status = 'PENDING' AND scheduled_at <= clock_timestamp() FOR UPDATE SKIP LOCKED and update embedding = $vector, status = 'COMPLETED'."
+    },
+    {
+      "id": "chunk-vec-03",
+      "doc_path": "docs/vision/technical-backlog.md",
+      "heading": "TB-6: Context Envelope Vector Neighbor Query Resolution and Embedding Fallback",
+      "canonical_key": "TB-6",
+      "cluster": "vector_search",
+      "text": "In src/storage/envelope.rs, implement query vector resolution for vector neighbor retrieval in get_context_envelope(target_node_id, depth). When allocating slots for vector neighbor ranking, the repository queries node_embeddings for target_node_id to serve as the reference query vector for similarity search against other active nodes. If target_node_id lacks an embedding record in node_embeddings, resolve the reference query vector from its immediate parent requirement node. If pending, gracefully skip vector search and reallocate quota to CTE traversal."
+    },
+    {
+      "id": "chunk-vec-04",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "Q-4: Standardized Embedding Model Resolution",
+      "canonical_key": "Q-4",
+      "cluster": "vector_search",
+      "text": "Standardized on explicit 384-dimensional embeddings (all-MiniLM-L6-v2) with partial HNSW cosine index on node_embeddings (D-77). Open-source CPU inference via fastembed-rs is prioritized for Phase 1 to guarantee 100% offline self-sufficiency, avoiding external API latency, recurring inference fees, and network partition vulnerabilities."
+    },
+    {
+      "id": "chunk-vec-05",
+      "doc_path": "docs/vision/strategic-planning-backlog.md",
+      "heading": "Spike 8: Local & Embedded Vector Generation Feasibility (Air-Gapped Operation)",
+      "canonical_key": "Spike-8",
+      "cluster": "vector_search",
+      "text": "To eliminate external API provider rate limits (HTTP 429), cost overhead, and dependency failure in air-gapped or offline development environments, evaluate local embedding inference directly within the Rust binary. Benchmark embedded ONNX runtime / fastembed-rs executing lightweight embedding models on commodity CPU hardware with latency <= 50ms, memory <= 256MB, binary <= 50MB, and Top-10 parity >= 70%."
+    },
+    {
+      "id": "chunk-top-06",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "INV-1: Strict Invariant Hierarchy and DAG Enforcement",
+      "canonical_key": "INV-1",
+      "cluster": "graph_topology",
+      "text": "Every active requirement, invariant, and task in the substrate must maintain a valid, cycle-free directed acyclic graph topology. Directed structural edges point strictly upward toward governing requirement roots. Cycles are rejected at mutation ingestion time before transaction commit, and orphan execution tasks are strictly prohibited."
+    },
+    {
+      "id": "chunk-top-07",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-78: Traversal Downward and Draft Partial Indexes on Structural Edges",
+      "canonical_key": "D-78",
+      "cluster": "graph_topology",
+      "text": "Add a dedicated downward active index and a caller-scoped draft index on graph_edges: CREATE INDEX idx_graph_edges_to_node_active ON graph_edges (to_node_id, from_node_id, edge_type) WHERE lifecycle_state = 'ACTIVE' and CREATE INDEX idx_graph_edges_draft_author ON graph_edges (from_node_id, created_by) WHERE lifecycle_state = 'DRAFT'. Guarantees sub-millisecond reverse lookups during invalidation cascades."
+    },
+    {
+      "id": "chunk-top-08",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-32: Surrogate Key & Partial Unique Index on Graph Edges",
+      "canonical_key": "D-32",
+      "cluster": "graph_topology",
+      "text": "Use surrogate primary key edge_id UUID DEFAULT gen_random_uuid() for graph_edges, paired with partial unique index idx_graph_edges_active_unique ON (from_node_id, to_node_id, edge_type) WHERE lifecycle_state = 'ACTIVE'. Enables multiple non-conflicting draft edges between the same nodes while strictly enforcing uniqueness across active edges."
+    },
+    {
+      "id": "chunk-top-09",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-58: Node Key Partial Unique Index on Active Graph Nodes",
+      "canonical_key": "D-58",
+      "cluster": "graph_topology",
+      "text": "Enforce partial unique index idx_graph_nodes_node_key_active ON graph_nodes (node_key) WHERE lifecycle_state = 'ACTIVE'. Permits duplicate canonical keys across superseded, archived, or speculative draft versions while guaranteeing single-source lookup for active requirements."
+    },
+    {
+      "id": "chunk-top-10",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-75: Caller-Scoped Draft Isolation via created_by Attribution",
+      "canonical_key": "D-75",
+      "cluster": "graph_topology",
+      "text": "Candidate requirements and speculative edits created by agents are isolated using caller-scoped draft boundaries based on created_by attribute. Draft entities are invisible to production agent context envelopes until approved by human or supervisory review, preventing unverified mutations from leaking into execution prompts."
+    },
+    {
+      "id": "chunk-sec-11",
+      "doc_path": "docs/vision/technical-backlog.md",
+      "heading": "TB-5: Development Identity Migration Seed (tks_dev_token)",
+      "canonical_key": "TB-5",
+      "cluster": "identity_auth",
+      "text": "Seed well-known token tks_dev_token into agent_identities with role HUMAN and is_active = true to allow seamless developer onboarding and local testing without external authentication services. The seed migration runs automatically under refinery bootstrap."
+    },
+    {
+      "id": "chunk-sec-12",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-11: Two-Tier Identity Verification and Token Revocation",
+      "canonical_key": "D-11",
+      "cluster": "identity_auth",
+      "text": "Adopt pre-shared API keys and HMAC bearer tokens stored in agent_identities for Phase 1 and 2, with cache invalidation on token revocation. External OAuth 2.1 and DPoP federation is deferred to enterprise Phase 4, keeping the initial authentication boundary lightweight and fully self-contained."
+    },
+    {
+      "id": "chunk-sec-13",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-39: Cryptographic Token Fingerprinting in Audit Ledger",
+      "canonical_key": "D-39",
+      "cluster": "identity_auth",
+      "text": "Every audit event records token_fingerprint VARCHAR(64) derived from a SHA-256 hash of the bearer token, binding state mutations irreversibly to the originating agent identity while preventing plaintext credential leakage in audit logs."
+    },
+    {
+      "id": "chunk-aud-14",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "INV-2: Comprehensive Audit Immutability and Reversibility",
+      "canonical_key": "INV-2",
+      "cluster": "audit_ledger",
+      "text": "Destructive in-place updates on active requirements, specifications, and topological edges are strictly prohibited. Every approved state mutation is recorded as a discrete, immutable, cryptographically verifiable event in the audit ledger with monotonic sequence numbers, enabling point-in-time reconstruction."
+    },
+    {
+      "id": "chunk-aud-15",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-45: Monotonic Event Sequencing in Audit Ledger via event_seq",
+      "canonical_key": "D-45",
+      "cluster": "audit_ledger",
+      "text": "Audit ledger uses event_seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY to ensure strict monotonic ordering of all mutation events across distributed callers, preventing race conditions in event replay, timeline diffing, and disaster recovery."
+    },
+    {
+      "id": "chunk-aud-16",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-65: Atomic Mutation Batch Correlation Key (batch_id)",
+      "canonical_key": "D-65",
+      "cluster": "audit_ledger",
+      "text": "Audit ledger records batch_id UUID correlating multiple node and edge mutations executed within a single transactional unit, allowing multi-entity operations to be audited, visualized, and rolled back atomically as cohesive logical changesets."
+    },
+    {
+      "id": "chunk-ing-17",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "INV-4: Exact Span Provenance and UTF-8 Safe Byte Offsets",
+      "canonical_key": "INV-4",
+      "cluster": "ingestion_ast",
+      "text": "Document-derived graph nodes retain exact 0-based byte offsets (byte_start, byte_end) referencing the authoritative Git specification blob. Text slices extracted using zero-copy byte offsets must match source text identically without character boundary panics or multi-byte slicing errors."
+    },
+    {
+      "id": "chunk-ing-18",
+      "doc_path": "docs/vision/technical-backlog.md",
+      "heading": "TB-2: Mechanical CommonMark AST Parsing and Heading Stack",
+      "canonical_key": "TB-2",
+      "cluster": "ingestion_ast",
+      "text": "Decompose technical specifications into atomic blocks using pulldown-cmark streaming event parser. Maintain active heading stack (H1-H4) to mechanically emit upward structural hierarchy edges (child -DERIVED_FROM-> parent) and achieve >= 80% structural decomposition without LLM output tokens."
+    },
+    {
+      "id": "chunk-ing-19",
+      "doc_path": "docs/vision/technical-backlog.md",
+      "heading": "TB-2.4: Disambiguated AST Heading Anchors and Block Indexing",
+      "canonical_key": "TB-2.4",
+      "cluster": "ingestion_ast",
+      "text": "Generate deterministic heading anchors enforcing slug disambiguation (doc_path#section/overview-1) for repeated headings and ordinal block indexing for non-heading structural blocks, guaranteeing global uniqueness across document revisions."
+    },
+    {
+      "id": "chunk-ing-20",
+      "doc_path": "docs/vision/technical-backlog.md",
+      "heading": "TB-7: Canonical Node Key Lexical Extraction and RFC 2119 Tagging",
+      "canonical_key": "TB-7",
+      "cluster": "ingestion_ast",
+      "text": "Deterministic scanner matches RFC 2119 normative keywords (MUST, SHALL, REQUIRED) and canonical regex tags (REQ, INV, DR, C, TB, TASK), tagging candidate requirement chunks prior to Stage 2 semantic classification."
+    },
+    {
+      "id": "chunk-inv-21",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-80: Safe Mutation Rollback via dry_run and force Blast Radius Preview",
+      "canonical_key": "D-80",
+      "cluster": "invalidation_rollback",
+      "text": "Extend revert_mutations with dry_run and force parameters. When dry_run = true, the transaction executes recursive dependency sweeps and returns blast-radius preview without committing events, preventing unintended cascading invalidations of active agent workflows."
+    },
+    {
+      "id": "chunk-inv-22",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-73: Reversible Compensating Invalidation Cascades",
+      "canonical_key": "D-73",
+      "cluster": "invalidation_rollback",
+      "text": "Compensating transactions transition affected active nodes to SUPERSEDED or REVERTED and cascade dependent child nodes to NEEDS_REVERIFICATION. Leaves immutable audit events and preserves previous node versions for forensic auditability."
+    },
+    {
+      "id": "chunk-gov-23",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-81: Governance Policy Inheritance for Autonomously Elaborated Execution Tasks",
+      "canonical_key": "D-81",
+      "cluster": "governance_policy",
+      "text": "Execution sub-tasks created via autonomous elaboration inherit the parent requirement's governance policy (AUTONOMOUS_ELABORATION) by default, enabling autonomous agent loops to advance elaborated tasks through IN_PROGRESS and COMPLETED without manual human unblocking."
+    },
+    {
+      "id": "chunk-wrk-24",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-79: Worker Concurrency Hardening via Conditional Transitions and Atomic Draft Purge",
+      "canonical_key": "D-79",
+      "cluster": "worker_concurrency",
+      "text": "Enforce conditional terminal status transitions on ingestion_jobs: UPDATE ingestion_jobs SET status = 'STAGED' WHERE job_id = $1 AND status = 'PROCESSING'. If 0 rows updated, worker aborts and atomically deletes draft entities, preventing zombie drafts."
+    },
+    {
+      "id": "chunk-wrk-25",
+      "doc_path": "docs/vision/architecture.md",
+      "heading": "D-62: Conditional Check Constraint Permitting UNCLASSIFIED in DRAFT",
+      "canonical_key": "D-62",
+      "cluster": "worker_concurrency",
+      "text": "Enforce conditional check constraint chk_node_type permitting node_type = 'UNCLASSIFIED' strictly when lifecycle_state = 'DRAFT'. Active nodes must have a validated classification (REQUIREMENT, SPECIFICATION, TASK), preventing staging check failures during fallback."
+    }
+  ],
+  "queries": [
+    {
+      "id": "q-01",
+      "query_text": "What is the vector embedding dimensionality, pgvector HNSW cosine index, and fastembed model used in TKS?",
+      "target_cluster": "vector_search",
+      "baseline_top_10": [
+        "chunk-vec-01",
+        "chunk-vec-04",
+        "chunk-vec-05",
+        "chunk-vec-02",
+        "chunk-vec-03",
+        "chunk-top-07",
+        "chunk-top-09",
+        "chunk-wrk-24",
+        "chunk-top-10",
+        "chunk-top-08"
+      ]
+    },
+    {
+      "id": "q-02",
+      "query_text": "How does the node_embeddings consolidated table manage queue status, retries, and worker batch claims?",
+      "target_cluster": "vector_search",
+      "baseline_top_10": [
+        "chunk-vec-02",
+        "chunk-vec-01",
+        "chunk-vec-03",
+        "chunk-vec-05",
+        "chunk-vec-04",
+        "chunk-wrk-24",
+        "chunk-top-07",
+        "chunk-top-08",
+        "chunk-top-09",
+        "chunk-aud-16"
+      ]
+    },
+    {
+      "id": "q-03",
+      "query_text": "How are context envelope vector neighbor queries resolved and what is the fallback if embeddings are pending?",
+      "target_cluster": "vector_search",
+      "baseline_top_10": [
+        "chunk-vec-03",
+        "chunk-vec-01",
+        "chunk-vec-02",
+        "chunk-vec-04",
+        "chunk-vec-05",
+        "chunk-top-06",
+        "chunk-top-07",
+        "chunk-top-10",
+        "chunk-top-08",
+        "chunk-top-09"
+      ]
+    },
+    {
+      "id": "q-04",
+      "query_text": "How does TKS enforce strict invariant hierarchy, directed acyclic graph topology, and upward edge direction?",
+      "target_cluster": "graph_topology",
+      "baseline_top_10": [
+        "chunk-top-06",
+        "chunk-top-07",
+        "chunk-top-08",
+        "chunk-top-09",
+        "chunk-top-10",
+        "chunk-ing-18",
+        "chunk-gov-23",
+        "chunk-inv-21",
+        "chunk-inv-22",
+        "chunk-vec-03"
+      ]
+    },
+    {
+      "id": "q-05",
+      "query_text": "How does the audit ledger guarantee monotonic event sequence numbers and atomic mutation batch correlation?",
+      "target_cluster": "audit_ledger",
+      "baseline_top_10": [
+        "chunk-aud-15",
+        "chunk-aud-16",
+        "chunk-aud-14",
+        "chunk-sec-13",
+        "chunk-inv-21",
+        "chunk-inv-22",
+        "chunk-sec-12",
+        "chunk-top-09",
+        "chunk-top-08",
+        "chunk-top-06"
+      ]
+    },
+    {
+      "id": "q-06",
+      "query_text": "How does CommonMark AST decomposition extract exact UTF-8 byte spans and upward hierarchy edges?",
+      "target_cluster": "ingestion_ast",
+      "baseline_top_10": [
+        "chunk-ing-18",
+        "chunk-ing-17",
+        "chunk-ing-19",
+        "chunk-ing-20",
+        "chunk-top-06",
+        "chunk-top-08",
+        "chunk-wrk-25",
+        "chunk-gov-23",
+        "chunk-top-07",
+        "chunk-top-09"
+      ]
+    },
+    {
+      "id": "q-07",
+      "query_text": "What identity verification model and pre-shared bearer tokens are used for agent authentication?",
+      "target_cluster": "identity_auth",
+      "baseline_top_10": [
+        "chunk-sec-11",
+        "chunk-sec-12",
+        "chunk-sec-13",
+        "chunk-top-10",
+        "chunk-aud-14",
+        "chunk-aud-15",
+        "chunk-top-09",
+        "chunk-top-08",
+        "chunk-wrk-24",
+        "chunk-top-06"
+      ]
+    },
+    {
+      "id": "q-08",
+      "query_text": "How do safe mutation rollbacks use dry_run to preview blast radius and prevent cascading invalidation?",
+      "target_cluster": "invalidation_rollback",
+      "baseline_top_10": [
+        "chunk-inv-21",
+        "chunk-inv-22",
+        "chunk-aud-14",
+        "chunk-aud-16",
+        "chunk-top-07",
+        "chunk-top-06",
+        "chunk-gov-23",
+        "chunk-wrk-24",
+        "chunk-top-10",
+        "chunk-aud-15"
+      ]
+    }
+  ]
+}

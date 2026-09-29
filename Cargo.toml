@@ -6,6 +6,7 @@ rust-version = "1.98"
 description = "The Knowledge Substrate"
 license = "MIT"
 readme = "README.md"
+default-run = "tks"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
@@ -22,6 +23,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 pulldown-cmark = "0.13"
 regex = "1"
+fastembed = { version = "4", optional = true }
+
+[features]
+default = ["vector-spike"]
+vector-spike = ["dep:fastembed"]
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -39,6 +45,16 @@ path = "src/main.rs"
 name = "h1_spike_eval"
 path = "scripts/spikes/h1_spike/main.rs"
 
+[[bin]]
+name = "vector_spike_eval"
+path = "scripts/spikes/vector_spike/main.rs"
+required-features = ["vector-spike"]
+
 [[bench]]
 name = "ast_decomposition_bench"
 harness = false
+
+[[bench]]
+name = "vector_inference_bench"
+harness = false
+required-features = ["vector-spike"]

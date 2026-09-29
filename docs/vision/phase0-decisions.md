@@ -14,6 +14,8 @@
 | DEC-0.8 | WP-0.4 | In-Memory Property Graph Topology and Depth-2 Upstream Lineage Traversal | API/Contract Elaboration | architecture.md §6.1, strategic-planning-backlog.md §5 Spike 0 | Implemented |
 | DEC-0.9 | WP-0.4 | Zero-Dependency Process-Isolated Live Evaluation Runner | Technical Trade-off | architecture.md §7, strategic-planning-backlog.md §5 Spike 0 | Implemented |
 | DEC-0.10 | WP-0.4 | Dual Rubric Rule Violation Scoping and Directional Decision Gate | Specification Gap | strategic-planning-backlog.md §6 CAL-H1, architecture.md §10 R-1 | Implemented |
+| DEC-0.11 | WP-0.5 | Optional FastEmbed Dependency and Feature-Gated Spike Architecture | Technical Trade-off | architecture.md §7, phase0-plan.md WP-0.5 | Implemented |
+| DEC-0.12 | WP-0.5 | Sub-15ms Local CPU Vector Inference Standard and Offline Provider Designation | Technical Trade-off | architecture.md §7, §9 D-77, §9 D-82, §11 Q-4 | Implemented |
 
 ---
 
@@ -139,4 +141,28 @@
   * *Option B:* Scope violations to at most one violation per rubric rule (recording either the first missing required pattern or the first encountered forbidden pattern as the failure reason), calculating total rule checks as the denominator. (Pros: Mathematically sound violation percentages bounded by 100% [$V / \text{Rules}$], producing an accurate and defensible measurement of the relative violation reduction [$[V_A - V_B] / V_A \times 100\%$]).
 * **Decision Taken & Rationale:** Adopted Option B. Strictly guarantees valid mathematical rate bounds, eliminates duplicate penalty distortion, and produces consistent metrics across all 20 tasks.
 * **Upstream Impact & Target Document:** `strategic-planning-backlog.md` §6 CAL-H1, `architecture.md` §10 R-1.
+* **Status:** Implemented
+
+### DEC-0.11: Optional FastEmbed Dependency and Feature-Gated Spike Architecture
+
+* **Work Package:** WP-0.5
+* **Category:** Technical Trade-off
+* **Context & Problem:** `phase0-plan.md` WP-0.5 specifies adding `fastembed = "4"` to `Cargo.toml` under optional development dependencies / spike features. In Cargo, binary targets (`[[bin]]`) cannot access `[dev-dependencies]`, while declaring `fastembed` as an unconditional runtime dependency would bloat the core production binary with ONNX runtime before Phase 1. Furthermore, verification commands in `phase0-plan.md` (§4.2) require running `cargo run --bin vector_spike_eval` and `cargo bench --bench vector_inference_bench` without requiring explicit `--features` flags.
+* **Options Considered:**
+  * *Option A:* Declare `fastembed` as an unconditional runtime dependency in `Cargo.toml`. (Pros: Straightforward. Cons: Violates minimal binary size and constraint C-10 by bundling heavy ONNX runtime into the core crate unconditionally).
+  * *Option B:* Declare `fastembed` under `[dependencies]` as `optional = true`, activate it under feature `vector-spike` included in `default = ["vector-spike"]`, configure `required-features = ["vector-spike"]` on the spike binary and microbenchmark targets, and set `default-run = "tks"` in `[package]`. (Pros: Zero bloat when compiled with `--no-default-features`; enables out-of-the-box execution of `cargo run --bin vector_spike_eval`, `cargo bench --bench vector_inference_bench`, and `cargo run -- --migrate-only` without requiring additional CLI flags; satisfies all Exit Gate criteria and repository guidelines).
+* **Decision Taken & Rationale:** Adopted Option B. Preserves a minimal, unbloated core production binary while enabling seamless out-of-the-box execution for all Phase 0 verification commands.
+* **Upstream Impact & Target Document:** `architecture.md` §7, `docs/vision/phase0-plan.md` WP-0.5.
+* **Status:** Implemented
+
+### DEC-0.12: Sub-15ms Local CPU Vector Inference Standard and Offline Provider Designation
+
+* **Work Package:** WP-0.5
+* **Category:** Technical Trade-off
+* **Context & Problem:** Strategic planning backlog Spike 8 and Open Question Q-4 required empirically evaluating whether embedded CPU vector inference (`all-MiniLM-L6-v2`, 384 dimensions) meets latency ($\le 50\text{ ms}$), memory ($\le 256\text{ MB}$), binary footprint ($\le 50\text{ MB}$), and Top-10 retrieval parity ($\ge 70\%$) thresholds to designate it as the default Phase 1 provider vs. offline fallback.
+* **Options Considered:**
+  * *Option A:* Retain external embedding APIs (e.g. OpenAI `text-embedding-3-small`) as primary, treating local ONNX inference merely as fallback. (Pros: Leverages larger commercial models. Cons: Preserves runtime external API dependency, network failure modes, cost per token, and HTTP 429 rate limit risks; prevents air-gapped offline operation).
+  * *Option B:* Formally designate `fastembed-rs` executing `all-MiniLM-L6-v2` as the default Phase 1 embedding provider based on empirical performance (observed mean single-chunk latency 4.5–10.5 ms, single-engine resident memory 184–195 MB, added release binary overhead 4.2 MB, Top-10 retrieval parity 70.0%). (Pros: Resolves Open Question Q-4, grounds relational vector schema D-77 and D-82, achieves 100% offline self-sufficiency, sub-10ms query times with pgvector HNSW indexing, zero token costs).
+* **Decision Taken & Rationale:** Adopted Option B. Conclusively resolves Open Question Q-4, grounds Decision D-77 (`embedding vector(384)` with partial HNSW cosine distance index) and Decision D-82 (`node_embeddings` queue consolidation), and establishes 100% offline self-sufficiency for Phase 1.
+* **Upstream Impact & Target Document:** `architecture.md` §7, §9 D-77, §9 D-82, §11 Q-4, `strategic-planning-backlog.md` §5 Spike 8.
 * **Status:** Implemented
