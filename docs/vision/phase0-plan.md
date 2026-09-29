@@ -289,13 +289,13 @@ flowchart TD
 
 ### 4.1 Verification Checklist
 
-- [ ] All work package tests and automated checks passing across WP-0.1 through WP-0.5.
-- [ ] Project linting, type-checking, and format checks pass cleanly with zero warnings/errors (`cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`).
-- [ ] Devcontainer PostgreSQL with `pgvector` boots cleanly and executes `--migrate-only` successfully against consolidated schema (including `graph_nodes` with embedded spans and author attribution, `graph_edges` with downward and draft indexes, `node_embeddings` with `vector(384)` and status state machine, and seeded dev identity `tks_dev_token`).
-- [ ] CommonMark AST parsing decomposes specifications with $\ge 80$% mechanical chunking, emits upward structural hierarchy edges (`DERIVED_FROM`), generates disambiguated heading anchors (`ast_anchor`), and achieves 100% exact UTF-8 byte span fidelity ([TB-2](file:///workspaces/tks/docs/vision/technical-backlog.md#L23)).
-- [ ] Extraction benchmark achieves $\ge 95$% precision/recall against hand-labeled ground truth and validates graceful degradation with conditional typing in `DRAFT` state ([CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L403)).
-- [ ] Spike 0 achieves $\ge 30$% reduction in constraint violations vs. multi-tool agentic baseline across $\ge 20$ tasks ([CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L400) directional validation greenlight; full Phase 2 target is $\ge 40$%).
-- [ ] Spike 8 verifies local CPU vector embedding inference latency $\le 50\text{ ms}$/chunk, binary footprint $\le 50\text{ MB}$, RAM $\le 256\text{ MB}$, and Top-10 retrieval parity, confirming offline self-sufficiency ([Spike 8](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L377), [`architecture.md` §9 D-77](file:///workspaces/tks/docs/vision/architecture.md#L1299), [§11 Q-4](file:///workspaces/tks/docs/vision/architecture.md#L1395)).
+- [x] All work package tests and automated checks passing across WP-0.1 through WP-0.5.
+- [x] Project linting, type-checking, and format checks pass cleanly with zero warnings/errors (`cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`).
+- [x] Devcontainer PostgreSQL with `pgvector` boots cleanly and executes `--migrate-only` successfully against consolidated schema (including `graph_nodes` with embedded spans and author attribution, `graph_edges` with downward and draft indexes, `node_embeddings` with `vector(384)` and status state machine, and seeded dev identity `tks_dev_token`).
+- [x] CommonMark AST parsing decomposes specifications with $\ge 80$% mechanical chunking, emits upward structural hierarchy edges (`DERIVED_FROM`), generates disambiguated heading anchors (`ast_anchor`), and achieves 100% exact UTF-8 byte span fidelity ([TB-2](file:///workspaces/tks/docs/vision/technical-backlog.md#L23)).
+- [x] Extraction benchmark achieves $\ge 95$% precision/recall against hand-labeled ground truth and validates graceful degradation with conditional typing in `DRAFT` state ([CAL-H4](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L403)).
+- [x] Spike 0 achieves $\ge 30$% reduction in constraint violations vs. multi-tool agentic baseline across $\ge 20$ tasks ([CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L400) directional validation greenlight; full Phase 2 target is $\ge 40$%).
+- [x] Spike 8 verifies local CPU vector embedding inference latency $\le 50\text{ ms}$/chunk, binary footprint $\le 50\text{ MB}$, RAM $\le 256\text{ MB}$, and Top-10 retrieval parity, confirming offline self-sufficiency ([Spike 8](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L377), [`architecture.md` §9 D-77](file:///workspaces/tks/docs/vision/architecture.md#L1299), [§11 Q-4](file:///workspaces/tks/docs/vision/architecture.md#L1395)).
 
 ### 4.2 Gate / Milestone Demonstration
 
