@@ -1,0 +1,1 @@
+../../.shared/ai/core/prompts/architecture-architect.prompt.md

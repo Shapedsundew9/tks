@@ -1,0 +1,1 @@
+../../.shared/ai/core/prompts/architecture-lead-developer.prompt.md
