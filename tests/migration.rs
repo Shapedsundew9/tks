@@ -51,6 +51,23 @@ async fn test_migration_and_schema_verification() {
         assert!(exists, "Expected table '{table}' does not exist");
     }
 
+    // Verify attributes column on ingestion_jobs (TB-7.5)
+    let attr_col = client
+        .query_one(
+            "SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'ingestion_jobs' AND column_name = 'attributes'
+            );",
+            &[],
+        )
+        .await
+        .expect("Error checking attributes column on ingestion_jobs");
+    let attr_exists: bool = attr_col.get(0);
+    assert!(
+        attr_exists,
+        "Expected column 'attributes' on ingestion_jobs"
+    );
+
     // 2. Verify expected partial indexes exist and are valid in pg_indexes
     let expected_indexes = vec![
         "idx_node_embeddings_vector",

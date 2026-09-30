@@ -13,6 +13,10 @@
 | DEC-1.7 | WP-1.3 | RustCrypto SHA-256 Dependency for Normalized Content Hashing | Dependency Choice | architecture.md §7, technical-backlog.md TB-7 | Implemented |
 | DEC-1.8 | WP-1.3 | Content-Preserving 3-Tier Reconciliation Hierarchy and Staged Span Re-Anchoring | Technical Trade-off | architecture.md §9 D-64, §9 D-74, technical-backlog.md TB-7 | Implemented |
 | DEC-1.9 | WP-1.3 | Comprehensive Canonical Identifier Regex Expansion for Substrate Entities | Specification Gap | technical-backlog.md TB-7, architecture.md §5.1 | Implemented |
+| DEC-1.10 | WP-1.4 | Single-Query Prioritized Claiming for Timed-Out Reclaims and Queued Ingestion Jobs | Technical Trade-off | architecture.md §5.2, technical-backlog.md TB-7 | Implemented |
+| DEC-1.11 | WP-1.4 | Persistent In-Memory FastEmbed Generator Instance for Sub-15ms Local Inference | Technical Trade-off | architecture.md §7, §9 D-77, technical-backlog.md TB-6 | Implemented |
+| DEC-1.12 | WP-1.4 | Ingestion Jobs Candidate Metadata Attributes Column Migration (V3) | Specification Gap | technical-backlog.md TB-7.5, architecture.md §5.1 | Implemented |
+| DEC-1.13 | WP-1.4 | tokio-util Dependency for Cooperative Task Cancellation | Dependency Choice | architecture.md §7 | Implemented |
 
 ---
 
@@ -125,4 +129,52 @@
   * *Option B: Expand regex to `\b((?:REQ|INV|DR|C|TB|TASK|WP|DEC)-[A-Za-z0-9]+(?:[-_\.][A-Za-z0-9]+)*)\b`.* Pros: uniformly recognizes all standard substrate identifiers across all documentation formats; robustly matches both numeric and alphanumeric tagged keys; extracts keys in order of first appearance. Cons: matches slightly broader tag families.
 * **Decision Taken & Rationale:** Option B. Expanding the pattern ensures all canonical keys defined across governing architecture, vision, and planning documents are mechanically extracted and preserved as first-class `node_key` tags during mechanical decomposition.
 * **Upstream Impact & Target Document:** `technical-backlog.md` TB-7 and `architecture.md` §5.1.
+* **Status:** Implemented
+
+### DEC-1.10: Single-Query Prioritized Claiming for Timed-Out Reclaims and Queued Ingestion Jobs
+
+* **Work Package:** WP-1.4
+* **Category:** Technical Trade-off
+* **Context & Problem:** The background decomposition worker must continuously claim new `QUEUED` jobs while prioritizing the reclamation of stalled or crashed `PROCESSING` jobs that have exceeded the 180-second timeout threshold (`updated_at < clock_timestamp() - INTERVAL '180 seconds'`) per Decisions D-79 and TB-7.6. Running separate polling loops or two consecutive transactions creates connection churn and introduces race windows between queue checks.
+* **Options Considered:**
+  * *Option A: Two sequential polling queries per tick.* Pros: separate SQL queries. Cons: doubles database connection checkouts and queries on every tick; can starve `QUEUED` jobs or waste cycles when queues are empty.
+  * *Option B: Single unified query ordering by status priority and creation timestamp.* Use `SELECT ... WHERE status = 'QUEUED' OR (status = 'PROCESSING' AND updated_at < clock_timestamp() - INTERVAL '180 seconds') ORDER BY CASE WHEN status = 'PROCESSING' THEN 0 ELSE 1 END, created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED`. Pros: executes atomically in a single statement; guarantees timed-out jobs are reclaimed first before new jobs are scheduled; lock-free across concurrent workers with `SKIP LOCKED`; zero connection churn. Cons: slightly more complex SQL predicate.
+* **Decision Taken & Rationale:** Option B. The single prioritized claim query guarantees prompt crash recovery without starvation or connection pool exhaustion, satisfying D-79 and TB-7.6.
+* **Upstream Impact & Target Document:** `architecture.md` §5.2 and `technical-backlog.md` TB-7.
+* **Status:** Implemented
+
+### DEC-1.11: Persistent In-Memory FastEmbed Generator Instance for Sub-15ms Local Inference
+
+* **Work Package:** WP-1.4
+* **Category:** Technical Trade-off
+* **Context & Problem:** `LocalEmbeddingGenerator` wrapping `fastembed::TextEmbedding` loads ONNX model weights and tokenizer configurations during initialization (~100–200ms). Initializing a new model instance on every polling tick or batch would repeatedly incur disk I/O and ONNX session setup overhead, breaching the sub-50ms SLA requirement for vector generation.
+* **Options Considered:**
+  * *Option A: Instantiate `LocalEmbeddingGenerator` per batch tick.* Pros: stateless worker function. Cons: adds 100–200ms initialization overhead to every batch, violating the <50ms per-node latency threshold.
+  * *Option B: Maintain a persistent `LocalEmbeddingGenerator` instance within the long-running worker task loop.* Pros: model weights and ONNX session are initialized once on worker startup; subsequent batch inference executes in ~9–15ms for batches of 5–10 items (<2ms per node), comfortably outperforming the sub-50ms requirement. Cons: retains model weights in resident memory (~190 MB, within the 256 MB budget).
+* **Decision Taken & Rationale:** Option B. Persisting the generator in worker memory aligns with Decision DEC-0.12 and fulfills the sub-50ms latency proof criteria.
+* **Upstream Impact & Target Document:** `architecture.md` §7, §9 D-77, and `technical-backlog.md` TB-6.
+* **Status:** Implemented
+
+### DEC-1.12: Ingestion Jobs Candidate Metadata Attributes Column Migration (V3)
+
+* **Work Package:** WP-1.4
+* **Category:** Specification Gap
+* **Context & Problem:** Invariant INV-2, Decision D-74, and Technical Backlog TB-7.5 mandate that when active requirements match across document revisions with shifted spans, active nodes must NEVER be updated in place during reconciliation. Instead, candidate re-anchored coordinates must be staged within `ingestion_jobs` candidate attributes/metadata until explicit staging approval. However, `migrations/V1__initial_schema.sql` did not declare an `attributes` column on `ingestion_jobs`. Modifying `V1__initial_schema.sql` after deployment would invalidate refinery migration checksums.
+* **Options Considered:**
+  * *Option A: Mutate `V1__initial_schema.sql` retroactively.* Pros: keeps table schema in one file. Cons: breaks migration checksum validation in refinery on existing databases; violates production migration safety.
+  * *Option B: Create `migrations/V3__ingestion_jobs_attributes.sql` adding `attributes JSONB NOT NULL DEFAULT '{}'`.* Pros: preserves refinery migration history; backward-compatible; allows candidate re-anchoring metadata to be cleanly staged and retrieved upon approval. Cons: adds a migration step.
+* **Decision Taken & Rationale:** Option B. Introducing migration V3 cleanly extends the schema without mutating applied migrations, enabling staged candidate re-anchoring metadata storage per TB-7.5.
+* **Upstream Impact & Target Document:** `technical-backlog.md` TB-7.5 and `architecture.md` §5.1.
+* **Status:** Implemented
+
+### DEC-1.13: tokio-util Dependency for Cooperative Task Cancellation
+
+* **Work Package:** WP-1.4
+* **Category:** Dependency Choice
+* **Context & Problem:** The cooperative worker manager (`WorkerManager`) must coordinate graceful shutdown across multiple concurrent worker tasks (`decomp` and `embedding`) without abrupt task abortion that could leave in-flight transactions or Git actor states corrupted.
+* **Options Considered:**
+  * *Option A: Implement custom channel-based shutdown signaling (e.g. `tokio::sync::watch`).* Pros: uses existing `tokio` features. Cons: requires custom boilerplate and boilerplate propagation across sub-worker tasks.
+  * *Option B: Add `tokio-util = "0.7"` to dependencies for `CancellationToken`.* Pros: `tokio-util` is the official, well-maintained companion crate to Tokio; `CancellationToken` provides tree-structured hierarchical cancellation and clean `select!` integration; already present in the transitive dependency tree (via reqwest/fastembed), introducing zero new compiled code footprint. Cons: explicit dependency entry in `Cargo.toml`.
+* **Decision Taken & Rationale:** Option B. Adopting `tokio-util` directly fulfills the WP-1.4 contract specification while conforming to constraint C-10.
+* **Upstream Impact & Target Document:** `architecture.md` §7.
 * **Status:** Implemented
