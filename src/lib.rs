@@ -4,6 +4,7 @@ use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod db;
+pub mod gateway;
 pub mod ingest;
 pub mod storage;
 pub mod worker;

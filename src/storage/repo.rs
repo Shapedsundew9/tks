@@ -79,7 +79,7 @@ impl StorageRepo {
     /// Returns `StorageError` if validation CTE fails.
     pub async fn validate_ancestor_path(
         &self,
-        client: &mut Client,
+        client: &(impl tokio_postgres::GenericClient + ?Sized),
         node_ids: &[Uuid],
         allow_draft_parents: bool,
     ) -> Result<bool, StorageError> {
@@ -127,6 +127,28 @@ impl StorageRepo {
     ) -> Result<TopologicalEnvelope, StorageError> {
         let client = self.get_client().await?;
         crate::storage::envelope::assemble_topological_envelope(
+            &client,
+            target_id,
+            depth,
+            include_drafts_for,
+        )
+        .await
+    }
+
+    /// Assembles the complete context envelope including topological ancestors, constraints,
+    /// and vector neighbors (TB-6, DEC-0.8, §6.1).
+    ///
+    /// # Errors
+    ///
+    /// Returns `StorageError` if node is not found, not visible, or query fails.
+    pub async fn assemble_context_envelope(
+        &self,
+        target_id: Uuid,
+        depth: u32,
+        include_drafts_for: Option<&str>,
+    ) -> Result<TopologicalEnvelope, StorageError> {
+        let client = self.get_client().await?;
+        crate::storage::envelope::assemble_context_envelope(
             &client,
             target_id,
             depth,

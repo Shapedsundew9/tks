@@ -12,6 +12,8 @@ pub struct TopologicalEnvelope {
     pub target_node: GraphNode,
     pub ancestor_requirements: Vec<GraphNode>,
     pub sibling_constraints: Vec<GraphNode>,
+    #[serde(default)]
+    pub vector_neighbors: Vec<GraphNode>,
     pub total_nodes: usize,
     pub staleness_warning: bool,
 }
@@ -68,6 +70,20 @@ impl TopologicalEnvelope {
                 let ccontent = con.content.as_deref().unwrap_or("");
                 out.push_str(&format!(
                     "- **[{ckey}] {ctitle}** [Severity: BLOCKING]\n  {ccontent}\n"
+                ));
+            }
+            out.push('\n');
+        }
+
+        if !self.vector_neighbors.is_empty() {
+            out.push_str("#### Semantic Vector Neighbors:\n");
+            for vn in &self.vector_neighbors {
+                let vkey = vn.node_key.as_deref().unwrap_or("UNTITLED");
+                let vtitle = vn.title.as_deref().unwrap_or("");
+                let vcontent = vn.content.as_deref().unwrap_or("");
+                out.push_str(&format!(
+                    "- **[{vkey}] {vtitle}** ({})\n  {vcontent}\n",
+                    vn.node_type
                 ));
             }
             out.push('\n');
@@ -278,9 +294,110 @@ pub async fn assemble_topological_envelope(
         target_node,
         ancestor_requirements,
         sibling_constraints,
+        vector_neighbors: Vec::new(),
         total_nodes,
         staleness_warning,
     })
+}
+
+/// Queries up to `limit` semantic vector neighbors from `node_embeddings` using the target node's
+/// embedding or ancestor requirement embedding fallback (TB-6, D-77).
+///
+/// If target has no completed embedding, attempts fallback to immediate parent requirement node.
+/// If parent has no completed embedding either, gracefully skips vector search.
+pub async fn query_vector_neighbors(
+    client: &Client,
+    target_id: Uuid,
+    excluded_ids: &[Uuid],
+    limit: usize,
+) -> Result<Vec<GraphNode>, StorageError> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    // 1. Look up target embedding vector text
+    let target_emb = client
+        .query_opt(
+            "SELECT embedding::text FROM node_embeddings WHERE node_id = $1 AND status = 'COMPLETED';",
+            &[&target_id],
+        )
+        .await?;
+
+    let emb_text = match target_emb {
+        Some(r) => r.get::<_, Option<String>>(0),
+        None => {
+            // 2. Ancestor requirement embedding fallback (TB-6)
+            let parent_emb = client
+                .query_opt(
+                    "SELECT ne.embedding::text FROM node_embeddings ne \
+                     JOIN graph_edges e ON e.to_node_id = ne.node_id \
+                     WHERE e.from_node_id = $1 \
+                       AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM') \
+                       AND ne.status = 'COMPLETED' \
+                     LIMIT 1;",
+                    &[&target_id],
+                )
+                .await?;
+            parent_emb.and_then(|r| r.get::<_, Option<String>>(0))
+        }
+    };
+
+    let emb_str = match emb_text {
+        Some(s) if !s.is_empty() => s,
+        _ => return Ok(Vec::new()),
+    };
+
+    // 3. Query nearest active neighbor nodes
+    let rows = client
+        .query(
+            "SELECT n.id, n.node_key, n.node_type, n.title, n.content, n.lifecycle_state, \
+                    n.governance_policy, n.created_by, n.job_id, n.doc_path, n.doc_hash, \
+                    n.byte_start, n.byte_end, n.attributes \
+             FROM node_embeddings ne \
+             JOIN graph_nodes n ON n.id = ne.node_id \
+             WHERE ne.status = 'COMPLETED' \
+               AND n.lifecycle_state = 'ACTIVE' \
+               AND n.id != $1 \
+               AND NOT (n.id = ANY($2)) \
+             ORDER BY ne.embedding <=> ($3::text)::vector \
+             LIMIT $4;",
+            &[&target_id, &excluded_ids, &emb_str, &(limit as i64)],
+        )
+        .await?;
+
+    Ok(rows.iter().map(GraphNode::from_row).collect())
+}
+
+/// Assembles the complete context envelope including topological ancestors, constraints,
+/// and vector neighbors with ancestor fallback and quota enforcement (TB-6, DEC-0.8, §6.1).
+pub async fn assemble_context_envelope(
+    client: &Client,
+    target_id: Uuid,
+    depth: u32,
+    include_drafts_for: Option<&str>,
+) -> Result<TopologicalEnvelope, StorageError> {
+    let mut envelope =
+        assemble_topological_envelope(client, target_id, depth, include_drafts_for).await?;
+
+    let mut excluded_ids = Vec::with_capacity(envelope.total_nodes);
+    excluded_ids.push(envelope.target_node.id);
+    for n in &envelope.ancestor_requirements {
+        excluded_ids.push(n.id);
+    }
+    for n in &envelope.sibling_constraints {
+        excluded_ids.push(n.id);
+    }
+
+    let remaining_budget = 40usize.saturating_sub(envelope.total_nodes).min(10);
+    if remaining_budget > 0
+        && let Ok(neighbors) =
+            query_vector_neighbors(client, target_id, &excluded_ids, remaining_budget).await
+    {
+        envelope.total_nodes += neighbors.len();
+        envelope.vector_neighbors = neighbors;
+    }
+
+    Ok(envelope)
 }
 
 /// Validates Invariant INV-1 for candidate nodes: every non-requirement node
@@ -294,7 +411,7 @@ pub async fn assemble_topological_envelope(
 ///
 /// Returns `StorageError::Database` if query execution fails.
 pub async fn validate_ancestor_path(
-    client: &mut Client,
+    client: &(impl tokio_postgres::GenericClient + ?Sized),
     node_ids: &[Uuid],
     allow_draft_parents: bool,
 ) -> Result<bool, StorageError> {
@@ -310,7 +427,11 @@ pub async fn validate_ancestor_path(
         ),
         non_requirements AS (
             SELECT id FROM candidate_nodes
-            WHERE node_type NOT IN ('REQUIREMENT')
+            WHERE node_type IN ('TASK', 'SPECIFICATION')
+              AND (
+                  node_type = 'TASK'
+                  OR id IN (SELECT from_node_id FROM graph_edges WHERE edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM'))
+              )
         ),
         path_walk AS (
             SELECT

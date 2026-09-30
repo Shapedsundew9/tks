@@ -27,13 +27,18 @@ git2 = "0.20"
 fastembed = { version = "4", optional = true }
 sha2 = "0.10"
 tokio-util = "0.7"
+axum = { version = "0.8" }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "timeout"] }
+moka = { version = "0.12", features = ["future"] }
+futures-util = "0.3"
 
 [features]
 default = ["vector-spike"]
 vector-spike = ["dep:fastembed"]
 
 [dev-dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 tokio = { version = "1", features = ["full"] }
 
 [lib]

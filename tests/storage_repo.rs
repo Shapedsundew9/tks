@@ -202,7 +202,7 @@ async fn test_polymorphic_node_resolution() {
 
 #[tokio::test]
 async fn test_invariant_inv1_ancestor_path_validation() {
-    let (_lock, _repo, mut client) = setup_test_db().await;
+    let (_lock, _repo, client) = setup_test_db().await;
 
     let req_id = Uuid::new_v4();
     let spec_id = Uuid::new_v4();
@@ -267,7 +267,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // Verification Case A: Requirement itself is valid
     assert!(
-        validate_ancestor_path(&mut client, &[req_id], false)
+        validate_ancestor_path(&client, &[req_id], false)
             .await
             .unwrap(),
         "Requirement root must satisfy INV-1"
@@ -275,7 +275,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // Verification Case B: Spec with direct edge to requirement is valid
     assert!(
-        validate_ancestor_path(&mut client, &[spec_id], false)
+        validate_ancestor_path(&client, &[spec_id], false)
             .await
             .unwrap(),
         "Spec derived from Requirement must satisfy INV-1"
@@ -283,7 +283,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // Verification Case C: Multi-hop Task -> Spec -> Req is valid
     assert!(
-        validate_ancestor_path(&mut client, &[task_id], false)
+        validate_ancestor_path(&client, &[task_id], false)
             .await
             .unwrap(),
         "Task fulfilling Spec derived from Requirement must satisfy INV-1"
@@ -291,7 +291,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // Verification Case D: Orphan task fails validation
     assert!(
-        !validate_ancestor_path(&mut client, &[orphan_id], false)
+        !validate_ancestor_path(&client, &[orphan_id], false)
             .await
             .unwrap(),
         "Orphan task must fail INV-1 validation"
@@ -299,7 +299,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // Verification Case E: Batch containing valid task AND orphan task must fail atomically
     assert!(
-        !validate_ancestor_path(&mut client, &[task_id, orphan_id], false)
+        !validate_ancestor_path(&client, &[task_id, orphan_id], false)
             .await
             .unwrap(),
         "Batch containing an orphan task must fail validation"
@@ -307,9 +307,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // Verification Case F: Empty batch is trivially valid
     assert!(
-        validate_ancestor_path(&mut client, &[], false)
-            .await
-            .unwrap(),
+        validate_ancestor_path(&client, &[], false).await.unwrap(),
         "Empty batch is valid"
     );
 
@@ -336,7 +334,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // Promoting both draft_spec_id and draft_req_id in the same batch must succeed!
     assert!(
-        validate_ancestor_path(&mut client, &[draft_spec_id, draft_req_id], false)
+        validate_ancestor_path(&client, &[draft_spec_id, draft_req_id], false)
             .await
             .unwrap(),
         "Batch promotion union evaluation must succeed when candidate requirement is in batch"
@@ -344,7 +342,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // Promoting draft_spec_id alone without candidate requirement in batch must fail!
     assert!(
-        !validate_ancestor_path(&mut client, &[draft_spec_id], false)
+        !validate_ancestor_path(&client, &[draft_spec_id], false)
             .await
             .unwrap(),
         "Promoting draft spec without active or promoted parent requirement must fail"
@@ -352,7 +350,7 @@ async fn test_invariant_inv1_ancestor_path_validation() {
 
     // But if allow_draft_parents is true, a draft spec with a draft parent succeeds
     assert!(
-        validate_ancestor_path(&mut client, &[draft_spec_id], true)
+        validate_ancestor_path(&client, &[draft_spec_id], true)
             .await
             .unwrap(),
         "allow_draft_parents=true must allow draft structural parent"

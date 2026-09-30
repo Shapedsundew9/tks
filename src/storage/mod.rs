@@ -10,7 +10,10 @@ pub mod search;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub use envelope::{TopologicalEnvelope, assemble_topological_envelope, validate_ancestor_path};
+pub use envelope::{
+    TopologicalEnvelope, assemble_context_envelope, assemble_topological_envelope,
+    query_vector_neighbors, validate_ancestor_path,
+};
 pub use repo::{StorageRepo, acquire_structural_lock, lookup_node_polymorphic};
 pub use search::query_active_requirements;
 

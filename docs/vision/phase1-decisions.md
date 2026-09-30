@@ -17,6 +17,9 @@
 | DEC-1.11 | WP-1.4 | Persistent In-Memory FastEmbed Generator Instance for Sub-15ms Local Inference | Technical Trade-off | architecture.md §7, §9 D-77, technical-backlog.md TB-6 | Implemented |
 | DEC-1.12 | WP-1.4 | Ingestion Jobs Candidate Metadata Attributes Column Migration (V3) | Specification Gap | technical-backlog.md TB-7.5, architecture.md §5.1 | Implemented |
 | DEC-1.13 | WP-1.4 | tokio-util Dependency for Cooperative Task Cancellation | Dependency Choice | architecture.md §7 | Implemented |
+| DEC-1.14 | WP-1.5 | Dual-Transport MCP Server Architecture for HTTP/SSE and Direct JSON-RPC | Technical Trade-off | architecture.md §4, §6, §9 D-19 | Implemented |
+| DEC-1.15 | WP-1.5 | In-Process Moka Cache Eviction Strategy with Immediate Invalidation | Technical Trade-off | architecture.md §4, §9 D-39, D-49, technical-backlog.md TB-5 | Implemented |
+| DEC-1.16 | WP-1.5 | Atomic Staging Promotion and In-Place Span Re-Anchoring with Draft Revision Squashing | Technical Trade-off | architecture.md §3 INV-1, INV-2, §5.1, §9 D-34, D-61, D-65, D-74, D-82 | Implemented |
 
 ---
 
@@ -177,4 +180,42 @@
   * *Option B: Add `tokio-util = "0.7"` to dependencies for `CancellationToken`.* Pros: `tokio-util` is the official, well-maintained companion crate to Tokio; `CancellationToken` provides tree-structured hierarchical cancellation and clean `select!` integration; already present in the transitive dependency tree (via reqwest/fastembed), introducing zero new compiled code footprint. Cons: explicit dependency entry in `Cargo.toml`.
 * **Decision Taken & Rationale:** Option B. Adopting `tokio-util` directly fulfills the WP-1.4 contract specification while conforming to constraint C-10.
 * **Upstream Impact & Target Document:** `architecture.md` §7.
+* **Status:** Implemented
+
+### DEC-1.14: Dual-Transport MCP Server Architecture for HTTP/SSE and Direct JSON-RPC
+
+* **Work Package:** WP-1.5
+* **Category:** Technical Trade-off
+* **Context & Problem:** The Model Context Protocol (MCP) specification defines two standard primary transport bindings: Server-Sent Events (SSE) where a streaming GET request receives continuous event notifications and dispatches requests over an auxiliary HTTP POST endpoint, and direct JSON-RPC 2.0 over standard HTTP POST. Client adapters like `tks mcp-stdio` (WP-1.6) require full SSE session semantics (`GET /mcp/sse` and `POST /mcp/message`), whereas lightweight callers, test harnesses, and automated scripting clients require synchronous request-response JSON-RPC 2.0 without long-lived streaming connection overhead.
+* **Options Considered:**
+  * *Option A: Implement SSE transport exclusively (`/mcp/sse` + `/mcp/message`).* Pros: strictly follows the full MCP HTTP/SSE specification. Cons: requires callers and test suites to maintain active event source listener loops and coordinate session IDs just to execute simple single-shot tool calls.
+  * *Option B: Implement direct JSON-RPC 2.0 POST endpoint exclusively (`/mcp`).* Pros: simple stateless integration. Cons: fails compliance with the MCP SSE specification and prevents streaming transport proxies.
+  * *Option C: Unified dual-transport routing sharing the underlying tool dispatcher.* Pros: `/mcp/sse` and `/mcp/message` provide standard streaming SSE sessions with broadcast channels, while `/mcp` provides direct synchronous JSON-RPC 2.0 request/response handling. Both transports dispatch into identical read-only tool implementations (`get_context_envelope`, `query_requirements`, `get_document_span`), maximizing client compatibility. Cons: minimal routing configuration overhead in `src/gateway/mcp/mod.rs`.
+* **Decision Taken & Rationale:** Option C. Implementing both standard SSE and direct HTTP JSON-RPC 2.0 ensures complete compatibility with standard MCP clients and proxies while providing high-performance, low-latency synchronous tool invocations.
+* **Upstream Impact & Target Document:** `architecture.md` §4, §6, and §9 D-19.
+* **Status:** Implemented
+
+### DEC-1.15: In-Process Moka Cache Eviction Strategy with Immediate Invalidation
+
+* **Work Package:** WP-1.5
+* **Category:** Technical Trade-off
+* **Context & Problem:** Invariant INV-7 and Technical Backlog TB-5 mandate that identity authentication execute with minimal overhead ($<1\text{ ms}$) in Axum Tower middleware, while immediate revocation of an identity (`POST /api/v1/identities/{id}/revoke`) must instantly invalidate all cached credentials across the running service without waiting for TTL expiration.
+* **Options Considered:**
+  * *Option A: Direct PostgreSQL query on every request without caching.* Pros: always strictly consistent. Cons: adds 1–3ms database roundtrip latency to every HTTP/MCP call, violating sub-5ms performance SLAs.
+  * *Option B: In-memory cache with pure time-to-live (TTL) expiration only.* Pros: simple cache configuration. Cons: revoked credentials would remain valid and usable until TTL expiration, creating a critical security vulnerability and violating Invariant INV-7.
+  * *Option C: In-process `moka::future::Cache` with SHA-256 token hashing and immediate active eviction on revocation.* Pros: SHA-256 hashing prevents in-memory plaintext token leakage; 5-minute TTL bound with 10,000 entry capacity protects memory; `revoke_identity` updates the database (`is_active = false`) and simultaneously evicts active credentials from the `moka` cache, guaranteeing immediate rejection of revoked tokens on subsequent requests. Cons: requires passing shared `AuthState` to route handlers.
+* **Decision Taken & Rationale:** Option C. Combining `moka::future::Cache` with explicit invalidation upon revocation ensures sub-millisecond authentication overhead while strictly enforcing Invariant INV-7 and TB-5.
+* **Upstream Impact & Target Document:** `architecture.md` §4, §9 D-39, D-49, and `technical-backlog.md` TB-5.
+* **Status:** Implemented
+
+### DEC-1.16: Atomic Staging Promotion and In-Place Span Re-Anchoring with Draft Revision Squashing
+
+* **Work Package:** WP-1.5
+* **Category:** Technical Trade-off
+* **Context & Problem:** Staging approval (`POST /api/v1/documents/ingest/{job_id}/approve` and alias `POST /api/v1/staging/approve`) transitions candidate draft entities into active production state. This operation must acquire global and document advisory locks in strict hierarchy (D-66), validate Invariant INV-1 ancestor paths, apply candidate span re-anchoring in place on matching active `graph_nodes` with `SPAN_REANCHORED` audit events (D-74, TB-7.5), atomically purge unapproved draft nodes (D-46), promote candidate edges only when both endpoints are active while superseding conflicting active edges (D-47), squash ephemeral draft revisions into a canonical `APPROVED` event in `audit_ledger` with monotonic `event_seq` and transaction correlation `batch_id` (D-61, D-65), promote nodes to `ACTIVE` (defaulting `UNCLASSIFIED` to `SPECIFICATION`), and enqueue vector embeddings for active nodes into `node_embeddings` with `status = 'PENDING'` (D-82).
+* **Options Considered:**
+  * *Option A: Multi-transaction staged commit (separate validation, graph update, and audit recording).* Pros: shorter single transaction holding time. Cons: susceptible to TOCTOU race conditions and partial mutation failures, violating Invariants INV-1 and INV-2.
+  * *Option B: Single atomic transaction with strict lock acquisition hierarchy.* Pros: acquiring `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))` and `pg_advisory_xact_lock(hashtext(doc_path))` before any row mutations guarantees total ordering, mathematically preventing deadlock cycles (40P01) and ensuring complete ACID atomicity across span re-anchoring, draft deletion, node promotion, revision squashing, and embedding queueing. Cons: transaction locks the document and structural mutation space for ~5–10ms during approval.
+* **Decision Taken & Rationale:** Option B. Executing the entire staging promotion within a single advisory-locked transaction guarantees strict topological integrity, zero orphan draft residue, and complete audit immutability.
+* **Upstream Impact & Target Document:** `architecture.md` §3 INV-1, INV-2, §5.1, §9 D-34, D-46, D-47, D-61, D-65, D-74, D-82, and D-83.
 * **Status:** Implemented
