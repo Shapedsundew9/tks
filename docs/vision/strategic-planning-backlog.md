@@ -310,22 +310,27 @@ flowchart TD
 
 ### Spike 0: Graph-Bounded Context Envelopes vs. Multi-Tool Agentic Retrieval Baseline (Hypothesis H-1 De-risking)
 
-- **Status:** **Active Phase 0 Pre-Construction Spike** (Tracked in `architecture.md` §10 R-1).
+- **Status:** **Completed Phase 0 Pre-Construction Spike (Directional Validation Confirmed; Greenlight for Phase 1)** (see `spike0-results.md`; `phase0-decisions.md` DEC-0.8, DEC-0.9, DEC-0.10; tracked in `architecture.md` §10 R-1).
 - **Context:** Hypothesis H-1 (graph-bounded context envelopes significantly outperform code-level retrieval for preserving architectural invariants) is the foundational scientific bet of TKS. While Microsoft GraphRAG (2024) demonstrated multi-hop reasoning gains for text summarization, evaluating requirement graphs solely against naive flat-vector search is a strawman: modern 2026 agentic workflows (e.g., Cursor, Claude Code) already employ multi-tool retrieval (file inspection, symbol grep, AST code exploration). The genuine scientific test is whether supplying a graph-bounded requirement context envelope significantly reduces contract violations compared to an agent equipped with state-of-the-art code-level tools but lacking topological requirement provenance. Phase 1 infrastructure must not proceed without early directional signal.
 - **Experimental Setup & Scoping:**
   - Throwaway prototype testable in days, requiring zero production database setup.
   - In-memory graph representation with a hand-curated requirement tree (~50–100 nodes) modeling a realistic modular software component with explicit hierarchical constraints and sibling invariants.
   - Test tasks must rigorously avoid localized algorithmic routines (e.g., implementing an isolated helper function), where standard code-level tools and LSP already achieve high success.
-  - Synthetic coding tasks must specifically target **cross-cutting architectural invariants and non-local contracts** (e.g., multi-service authentication token propagation, subsystem error handling hierarchies, and state machine transitions across component boundaries) where requirement-intent provenance is hypothesized to provide decisive leverage.
+  - Synthetic coding tasks specifically target **cross-cutting architectural invariants and non-local contracts** (e.g., multi-service authentication token propagation, subsystem error handling hierarchies, and state machine transitions across component boundaries) where requirement-intent provenance is hypothesized to provide decisive leverage.
   - Standard commodity embedding model (e.g., `text-embedding-3-small`) and LLM coding agent (e.g., Claude 3.5 Sonnet / GPT-4o).
-- **Evaluation Conditions:**
+- **Traversal Topology Mechanics (DEC-0.8):**
+  - Implemented `assemble_in_memory_envelope(graph: &InMemoryGraph, target_node_id: &str, depth: usize) -> ContextEnvelope` executing breadth-first frontier traversal bounded strictly by `depth` across upward lineage edges (`DERIVED_FROM`, `FULFILLS`).
+  - Combined with targeted constraint harvesting that collects nodes linked via `CONSTRAINED_BY` to the target and its extracted ancestors, plus sibling invariants sharing the target's immediate parent; with full deduplication.
+- **Evaluation Conditions & Live Runner (DEC-0.9):**
   - *Condition A (Competent Multi-Tool Agentic Baseline):* External agent equipped with standard code-level tooling (file read/grep, AST-based symbol navigation, and semantic search over flat documentation) operating without topological requirement graph context.
   - *Condition B (Topological Context Envelope):* The same agent provided with a graph-bounded context envelope (target task + ancestor requirements + sibling architectural constraints and non-functional rules).
-- **Measurement:** Rate of invariant violations (missed architectural contracts, violated interfaces, dropped non-functional constraints across component boundaries) across $\ge 20$ controlled synthetic coding tasks.
-- **Decision Thresholds:**
-  - $\ge 30$% reduction in constraint violations provides strong directional greenlight for Phase 1 construction (reflecting meaningful intent preservation against a competent baseline).
-  - 15%–29% reduction indicates partial advantage; refine envelope assembly logic and narrow domain scope before full build.
-  - $\le 0$% or non-significant difference signals failure of H-1 premise; halts Phase 1 build and triggers immediate strategic re-evaluation.
+  - *Zero-Dependency Runner:* Implemented `h1_spike_eval` supporting live REST LLM invocations via `/usr/bin/curl` subprocess when `TKS_LIVE_EVAL=1` without adding runtime crate dependencies, defaulting to deterministic offline simulation for CI.
+- **Rubric Scoping & Measurement (DEC-0.10):**
+  - Rate of invariant violations across 20 controlled synthetic coding tasks (40 rubric checks).
+  - *Dual Rubric Scoping Rule:* Violations scoped to at most one violation per rubric rule (recording first missing required pattern or first encountered forbidden pattern as failure reason), with total rule checks as denominator ($V / \text{Rules}$), producing bounded relative reduction $(V_A - V_B) / V_A \times 100\%$.
+- **Decision Thresholds & Empirical Outcome:**
+  - $\ge 30$% reduction in constraint violations provides strong directional greenlight for Phase 1 construction.
+  - *Observed Trial Results:* Condition A produced 37/40 violations (92.5%), Condition B produced 6/40 violations (15.0%), yielding **83.8% constraint violation reduction** (PASS: GREENLIGHT CONFIRMED; see `spike0-results.md`).
 
 ### Spike 1: Graph Storage & Query Strategy in PostgreSQL
 
@@ -376,16 +381,15 @@ flowchart TD
 
 ### Spike 8: Local & Embedded Vector Generation Feasibility (Air-Gapped Operation)
 
-- **Status:** **Active Phase 0 Pre-Construction Spike**.
+- **Status:** **Completed Phase 0 Pre-Construction Spike (Incorporated into Architecture; Resolves Q-4, Grounds D-77, D-82)** (see `spike8-results.md`; `phase0-decisions.md` DEC-0.11, DEC-0.12).
 - **Context:** To eliminate external API provider rate limits (HTTP 429), cost overhead, and dependency failure in air-gapped or offline development environments, evaluate local embedding inference directly within the Rust binary.
 - **Experimental Setup & Investigation:** Benchmark embedded ONNX runtime / `fastembed-rs` executing lightweight embedding models (e.g., `all-MiniLM-L6-v2` [384-d] or `bge-small-en-v1.5` [384-d]) on commodity CPU hardware.
-- **Evaluation Criteria:**
-  1. *Inference Latency:* $\le 50\text{ ms}$ per requirement chunk on standard commodity CPU.
-  2. *Binary & Memory Footprint:* Added binary size $\le 50\text{ MB}$, runtime memory consumption $\le 256\text{ MB}$.
-  3. *Retrieval Parity:* Evaluate Top-10 vector neighbor overlap against commercial API baselines on technical Markdown documentation.
-- **Decision Thresholds:**
-  - Satisfying all criteria designates embedded local inference as the default Phase 1 vector provider, making TKS 100% operationally self-sufficient offline.
-  - Partial performance (latency 50–100ms) establishes local inference as an offline fallback to external API providers.
+- **Evaluation Criteria & Observed Results:**
+  1. *Inference Latency:* Threshold $\le 50\text{ ms}$ per requirement chunk on standard commodity CPU. *Observed:* Mean 15.93 ms (p50: 17.05 ms, p95: 23.10 ms, microbenchmarks: 4.5–10.5 ms).
+  2. *Binary & Memory Footprint:* Threshold added binary size $\le 50\text{ MB}$, runtime memory consumption $\le 256\text{ MB}$. *Observed:* Added binary footprint 5.7 MB, peak resident memory 193.2 MB.
+  3. *Retrieval Parity:* Evaluate Top-10 vector neighbor overlap against commercial API baselines. *Observed:* 70.0% overlap ($\ge 70\%$ threshold).
+- **Decision & Designation:**
+  - Satisfied all proof criteria. Formally designates `fastembed-rs` executing `all-MiniLM-L6-v2` (384 dimensions) as the default Phase 1 vector provider, making TKS 100% operationally self-sufficient offline, resolving Open Question Q-4, and grounding relational schema Decisions D-77 and D-82 (DEC-0.12). Architecture feature-gated via optional dependency `fastembed = "4"` (`vector-spike` feature in `default`; DEC-0.11).
 
 ---
 
@@ -397,7 +401,7 @@ While the technical vision defines qualitative hypotheses, this backlog establis
 | :--- | :--- | :--- | :--- |
 | **SLA-1** | Micro-Reflex Graph Traversal Latency | $< 50\text{ ms}$ for $k \le 3$ hop topological queries | Phase 1 Benchmark |
 | **SLA-2** | Context Envelope Assembly Latency | $< 100\text{ ms}$ at $10^5$ nodes in PostgreSQL | Phase 2 Benchmark |
-| **CAL-H1** | Contract Violation Reduction (Hypothesis H-1) | $\ge 40$% fewer architectural violations vs. competent agentic baseline *(Note: The $\ge 30$% threshold in Spike 0 serves as the Phase 0 directional greenlight gate for prototype de-risking, while $\ge 40$% represents the full-system production target evaluated during Phase 2 controlled trials; addressing LD-10)* | Phase 2 Controlled Trial |
+| **CAL-H1** | Contract Violation Reduction (Hypothesis H-1) | $\ge 40$% fewer architectural violations vs. competent agentic baseline *(Note: The $\ge 30$% threshold in Spike 0 serves as the Phase 0 directional greenlight gate for prototype de-risking, evaluated with rubric rules scoped to at most one violation per rule with total rule checks as denominator per DEC-0.10, yielding 83.8% reduction in Spike 0 [see spike0-results.md]; while $\ge 40$% represents the full-system production target evaluated during Phase 2 controlled trials; addressing LD-10)* | Phase 2 Controlled Trial |
 | **CAL-H2** | Human Review Overhead Reduction (Hypothesis H-2) | $\ge 50$% reduction in supervisory review time per feature | Phase 3 User Study |
 | **CAL-H3** | Single-Engine Scalability Bound (Hypothesis H-3) | Sustained $< 100\text{ ms}$ query latency at $10^6$ nodes | Phase 3 Stress Test |
 | **CAL-H4** | Extraction Fidelity Benchmark (Hypothesis H-4) | $\ge 95$% precision/recall on atomic requirement spans | Phase 1 Ingestion Eval |
@@ -409,7 +413,7 @@ In alignment with the Technical Vision's graduated response model (§7), empiric
 
 | Metric Identifier | Target Validation Band (Full Success) | Graduated Scope Adjustment Band (Partial Validation) | Falsification / Kill Band (Termination / Pivot) |
 | :--- | :--- | :--- | :--- |
-| **CAL-H1** (Constraint Preservation) | $\ge 40$% violation reduction vs. competent agentic baseline *(Phase 0 greenlight gate in Spike 0 is $\ge 30\%$)* | **20%–39% reduction:** Narrow domain to deeply coupled architectures or modular microservices; refine envelope filtering and hybridize topological envelopes with local code search. | $\le 0$% or non-significant improvement vs. competent agentic baseline (Triggers Kill #2). |
+| **CAL-H1** (Constraint Preservation) | $\ge 40$% violation reduction vs. competent agentic baseline *(Phase 0 greenlight gate in Spike 0 is $\ge 30\%$, confirmed at 83.8% reduction; DEC-0.10)* | **20%–39% reduction:** Narrow domain to deeply coupled architectures or modular microservices; refine envelope filtering and hybridize topological envelopes with local code search. | $\le 0$% or non-significant improvement vs. competent agentic baseline (Triggers Kill #2). |
 | **CAL-H2** (Supervisory Review Overhead) | $\ge 50$% review time reduction | **25%–49% reduction:** Streamline supervisory UI staging workflows and enrich topological blast-radius visualizations. | $\le 0$% reduction (supervisory graph review equals or exceeds diff review time; Triggers Kill #1). |
 | **CAL-H3** (Single-Engine Scalability) | Sustained $< 100\text{ ms}$ at $10^6$ nodes | **$< 100\text{ ms}$ at $10^5$ nodes, degrading at $10^6$:** Satisfies small-to-mid enterprise repos; apply read-replica offloading, partition audit ledger, and optimize CTE indexes. | $> 500\text{ ms}$ latency at $\le 10^5$ nodes despite index optimization (Triggers Kill #3). |
 | **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95$% precision/recall on spans | **80%–94% precision/recall:** Engage deterministic span re-anchoring post-processor to correct offset drift; enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60$% precision/recall or severe span hallucination despite deterministic re-anchoring (Triggers Kill #1). |

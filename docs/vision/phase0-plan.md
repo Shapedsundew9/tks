@@ -98,7 +98,7 @@ flowchart TD
     - [`Cargo.toml`](file:///workspaces/tks/Cargo.toml): Core dependencies (`tokio`, `clap`, `refinery`, `postgres`, `tokio-postgres`, `deadpool-postgres`, `serde`, `serde_json`, `tracing`, `tracing-subscriber`, `uuid`, `chrono`).
     - [`migrations/V1__initial_schema.sql`](file:///workspaces/tks/migrations/V1__initial_schema.sql): Initial DDL creating `graph_nodes`, `graph_edges`, `node_embeddings`, `audit_ledger`, `ingestion_jobs`, and `agent_identities` with partial indexes and constraints matching architecture §5.1.
     - [`migrations/V2__dev_seed.sql`](file:///workspaces/tks/migrations/V2__dev_seed.sql): Development environment seed provisioning well-known token `tks_dev_token` with role `HUMAN` and `is_active = true`.
-    - [`src/db.rs`](file:///workspaces/tks/src/db.rs): Database connection pooling and migration runner using `refinery::embed_migrations!`.
+    - [`src/db.rs`](file:///workspaces/tks/src/db.rs): Database connection pooling, intelligent URL resolution via `resolve_database_url()` (checking `TKS_DATABASE_URL` first, filtering host LAN IP addresses without pgvector, and dynamically resolving containerized `postgres:5432` with fallback to `localhost:5432`; DEC-0.1), and migration runner using `refinery::embed_migrations!`.
     - [`src/main.rs`](file:///workspaces/tks/src/main.rs): CLI entry point supporting `--migrate-only` flag connecting to `$DATABASE_URL` and running migrations before exiting with code 0.
     - [`tests/migration.rs`](file:///workspaces/tks/tests/migration.rs): Integration test verifying clean migration execution and schema presence.
   - Contracts / APIs / Interfaces:
@@ -111,7 +111,7 @@ flowchart TD
       - `ingestion_jobs` (`job_id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, `doc_path VARCHAR(255) NOT NULL`, `document_hash VARCHAR(64) NOT NULL`, `status VARCHAR(20) NOT NULL DEFAULT 'QUEUED'`, `error_message TEXT`, `retry_count INT NOT NULL DEFAULT 0`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`, `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
       - `agent_identities` (`agent_id VARCHAR(64) PRIMARY KEY`, `token_hash VARCHAR(128) NOT NULL`, `actor_type VARCHAR(16) NOT NULL`, `is_active BOOLEAN NOT NULL DEFAULT TRUE`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`).
 - **Implementation Tasks:**
-  1. Configure [`.devcontainer/docker-compose.yml`](file:///workspaces/tks/.devcontainer/docker-compose.yml) specifying PostgreSQL 16+ service with `pgvector`, port 5432, volume mounts (`tks-pgdata`, `tks-gitdata`), and `pg_isready` healthcheck.
+  1. Configure [`.devcontainer/docker-compose.yml`](file:///workspaces/tks/.devcontainer/docker-compose.yml) specifying PostgreSQL 16+ service with `pgvector`, port 5432, volume mounts (`tks-pgdata`, `tks-gitdata`), and `pg_isready` healthcheck; decouple `.devcontainer/devcontainer.json` from host `${localEnv:DATABASE_URL}` (DEC-0.1).
   2. Declare core runtime dependencies in [`Cargo.toml`](file:///workspaces/tks/Cargo.toml), verifying compatibility with Rust edition 2024.
   3. Author [`migrations/V1__initial_schema.sql`](file:///workspaces/tks/migrations/V1__initial_schema.sql) incorporating:
      - `graph_nodes` with `node_key VARCHAR(64)`, `created_by VARCHAR(64) NOT NULL DEFAULT 'system'`, embedded source span columns (`doc_path`, `doc_hash`, `byte_start`, `byte_end`), conditional check constraint `chk_node_type` permitting `'UNCLASSIFIED'` strictly when `lifecycle_state = 'DRAFT'` (D-62), partial index `idx_graph_nodes_node_key_active`, partial index `idx_graph_nodes_draft_author`, partial index `idx_graph_nodes_doc_path`, and generated `search_tsv` with partial GIN index `idx_graph_nodes_search_tsv`;
@@ -120,7 +120,7 @@ flowchart TD
      - `audit_ledger` with `event_seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`, `batch_id UUID NOT NULL DEFAULT gen_random_uuid()`, and indexes `idx_audit_ledger_entity`, `idx_audit_ledger_batch`, and `idx_audit_ledger_created_at`;
      - `ingestion_jobs` and `agent_identities`.
   4. Author [`migrations/V2__dev_seed.sql`](file:///workspaces/tks/migrations/V2__dev_seed.sql) seeding `tks_dev_token` into `agent_identities` per [TB-5](file:///workspaces/tks/docs/vision/technical-backlog.md#L79).
-  5. Implement [`src/db.rs`](file:///workspaces/tks/src/db.rs) embedding migrations via `refinery::embed_migrations!("migrations")` and exposing `run_migrations(&mut client)` and connection helpers.
+  5. Implement [`src/db.rs`](file:///workspaces/tks/src/db.rs) with intelligent URL resolution (`resolve_database_url()`), embedding migrations via `refinery::embed_migrations!("migrations")` and exposing `run_migrations(&mut client)` and connection helpers (DEC-0.1).
   6. Update [`src/main.rs`](file:///workspaces/tks/src/main.rs) with `clap` argument parsing for `--migrate-only` flag executing embedded migrations against `$DATABASE_URL`.
   7. Author integration test in [`tests/migration.rs`](file:///workspaces/tks/tests/migration.rs) validating full migration execution against PostgreSQL.
 - **Verification & Proof Criteria:**
@@ -148,16 +148,16 @@ flowchart TD
     - [`src/ingest/parser.rs`](file:///workspaces/tks/src/ingest/parser.rs): Streaming CommonMark event walker tracking byte offsets via `pulldown_cmark::OffsetIter`, maintaining an active heading stack (H1–H4) to emit upward structural hierarchy edges (`DERIVED_FROM`), generating disambiguated heading anchors (`ast_anchor`), and segmenting along H1–H4, tables, lists, and blockquotes.
     - [`src/ingest/matcher.rs`](file:///workspaces/tks/src/ingest/matcher.rs): Deterministic scanner matching RFC 2119 keywords (`MUST`, `SHALL`, `REQUIRED`, etc.) and canonical tags (`REQ-[A-Z0-9_-]+`, `INV-[0-9]+`, `DR-[0-9]+`, `C-[0-9]+`, `TB-[0-9]+`, `TASK-[A-Z0-9_-]+`).
     - [`src/ingest/span.rs`](file:///workspaces/tks/src/ingest/span.rs): UTF-8 safe zero-copy byte slicer asserting character boundary safety (`std::str::from_utf8(&bytes[start..end])`).
-    - [`benches/ast_decomposition_bench.rs`](file:///workspaces/tks/benches/ast_decomposition_bench.rs): Benchmark harness measuring parse throughput, memory allocations, mechanical chunking percentage, and span extraction integrity across corpus.
+    - [`benches/ast_decomposition_bench.rs`](file:///workspaces/tks/benches/ast_decomposition_bench.rs): Standalone benchmark harness (`[[bench]]` with `harness = false` in `Cargo.toml` using `std::time::Instant` on stable Rust toolchain; DEC-0.4) measuring parse throughput, memory allocations, mechanical chunking percentage, and span extraction integrity across corpus.
     - [`tests/ast_spike.rs`](file:///workspaces/tks/tests/ast_spike.rs): Integration test validating 100% round-trip span fidelity, disambiguated heading anchors, and multi-byte UTF-8 safety.
   - Contracts / APIs / Interfaces:
-    - Rust struct `ExtractedChunk { pub byte_start: usize, pub byte_end: usize, pub heading: Option<String>, pub ast_anchor: String, pub parent_heading_chunk_id: Option<String>, pub rfc2119_keywords: Vec<String>, pub canonical_keys: Vec<String>, pub is_candidate: bool }`.
+    - Rust struct `ExtractedChunk { pub byte_start: usize, pub byte_end: usize, pub content: Option<String>, pub heading: Option<String>, pub ast_anchor: String, pub parent_heading_chunk_id: Option<String>, pub rfc2119_keywords: Vec<String>, pub canonical_keys: Vec<String>, pub is_candidate: bool }` (DEC-0.5).
     - Function `pub fn parse_markdown_blocks(source: &str, doc_path: &str) -> Result<Vec<ExtractedChunk>, ParseError>`.
     - Function `pub fn slice_source_span<'a>(source_bytes: &'a [u8], start: usize, end: usize) -> Result<&'a str, SpanError>`.
 - **Implementation Tasks:**
   1. Add `pulldown-cmark = "0.13"` to [`Cargo.toml`](file:///workspaces/tks/Cargo.toml).
-  2. Implement [`src/ingest/parser.rs`](file:///workspaces/tks/src/ingest/parser.rs) consuming `pulldown_cmark::Parser::new_ext` with `into_offset_iter()` to extract discrete structural block spans while tracking an active heading stack (H1–H4) that emits upward `parent_heading_chunk_id` structural edges.
-  3. Implement deterministic heading anchor generation in `src/ingest/parser.rs` enforcing slug disambiguation (`doc_path#section/overview-1`) for repeated headings and ordinal block indexing (`doc_path#section/heading#block-0`) for non-heading structural blocks per TB-2.4 (LD-8).
+  2. Implement [`src/ingest/parser.rs`](file:///workspaces/tks/src/ingest/parser.rs) consuming `pulldown_cmark::Parser::new_ext` with `into_offset_iter()` to extract discrete structural block spans while tracking an active heading stack (H1–H4) that emits upward `parent_heading_chunk_id` structural edges; populate `heading = Some(title)` for heading chunks and inherit `heading = Some(parent_heading_title)` for non-heading structural blocks under an active heading, defaulting to `None` for pre-heading blocks (DEC-0.2); retain in-memory text via `pub content: Option<String>` (DEC-0.5).
+  3. Implement deterministic heading anchor generation in `src/ingest/parser.rs` enforcing slug disambiguation (`doc_path#section/overview-1`) for repeated headings, ordinal block indexing (`doc_path#section/heading#block-0`) for non-heading structural blocks, and root pre-heading scope indexing (`doc_path#block-0`) for pre-heading blocks with `parent_heading_chunk_id = None` per TB-2.4 (LD-8, DEC-0.3).
   4. Implement [`src/ingest/matcher.rs`](file:///workspaces/tks/src/ingest/matcher.rs) scanning chunk tokens for RFC 2119 keywords and regex pattern matching for canonical identifiers (`REQ-[A-Z0-9_-]+`, `INV-[0-9]+`, `DR-[0-9]+`, `C-[0-9]+`, `TB-[0-9]+`, `TASK-[A-Z0-9_-]+`), tagging candidate blocks.
   5. Implement [`src/ingest/span.rs`](file:///workspaces/tks/src/ingest/span.rs) providing raw byte slicing with explicit `std::str::from_utf8` validation; include unit tests with multi-byte characters (em-dashes, curly quotes, mathematical symbols $\ge, \le, \rightarrow$).
   6. Author [`tests/ast_spike.rs`](file:///workspaces/tks/tests/ast_spike.rs) parsing `docs/vision/` files, asserting:
@@ -165,7 +165,7 @@ flowchart TD
      - Zero character boundary slicing panics across multi-byte UTF-8 inputs;
      - All extracted `ast_anchor` values are globally unique within the document;
      - Structural child chunks correctly reference their immediate parent heading chunk.
-  7. Author [`benches/ast_decomposition_bench.rs`](file:///workspaces/tks/benches/ast_decomposition_bench.rs) calculating:
+  7. Author [`benches/ast_decomposition_bench.rs`](file:///workspaces/tks/benches/ast_decomposition_bench.rs) configured via `[[bench]]` with `harness = false` in `Cargo.toml` using `std::time::Instant` on stable Rust (DEC-0.4), calculating:
      - Document token count vs. candidate chunk tokens;
      - Percentage of structural blocks handled mechanically without LLM output tokens ($\ge 80$%);
      - Parsing throughput ($< 10\text{ ms}$ per 10,000 words).
@@ -195,17 +195,18 @@ flowchart TD
     - [`tests/fixtures/ground_truth_requirements.json`](file:///workspaces/tks/tests/fixtures/ground_truth_requirements.json): Hand-labeled ground truth spans and types for `docs/vision/vision.md` and test spec files.
     - [`tests/extraction_eval.rs`](file:///workspaces/tks/tests/extraction_eval.rs): Evaluation harness calculating precision, recall, and F1 score against ground truth and measuring output token consumption.
   - Contracts / APIs / Interfaces:
-    - Compact classification JSON schema: `[{"chunk_id": "c1", "node_type": "REQUIREMENT|SPECIFICATION|TASK", "governance_policy": "HUMAN_REVIEW_REQUIRED|AUTONOMOUS_ELABORATION"}]`.
+    - Compact classification JSON schema: `[{"chunk_id": "c1", "node_type": "REQUIREMENT|SPECIFICATION|TASK", "governance_policy": "HUMAN_REVIEW_REQUIRED|AUTONOMOUS_ELABORATION"}]` (using compact ordinal aliases `c1`, `c2`, ...; DEC-0.6).
     - Function `pub fn build_classification_prompt(chunks: &[ExtractedChunk]) -> String`.
     - Function `pub fn parse_classification_tuples(response_json: &str) -> Result<Vec<ClassificationResult>, ClassificationError>`.
+    - Function `pub fn map_classifications_to_chunks(tuples: &[ClassificationResult], chunks: &[ExtractedChunk]) -> Vec<ClassifiedChunk>` (supporting bidirectional mapping from both ordinal aliases and absolute AST anchors; DEC-0.6).
     - Function `pub fn fallback_classify(chunks: &[ExtractedChunk]) -> Vec<ClassificationResult>`.
 - **Implementation Tasks:**
-  1. Author classification prompt template in [`src/ingest/classify.rs`](file:///workspaces/tks/src/ingest/classify.rs) enforcing strict JSON tuple response output without repeating chunk text.
-  2. Implement JSON response deserializer mapping returned classifications to candidate AST chunks.
+  1. Author classification prompt template in [`src/ingest/classify.rs`](file:///workspaces/tks/src/ingest/classify.rs) assigning compact ordinal aliases (`c1`, `c2`, ...) and enforcing strict JSON tuple response output without repeating chunk text or echoing full AST anchors (DEC-0.6).
+  2. Implement JSON response deserializer in `src/ingest/classify.rs` with `map_classifications_to_chunks` mapping returned classifications to candidate AST chunks via bidirectional resolution of both ordinal aliases and full AST anchors (DEC-0.6).
   3. Implement fallback module [`src/ingest/fallback.rs`](file:///workspaces/tks/src/ingest/fallback.rs) applying RFC 2119 heuristic defaults (`REQUIREMENT` / `UNCLASSIFIED`) per Decisions [D-37](file:///workspaces/tks/docs/vision/architecture.md#L888) and [D-62](file:///workspaces/tks/docs/vision/architecture.md#L1144).
   4. Create hand-labeled test ground-truth dataset in [`tests/fixtures/ground_truth_requirements.json`](file:///workspaces/tks/tests/fixtures/ground_truth_requirements.json) containing $\ge 50$ labeled requirement and non-requirement spans.
-  5. Implement evaluation runner in [`tests/extraction_eval.rs`](file:///workspaces/tks/tests/extraction_eval.rs) supporting both mock and live API execution, asserting precision $\ge 95$% and recall $\ge 95$% (CAL-H4).
-  6. Measure total prompt output tokens versus input tokens, verifying output tokens represent $< 10$% of input tokens.
+  5. Implement dual-mode evaluation runner in [`tests/extraction_eval.rs`](file:///workspaces/tks/tests/extraction_eval.rs) supporting both offline mock simulation and live REST execution (with `reqwest` in `[dev-dependencies]` gated by `TKS_LIVE_EVAL=1` and `LLM_API_KEY`; DEC-0.7), asserting precision $\ge 95$% and recall $\ge 95$% (CAL-H4).
+  6. Measure total prompt output tokens versus input tokens, verifying output tokens represent $< 10$% of input tokens (<3% observed across full corpus per DEC-0.6).
 - **Verification & Proof Criteria:**
   - Automated offline evaluation: `cargo test --test extraction_eval -- --nocapture` runs against ground-truth fixtures and confirms $\ge 95$% precision and recall on candidate requirement identification.
   - Fallback verification: `cargo test --test extraction_eval test_graceful_degradation` confirms that unconfigured LLM credentials yield valid draft candidates with default typing (`REQUIREMENT` / `UNCLASSIFIED`) without panic, error, or database check constraint failure.
@@ -228,24 +229,24 @@ flowchart TD
     - [`scripts/spikes/h1_spike/model.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/model.rs): In-memory graph data structures (`InMemoryNode`, `InMemoryEdge`, `InMemoryGraph`).
     - [`scripts/spikes/h1_spike/fixtures/curated_graph.json`](file:///workspaces/tks/scripts/spikes/h1_spike/fixtures/curated_graph.json): Hand-curated requirement tree (~75 nodes) with explicit hierarchical contracts (`CONSTRAINED_BY`, `FULFILLS`) modeling non-local invariant rules.
     - [`scripts/spikes/h1_spike/tasks.json`](file:///workspaces/tks/scripts/spikes/h1_spike/tasks.json): 20 controlled synthetic coding tasks specifically designed to target cross-cutting architectural invariants (multi-service token propagation, error handling hierarchies, state machine transitions).
-    - [`scripts/spikes/h1_spike/runner.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/runner.rs): Benchmark runner executing Condition A (multi-tool baseline prompt) and Condition B (topological envelope prompt).
-    - [`scripts/spikes/h1_spike/evaluator.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/evaluator.rs): Automated rubric validator checking synthesized code against non-local contracts and calculating violation reduction percentage.
+    - [`scripts/spikes/h1_spike/runner.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/runner.rs): Benchmark runner executing Condition A (multi-tool baseline prompt) and Condition B (topological envelope prompt) with zero-dependency `/usr/bin/curl` subprocess execution when `TKS_LIVE_EVAL=1` (DEC-0.9).
+    - [`scripts/spikes/h1_spike/evaluator.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/evaluator.rs): Automated rubric validator checking synthesized code against non-local contracts with dual rubric rule scoping (DEC-0.10) and calculating violation reduction percentage.
     - [`docs/vision/spike0-results.md`](file:///workspaces/tks/docs/vision/spike0-results.md): Empirical trial report documenting violation rates, statistical significance, and gating decision.
   - Contracts / APIs / Interfaces:
-    - Function `pub fn assemble_in_memory_envelope(graph: &InMemoryGraph, target_node_id: &str, depth: usize) -> ContextEnvelope`.
+    - Function `pub fn assemble_in_memory_envelope(graph: &InMemoryGraph, target_node_id: &str, depth: usize) -> ContextEnvelope` (executing breadth-first frontier traversal across upward lineage edges with targeted constraint harvesting and deduplication; DEC-0.8).
     - CLI binary: `cargo run --bin h1_spike_eval` executes the evaluation suite and outputs comparative metrics.
 - **Implementation Tasks:**
   1. Author [`curated_graph.json`](file:///workspaces/tks/scripts/spikes/h1_spike/fixtures/curated_graph.json) with 50–100 requirement nodes covering 4 subsystems with cross-cutting constraints.
-  2. Implement [`model.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/model.rs) providing topological envelope assembly: given a target task node, extract ancestor requirements up to depth 2 plus immediate sibling `CONSTRAINED_BY` rules.
+  2. Implement [`model.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/model.rs) providing topological envelope assembly: given a target task node, execute breadth-first upward traversal bounded by `depth` across `DERIVED_FROM` and `FULFILLS`, collecting nodes linked via `CONSTRAINED_BY` to the target and extracted ancestors, plus sibling invariants sharing the target's parent, with full deduplication (DEC-0.8).
   3. Author 20 synthetic coding tasks in [`tasks.json`](file:///workspaces/tks/scripts/spikes/h1_spike/tasks.json) with deterministic invariant rubrics (e.g. must propagate trace ID, must use specific error type, must handle state transition invariants).
-  4. Implement [`runner.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/runner.rs) running both conditions with identical LLM model (e.g. GPT-4o / Claude 3.5 Sonnet) across all 20 tasks.
-  5. Implement [`evaluator.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/evaluator.rs) to score outputs, tabulate violation counts, compute violation reduction percentage:
+  4. Implement [`runner.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/runner.rs) running both conditions with identical LLM model across all 20 tasks, supporting zero-dependency live REST LLM invocations via `/usr/bin/curl` subprocess when `TKS_LIVE_EVAL=1`, defaulting to deterministic offline simulation (DEC-0.9).
+  5. Implement [`evaluator.rs`](file:///workspaces/tks/scripts/spikes/h1_spike/evaluator.rs) applying dual rubric rule scoping (at most one violation per rule, total rule checks as denominator; DEC-0.10) to score outputs, tabulate violation counts, compute violation reduction percentage:
      $$\text{Reduction} = \frac{V_A - V_B}{V_A} \times \text{100%}$$
      and output findings to [`spike0-results.md`](file:///workspaces/tks/docs/vision/spike0-results.md).
 - **Verification & Proof Criteria:**
   - Automated trial execution: `cargo run --bin h1_spike_eval` executes evaluation over 20 tasks.
   - Decision threshold check:
-    - If $\ge 30$% reduction: Greenlight for Phase 1 construction (Phase 0 prototype directional greenlight per [`strategic-planning-backlog.md` §6 CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L400) and [`architecture.md` §10 R-1](file:///workspaces/tks/docs/vision/architecture.md#L1377)).
+    - If $\ge 30$% reduction: Greenlight for Phase 1 construction (Phase 0 prototype directional greenlight per [`strategic-planning-backlog.md` §6 CAL-H1](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L400) and [`architecture.md` §10 R-1](file:///workspaces/tks/docs/vision/architecture.md#L1377)). Observed: 83.8% reduction (PASS: GREENLIGHT CONFIRMED; see `spike0-results.md`).
     - If 20%–29% reduction: Graduated scope adjustment (narrow domain, refine envelope assembly).
     - If $\le 0$%: Trigger Kill Condition #2 and halt Phase 1.
   - Trial reproducibility: All task inputs, envelope outputs, synthesized code, and rubric evaluations are recorded in [`docs/vision/spike0-results.md`](file:///workspaces/tks/docs/vision/spike0-results.md).
@@ -271,17 +272,17 @@ flowchart TD
     - Function `pub fn evaluate_retrieval_parity(local_neighbors: &[String], baseline_neighbors: &[String]) -> f64`.
     - CLI binary: `cargo run --bin vector_spike_eval` executes the evaluation suite and outputs performance metrics.
 - **Implementation Tasks:**
-  1. Add `fastembed = "4"` to [`Cargo.toml`](file:///workspaces/tks/Cargo.toml) under optional development dependencies / spike features.
+  1. Add `fastembed = "4"` to [`Cargo.toml`](file:///workspaces/tks/Cargo.toml) under `[dependencies]` as `optional = true`, activate it under feature `vector-spike` included in `default = ["vector-spike"]`, configure `required-features = ["vector-spike"]` on the spike binary and microbenchmark targets, and set `default-run = "tks"` in `[package]` (DEC-0.11).
   2. Implement local inference wrapper in [`scripts/spikes/vector_spike/model.rs`](file:///workspaces/tks/scripts/spikes/vector_spike/model.rs) configured for `EmbeddingModel::AllMiniLML6V2` (384-dimensional output).
   3. Implement [`benches/vector_inference_bench.rs`](file:///workspaces/tks/benches/vector_inference_bench.rs) evaluating latency on commodity CPU hardware for individual technical requirement spans (100–300 words).
   4. Implement [`scripts/spikes/vector_spike/evaluator.rs`](file:///workspaces/tks/scripts/spikes/vector_spike/evaluator.rs) comparing Top-10 nearest neighbor overlap against commercial API embeddings on requirement chunks from `docs/vision/`.
   5. Measure binary size delta and runtime resident memory consumption during cold start and sustained inference loops.
   6. Document trial outcomes in [`docs/vision/spike8-results.md`](file:///workspaces/tks/docs/vision/spike8-results.md) and confirm Phase 1 default vector provider recommendation.
 - **Verification & Proof Criteria:**
-  - Inference Latency: `cargo bench --bench vector_inference_bench` confirms $\le 50\text{ ms}$ per requirement chunk on commodity CPU.
-  - Binary & Memory Footprint: Added binary footprint is $\le 50\text{ MB}$, and runtime memory consumption is $\le 256\text{ MB}$.
-  - Retrieval Parity: `cargo run --bin vector_spike_eval` confirms Top-10 nearest neighbor overlap $\ge 70$% against commercial API embeddings on technical documentation chunks.
-  - Decision threshold: Passing all criteria designates embedded local inference (`fastembed-rs` / `all-MiniLM-L6-v2`) as the default Phase 1 vector provider, resolving Open Question [Q-4](file:///workspaces/tks/docs/vision/architecture.md#L1395) and establishing 100% offline self-sufficiency.
+  - Inference Latency: `cargo bench --bench vector_inference_bench` confirms $\le 50\text{ ms}$ per requirement chunk on commodity CPU. Observed: 15.93 ms mean latency (4.5–10.5 ms for typical requirement chunks; DEC-0.12).
+  - Binary & Memory Footprint: Added binary footprint is $\le 50\text{ MB}$ (observed: 5.7 MB release binary delta), and runtime memory consumption is $\le 256\text{ MB}$ (observed: 193.2 MB peak resident memory; DEC-0.12).
+  - Retrieval Parity: `cargo run --bin vector_spike_eval` confirms Top-10 nearest neighbor overlap $\ge 70$% against commercial API embeddings on technical documentation chunks (observed: 70.0% overlap; DEC-0.12).
+  - Decision threshold: Passing all criteria designates embedded local inference (`fastembed-rs` / `all-MiniLM-L6-v2`) as the default Phase 1 vector provider, resolving Open Question [Q-4](file:///workspaces/tks/docs/vision/architecture.md#L1395) and establishing 100% offline self-sufficiency (PASS: CONFIRMED DEFAULT PROVIDER; see [`docs/vision/spike8-results.md`](file:///workspaces/tks/docs/vision/spike8-results.md); DEC-0.12).
 
 ---
 
