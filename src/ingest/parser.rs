@@ -1,14 +1,16 @@
 //! CommonMark AST streaming parser and exact span extraction.
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 
+use crate::ingest::IngestError;
 use crate::ingest::matcher::scan_for_candidates;
 use crate::ingest::span::{SpanError, slice_source_span};
 
 /// Extracted structural Markdown chunk with 0-based byte offsets and provenance attributes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtractedChunk {
     /// 0-based start byte offset in the source document.
     pub byte_start: usize,
@@ -28,6 +30,14 @@ pub struct ExtractedChunk {
     pub is_candidate: bool,
     /// Exact sliced text content from the source span.
     pub content: Option<String>,
+}
+
+impl ExtractedChunk {
+    /// Returns the primary canonical key if any was extracted.
+    #[must_use]
+    pub fn primary_node_key(&self) -> Option<&str> {
+        self.canonical_keys.first().map(|s| s.as_str())
+    }
 }
 
 /// Errors that can occur during CommonMark AST decomposition.
@@ -291,6 +301,48 @@ pub fn parse_markdown_blocks(
     Ok(chunks)
 }
 
+/// Upward structural hierarchy edge (`DERIVED_FROM`) connecting a child chunk to its parent heading.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtractedEdge {
+    /// AST anchor of the child block or subsection.
+    pub from_anchor: String,
+    /// AST anchor of the immediate parent heading.
+    pub to_anchor: String,
+    /// Edge type (standardized to `"DERIVED_FROM"`).
+    pub edge_type: String,
+}
+
+/// Complete result of mechanical CommonMark AST decomposition.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecompositionResult {
+    /// Extracted structural blocks and headings with exact byte offsets.
+    pub chunks: Vec<ExtractedChunk>,
+    /// Upward structural hierarchy edges (`DERIVED_FROM`).
+    pub edges: Vec<ExtractedEdge>,
+}
+
+/// Parses a CommonMark document into structural chunks and upward hierarchy edges (`DERIVED_FROM`).
+///
+/// # Errors
+///
+/// Returns [`IngestError`] if byte slicing fails or character boundaries are violated.
+pub fn parse_markdown(doc_path: &str, content: &str) -> Result<DecompositionResult, IngestError> {
+    let chunks = parse_markdown_blocks(content, doc_path)?;
+    let mut edges = Vec::new();
+
+    for chunk in &chunks {
+        if let Some(ref parent_anchor) = chunk.parent_heading_chunk_id {
+            edges.push(ExtractedEdge {
+                from_anchor: chunk.ast_anchor.clone(),
+                to_anchor: parent_anchor.clone(),
+                edge_type: "DERIVED_FROM".to_string(),
+            });
+        }
+    }
+
+    Ok(DecompositionResult { chunks, edges })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,5 +433,63 @@ Duplicate section heading with REQ-CORE-001.
         );
         assert!(chunks[6].is_candidate);
         assert_eq!(chunks[6].canonical_keys, vec!["REQ-CORE-001"]);
+    }
+
+    #[test]
+    fn test_parse_markdown_edges() {
+        let md = r#"# Root Title
+Introductory text.
+
+## Section A
+Paragraph in A.
+
+### Subsection A.1
+Paragraph in A.1.
+"#;
+        let res = parse_markdown("specs/doc.md", md).expect("valid parse");
+        assert_eq!(res.chunks.len(), 6);
+        // Chunks with parents:
+        // Chunk 1 (Intro text) -> parent Chunk 0 (Root Title)
+        // Chunk 2 (Section A) -> parent Chunk 0 (Root Title)
+        // Chunk 3 (Paragraph in A) -> parent Chunk 2 (Section A)
+        // Chunk 4 (Subsection A.1) -> parent Chunk 2 (Section A)
+        // Chunk 5 (Paragraph in A.1) -> parent Chunk 4 (Subsection A.1)
+        assert_eq!(res.edges.len(), 5);
+        for edge in &res.edges {
+            assert_eq!(edge.edge_type, "DERIVED_FROM");
+            assert!(edge.from_anchor.starts_with("specs/doc.md#"));
+            assert!(edge.to_anchor.starts_with("specs/doc.md#"));
+        }
+
+        // Verify specific hierarchy edges:
+        assert_eq!(res.edges[0].from_anchor, "specs/doc.md#root-title#block-0");
+        assert_eq!(res.edges[0].to_anchor, "specs/doc.md#root-title");
+
+        assert_eq!(
+            res.edges[1].from_anchor,
+            "specs/doc.md#root-title/section-a"
+        );
+        assert_eq!(res.edges[1].to_anchor, "specs/doc.md#root-title");
+
+        assert_eq!(
+            res.edges[2].from_anchor,
+            "specs/doc.md#root-title/section-a#block-0"
+        );
+        assert_eq!(res.edges[2].to_anchor, "specs/doc.md#root-title/section-a");
+
+        assert_eq!(
+            res.edges[3].from_anchor,
+            "specs/doc.md#root-title/section-a/subsection-a-1"
+        );
+        assert_eq!(res.edges[3].to_anchor, "specs/doc.md#root-title/section-a");
+
+        assert_eq!(
+            res.edges[4].from_anchor,
+            "specs/doc.md#root-title/section-a/subsection-a-1#block-0"
+        );
+        assert_eq!(
+            res.edges[4].to_anchor,
+            "specs/doc.md#root-title/section-a/subsection-a-1"
+        );
     }
 }

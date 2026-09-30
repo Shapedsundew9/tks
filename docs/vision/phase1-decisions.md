@@ -10,6 +10,9 @@
 | DEC-1.4 | WP-1.2 | Dynamic CTE Ancestor Validation with Batch Promotion Union Evaluation | Technical Trade-off | architecture.md §3 INV-1, §9 D-34 | Implemented |
 | DEC-1.5 | WP-1.2 | Polymorphic Identifier Resolution Hierarchy and Partial Index Bypassing | API/Contract Elaboration | architecture.md §9 D-58, technical-backlog.md TB-7 | Implemented |
 | DEC-1.6 | WP-1.2 | Canonical Hyphenated Key Regex Sanitization and Dual-Path Full-Text Search | Specification Gap | architecture.md §9 D-60, §9 D-68, technical-backlog.md TB-7 | Implemented |
+| DEC-1.7 | WP-1.3 | RustCrypto SHA-256 Dependency for Normalized Content Hashing | Dependency Choice | architecture.md §7, technical-backlog.md TB-7 | Implemented |
+| DEC-1.8 | WP-1.3 | Content-Preserving 3-Tier Reconciliation Hierarchy and Staged Span Re-Anchoring | Technical Trade-off | architecture.md §9 D-64, §9 D-74, technical-backlog.md TB-7 | Implemented |
+| DEC-1.9 | WP-1.3 | Comprehensive Canonical Identifier Regex Expansion for Substrate Entities | Specification Gap | technical-backlog.md TB-7, architecture.md §5.1 | Implemented |
 
 ---
 
@@ -86,4 +89,40 @@
   * *Option B: Dual-path search with canonical regex detection (`^[A-Za-z]+-[0-9A-Za-z-]+$`).* When the query matches canonical identifier syntax, execute prefix/exact match `node_key ILIKE $1 || '%'` combined with `plainto_tsquery` and custom rank boosting. For all other queries, execute `websearch_to_tsquery` with prefix key fallback. Pros: prevents hyphen negation syntax errors; guarantees exact key hits rank first; executes in $<5\text{ ms}$ via partial indexes; preserves full natural language capabilities. Cons: requires compiled regex check.
 * **Decision Taken & Rationale:** Option B. Using lazy-compiled regex detection cleanly splits identifier lookups from natural language searches, preventing syntax corruption and delivering exact canonical key matching in $<2\text{ ms}$.
 * **Upstream Impact & Target Document:** `architecture.md` §9 D-60, §9 D-68, `technical-backlog.md` TB-7.
+* **Status:** Implemented
+
+### DEC-1.7: RustCrypto SHA-256 Dependency for Normalized Content Hashing
+
+* **Work Package:** WP-1.3
+* **Category:** Dependency Choice
+* **Context & Problem:** Tier 3 document reconciliation requires normalized SHA-256 hashing of title and text content to correlate unchanged requirements across revisions when headings or blocks shift. The Rust standard library does not provide cryptographic hashing algorithms, and rolling ad hoc hashing routines is unsafe and prohibited. Furthermore, `node_embeddings.content_hash` requires a standard 64-character hex digest.
+* **Options Considered:**
+  * *Option A: Git object SHA-1 hashing via `git2`.* Pros: leverages an existing dependency. Cons: violates architectural specifications standardizing on SHA-256 (e.g. `node_embeddings.content_hash VARCHAR(64)`); SHA-1 is cryptographically weak; git blob hashes include git object headers (`blob <len>\0`), preventing portable content comparisons.
+  * *Option B: Add `sha2 = "0.10"` to `[dependencies]`.* Pros: pure-Rust, de facto standard cryptographic hashing crate from the official RustCrypto project; produces standard 64-character hex SHA-256 digests; small footprint; zero unsafe C dependencies. Cons: introduces a direct dependency.
+* **Decision Taken & Rationale:** Option B. Adding `sha2 = "0.10"` conforms to the dependency policy (C-10), provides high-performance and cryptographically robust SHA-256 hashing, and directly enables Tier 3 content hash reconciliation and vector deduplication.
+* **Upstream Impact & Target Document:** `architecture.md` §7 and `technical-backlog.md` TB-7.
+* **Status:** Implemented
+
+### DEC-1.8: Content-Preserving 3-Tier Reconciliation Hierarchy and Staged Span Re-Anchoring
+
+* **Work Package:** WP-1.3
+* **Category:** Technical Trade-off
+* **Context & Problem:** During CommonMark document re-ingestion, inserting a new block at the beginning of a document or section shifts ordinal block numbering (`#block-0` $\to$ `#block-1`). If Tier 2 matches blindly on `#block-0` without verifying content, the newly inserted block collides with the previous block 0 and falsely marks it as "modified", while the actual existing block (now at block 1) is orphaned or marked as an unrelated addition.
+* **Options Considered:**
+  * *Option A: Strict linear single-pass anchor matching.* Pros: simple loop. Cons: causes false modification classifications whenever paragraphs are prepended; drops historical continuity for unchanged requirements.
+  * *Option B: Content-preserving multi-pass reconciliation: Tier 1 (canonical key) $\to$ Tier 2a (anchor match with identical content) $\to$ Tier 3 (content hash match) $\to$ Tier 2b (remaining anchor match for modified content).* Pros: correctly preserves active node identity when blocks shift ordinal positions; accurately classifies true in-place content modifications; stages `CandidateSpanReanchor` coordinates without mutating active nodes in place per Invariant INV-2 and Decisions D-69, D-74. Cons: requires two-phase anchor evaluation.
+* **Decision Taken & Rationale:** Option B. Separating content-identical anchor matches from modified content anchor matches prevents inserted blocks from stealing active nodes from their true content matches, guaranteeing accurate span re-anchoring and clean candidate draft staging.
+* **Upstream Impact & Target Document:** `architecture.md` §9 D-64, §9 D-74, and `technical-backlog.md` TB-7.
+* **Status:** Implemented
+
+### DEC-1.9: Comprehensive Canonical Identifier Regex Expansion for Substrate Entities
+
+* **Work Package:** WP-1.3
+* **Category:** Specification Gap
+* **Context & Problem:** The initial canonical key regex in Phase 0 restricted `INV-*`, `DR-*`, `C-*`, and `TB-*` strictly to numeric digits (`INV-[0-9]+`), failing on alphanumeric invariant identifiers (e.g. `INV-DATA-002`, `CAL-H1`), decimal sub-items (e.g. `TB-2.4`), or package/decision identifiers (`WP-1.3`, `DEC-1.1`).
+* **Options Considered:**
+  * *Option A: Force all canonical keys in specifications to be strictly numeric digits after prefix.* Pros: preserves narrow regex. Cons: highly restrictive; breaks existing documentation convention where domain tags like `INV-DATA-002` or `TB-2.4` are standard.
+  * *Option B: Expand regex to `\b((?:REQ|INV|DR|C|TB|TASK|WP|DEC)-[A-Za-z0-9]+(?:[-_\.][A-Za-z0-9]+)*)\b`.* Pros: uniformly recognizes all standard substrate identifiers across all documentation formats; robustly matches both numeric and alphanumeric tagged keys; extracts keys in order of first appearance. Cons: matches slightly broader tag families.
+* **Decision Taken & Rationale:** Option B. Expanding the pattern ensures all canonical keys defined across governing architecture, vision, and planning documents are mechanically extracted and preserved as first-class `node_key` tags during mechanical decomposition.
+* **Upstream Impact & Target Document:** `technical-backlog.md` TB-7 and `architecture.md` §5.1.
 * **Status:** Implemented
