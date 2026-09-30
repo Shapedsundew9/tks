@@ -722,3 +722,87 @@ async fn test_mcp_sse_transport_initialization() {
 
     cancel.cancel();
 }
+
+#[tokio::test]
+async fn test_mcp_stdio_resilience() {
+    println!("\n=== WP-1.6 Stdio Proxy Resilience Test: Offline Daemon Remediation ===\n");
+
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--bin",
+            "mcp_stdio",
+            "--",
+            "--server-url",
+            "http://127.0.0.1:59998",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn mcp_stdio subprocess");
+
+    let init_payload = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    });
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(format!("{}\n", serde_json::to_string(&init_payload).unwrap()).as_bytes())
+            .expect("Failed to write to mcp_stdio stdin");
+        stdin.flush().expect("Failed to flush stdin");
+    }
+
+    let output = child
+        .wait_with_output()
+        .expect("Failed to wait for mcp_stdio process");
+
+    assert!(
+        output.status.success(),
+        "mcp_stdio must terminate with exit code 0 when returning remediation error"
+    );
+
+    let stdout_str = String::from_utf8_lossy(&output.stdout);
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+    println!("mcp_stdio stdout: {stdout_str}");
+    println!("mcp_stdio stderr: {stderr_str}");
+
+    assert!(
+        stderr_str.contains("[tks-mcp-stdio]"),
+        "Diagnostic messages must go strictly to stderr"
+    );
+
+    let resp_json: serde_json::Value =
+        serde_json::from_str(stdout_str.trim()).expect("Stdout must contain valid JSON-RPC");
+
+    assert_eq!(
+        resp_json.get("jsonrpc").and_then(|v| v.as_str()),
+        Some("2.0")
+    );
+    assert_eq!(resp_json.get("id").and_then(|v| v.as_i64()), Some(1));
+
+    let err_obj = resp_json
+        .get("error")
+        .expect("Response must contain error object");
+    assert_eq!(
+        err_obj.get("code").and_then(|v| v.as_i64()),
+        Some(-32000),
+        "Error code must be -32000"
+    );
+    let err_msg = err_obj
+        .get("message")
+        .and_then(|v| v.as_str())
+        .expect("Error must contain message");
+    assert!(
+        err_msg.contains("TKS daemon is not running"),
+        "Error message must provide actionable remediation: '{err_msg}'"
+    );
+}

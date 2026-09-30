@@ -1,25 +1,62 @@
 //! TKS (The Knowledge Substrate) Library.
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+pub mod cli;
 pub mod db;
 pub mod gateway;
 pub mod ingest;
 pub mod storage;
 pub mod worker;
 
+use cli::{
+    IdentitySubcommand, McpStdioArgs, ServeArgs, StagingSubcommand, resolve_auth_token,
+    resolve_server_url, run_identity, run_mcp_stdio, run_serve, run_staging,
+};
+
 /// Command-line arguments for the TKS CLI.
 #[derive(Parser, Debug)]
-#[command(name = "tks", about = "The Knowledge Substrate")]
+#[command(name = "tks", about = "The Knowledge Substrate", version = "0.1.0")]
 pub struct Cli {
-    /// Run pending database migrations against $DATABASE_URL and exit.
-    #[arg(long)]
+    /// Run pending database migrations against $DATABASE_URL and exit immediately.
+    #[arg(long, global = true)]
     pub migrate_only: bool,
 
     /// Optional database connection URL (overrides $DATABASE_URL).
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub database_url: Option<String>,
+
+    /// Server base URL for daemon commands (default: http://127.0.0.1:8080).
+    #[arg(long, global = true)]
+    pub server_url: Option<String>,
+
+    /// Bearer authentication token for daemon commands.
+    #[arg(long, global = true)]
+    pub auth_token: Option<String>,
+
+    /// Subcommand to execute.
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+/// Available TKS subcommands.
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Start the unified Knowledge Substrate daemon server.
+    Serve(ServeArgs),
+
+    /// Stdio streaming JSON-RPC proxy for MCP clients.
+    #[command(name = "mcp-stdio")]
+    McpStdio(McpStdioArgs),
+
+    /// Candidate draft review and staging promotion/rejection.
+    #[command(subcommand)]
+    Staging(StagingSubcommand),
+
+    /// Identity provisioning and revocation management.
+    #[command(subcommand)]
+    Identity(IdentitySubcommand),
 }
 
 /// Returns the default greeting message.
@@ -42,7 +79,7 @@ pub fn init_tracing() {
 ///
 /// # Errors
 ///
-/// Returns an error if migration or database connection fails.
+/// Returns an error if migration, server, or client command fails.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let cli = Cli::parse();
@@ -53,8 +90,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// # Errors
 ///
-/// Returns an error if migration or database connection fails.
+/// Returns an error if migration, server, or client command fails.
 pub async fn run_with_args(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // Top-level --migrate-only flag execution
     if cli.migrate_only {
         let database_url = cli.database_url.unwrap_or_else(db::resolve_database_url);
 
@@ -73,11 +111,37 @@ pub async fn run_with_args(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
 
         tracing::info!("Migrations completed successfully.");
+        eprintln!("Migrations completed successfully.");
         return Ok(());
     }
 
-    println!("{}", greeting());
-    Ok(())
+    match cli.command {
+        Some(Commands::Serve(mut args)) => {
+            if args.database_url.is_none() && cli.database_url.is_some() {
+                args.database_url = cli.database_url;
+            }
+            run_serve(args).await
+        }
+
+        Some(Commands::McpStdio(args)) => run_mcp_stdio(args).await,
+
+        Some(Commands::Staging(subcmd)) => {
+            let server_url = resolve_server_url(cli.server_url.as_deref());
+            let auth_token = resolve_auth_token(cli.auth_token.as_deref());
+            run_staging(subcmd, &server_url, &auth_token).await
+        }
+
+        Some(Commands::Identity(subcmd)) => {
+            let server_url = resolve_server_url(cli.server_url.as_deref());
+            let auth_token = resolve_auth_token(cli.auth_token.as_deref());
+            run_identity(subcmd, &server_url, &auth_token).await
+        }
+
+        None => {
+            println!("{}", greeting());
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -94,6 +158,9 @@ mod tests {
         let cli = Cli {
             migrate_only: false,
             database_url: None,
+            server_url: None,
+            auth_token: None,
+            command: None,
         };
         assert!(run_with_args(cli).await.is_ok());
     }

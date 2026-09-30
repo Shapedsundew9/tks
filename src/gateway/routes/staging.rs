@@ -9,8 +9,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::gateway::AppState;
-use crate::gateway::auth::AuthenticatedAgent;
+use crate::gateway::auth::{AuthenticatedAgent, MaybeAuthenticatedAgent};
 use crate::ingest::reconcile::CandidateSpanReanchor;
+use crate::storage::GraphNode;
 use crate::storage::envelope::validate_ancestor_path;
 
 /// Payload for approving an ingestion job and promoting candidate drafts to `ACTIVE`.
@@ -46,6 +47,13 @@ pub struct StagingRejectRequest {
 pub struct StagingRejectResponse {
     pub rejected_job_id: Uuid,
     pub purged_drafts: usize,
+}
+
+/// Response returned on node inspection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InspectNodeResponse {
+    pub node: GraphNode,
+    pub span_text: Option<String>,
 }
 
 /// Handler for `POST /api/v1/documents/ingest/{job_id}/approve`.
@@ -380,6 +388,46 @@ async fn execute_approve(
         "timestamp": chrono::Utc::now(),
     });
 
+    // Step 8.5: Enforce canonical node_key uniqueness before active promotion (DEC-1.17, D-58).
+    // (a) Clear node_key on candidate drafts if already active in graph_nodes outside this batch.
+    tx.execute(
+        "UPDATE graph_nodes \
+         SET node_key = NULL \
+         WHERE id = ANY($1) \
+           AND node_key IS NOT NULL \
+           AND node_key IN (SELECT node_key FROM graph_nodes WHERE lifecycle_state = 'ACTIVE' AND node_key IS NOT NULL AND id != ALL($1));",
+        &[&approved_node_ids],
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Dedup active keys error: {e}") })),
+        )
+    })?;
+
+    // (b) Clear duplicate node_keys within the batch itself, keeping only the first node for each key.
+    tx.execute(
+        "UPDATE graph_nodes g \
+         SET node_key = NULL \
+         WHERE g.id = ANY($1) \
+           AND g.node_key IS NOT NULL \
+           AND g.id NOT IN ( \
+               SELECT DISTINCT ON (node_key) id \
+               FROM graph_nodes \
+               WHERE id = ANY($1) AND node_key IS NOT NULL \
+               ORDER BY node_key, byte_start ASC NULLS LAST, id ASC \
+           );",
+        &[&approved_node_ids],
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Dedup batch keys error: {e}") })),
+        )
+    })?;
+
     // Step 9: Promote approved candidate nodes to ACTIVE, defaulting UNCLASSIFIED to SPECIFICATION (D-61, D-62).
     tx.execute(
         "UPDATE graph_nodes \
@@ -529,12 +577,50 @@ pub async fn reject_staging_alias(
     caller: AuthenticatedAgent,
     Json(payload): Json<StagingRejectRequest>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let job_id = payload.job_id.ok_or_else(|| {
-        (
+    let job_id = if let Some(jid) = payload.job_id {
+        jid
+    } else if let Some(ids) = &payload.rejected_node_ids {
+        if let Some(first_id) = ids.first() {
+            let client = state.pool.get().await.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Pool error: {e}") })),
+                )
+            })?;
+            let row = client
+                .query_opt("SELECT job_id FROM graph_nodes WHERE id = $1;", &[first_id])
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": format!("Query error: {e}") })),
+                    )
+                })?;
+            match row.and_then(|r| r.get::<_, Option<Uuid>>("job_id")) {
+                Some(jid) => jid,
+                None => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(
+                            serde_json::json!({ "error": "Could not determine job_id for draft node" }),
+                        ),
+                    ));
+                }
+            }
+        } else {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(
+                    serde_json::json!({ "error": "Missing job_id or rejected_node_ids in reject payload" }),
+                ),
+            ));
+        }
+    } else {
+        return Err((
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "Missing 'job_id' in reject payload" })),
-        )
-    })?;
+        ));
+    };
 
     execute_reject(state, job_id, payload.rejected_node_ids, caller).await
 }
@@ -630,5 +716,91 @@ async fn execute_reject(
         purged_drafts: purged_count,
     };
 
+    Ok((StatusCode::OK, Json(resp)).into_response())
+}
+
+/// Handles `GET /api/v1/nodes/{id}` and `GET /api/v1/staging/inspect/{id}`.
+///
+/// Resolves a node polymorphically (by UUID or canonical key), and if document span
+/// coordinates are present, fetches verbatim text from Git ODB.
+pub async fn inspect_node(
+    State(state): State<AppState>,
+    Path(id_str): Path<String>,
+    _caller: MaybeAuthenticatedAgent,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let client = state.pool.get().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Pool error: {e}") })),
+        )
+    })?;
+
+    let node_opt = if let Ok(uuid) = Uuid::parse_str(&id_str) {
+        let row_opt = client
+            .query_opt(
+                "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                 governance_policy, created_by, job_id, doc_path, doc_hash, \
+                 byte_start, byte_end, attributes \
+                 FROM graph_nodes \
+                 WHERE id = $1;",
+                &[&uuid],
+            )
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Query error: {e}") })),
+                )
+            })?;
+        row_opt.map(|r| GraphNode::from_row(&r))
+    } else {
+        let row_opt = client
+            .query_opt(
+                "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                 governance_policy, created_by, job_id, doc_path, doc_hash, \
+                 byte_start, byte_end, attributes \
+                 FROM graph_nodes \
+                 WHERE node_key = $1 \
+                 ORDER BY CASE WHEN lifecycle_state = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC \
+                 LIMIT 1;",
+                &[&id_str],
+            )
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Query error: {e}") })),
+                )
+            })?;
+        row_opt.map(|r| GraphNode::from_row(&r))
+    };
+
+    let node = match node_opt {
+        Some(n) => n,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": format!("Node '{id_str}' not found") })),
+            ));
+        }
+    };
+
+    let span_text = if let (Some(doc_hash), Some(start), Some(end)) =
+        (&node.doc_hash, node.byte_start, node.byte_end)
+    {
+        if start >= 0 && end >= start {
+            state
+                .git_read
+                .read_blob_span(doc_hash, start as usize, end as usize)
+                .await
+                .ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let resp = InspectNodeResponse { node, span_text };
     Ok((StatusCode::OK, Json(resp)).into_response())
 }

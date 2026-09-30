@@ -479,6 +479,20 @@ pub fn reconcile_reingestion_with_options(
         }
     }
 
+    // Track assigned canonical keys to ensure node_key uniqueness across active nodes and drafts (DEC-1.17, D-58)
+    let mut assigned_node_keys: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    for span in &reanchored_spans {
+        if let Some(ref k) = span.node_key {
+            assigned_node_keys.insert(k.clone());
+        }
+    }
+    for draft in &new_draft_nodes {
+        if let Some(ref k) = draft.node_key {
+            assigned_node_keys.insert(k.clone());
+        }
+    }
+
     // Remaining unmatched chunks: newly added sections
     for (c_idx, chunk) in new_chunks.iter().enumerate() {
         if !matched_chunk_indices.contains(&c_idx) {
@@ -493,9 +507,20 @@ pub fn reconcile_reingestion_with_options(
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| chunk.ast_anchor.split('#').next().unwrap_or("").to_string());
 
+            let node_key = if let Some(key) = chunk.primary_node_key() {
+                if !assigned_node_keys.contains(key) {
+                    assigned_node_keys.insert(key.to_string());
+                    Some(key.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             let draft = NewDraftNode {
                 chunk: chunk.clone(),
-                node_key: chunk.primary_node_key().map(|s| s.to_string()),
+                node_key,
                 title: chunk.heading.clone(),
                 content: chunk.content.clone().unwrap_or_default(),
                 node_type,

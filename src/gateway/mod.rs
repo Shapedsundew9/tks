@@ -91,6 +91,12 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/staging/reject",
             post(routes::staging::reject_staging_alias),
         )
+        // Node inspection routes (WP-1.6, D-83)
+        .route("/api/v1/nodes/{id}", get(routes::staging::inspect_node))
+        .route(
+            "/api/v1/staging/inspect/{id}",
+            get(routes::staging::inspect_node),
+        )
         // Identity management routes (TB-5, D-49)
         .route(
             "/api/v1/identities",

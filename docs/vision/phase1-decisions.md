@@ -20,6 +20,9 @@
 | DEC-1.14 | WP-1.5 | Dual-Transport MCP Server Architecture for HTTP/SSE and Direct JSON-RPC | Technical Trade-off | architecture.md §4, §6, §9 D-19 | Implemented |
 | DEC-1.15 | WP-1.5 | In-Process Moka Cache Eviction Strategy with Immediate Invalidation | Technical Trade-off | architecture.md §4, §9 D-39, D-49, technical-backlog.md TB-5 | Implemented |
 | DEC-1.16 | WP-1.5 | Atomic Staging Promotion and In-Place Span Re-Anchoring with Draft Revision Squashing | Technical Trade-off | architecture.md §3 INV-1, INV-2, §5.1, §9 D-34, D-61, D-65, D-74, D-82 | Implemented |
+| DEC-1.17 | WP-1.6 | Canonical Key Deduping and Single-Entity Assignment per Document and Promotion Batch | Technical Trade-off | architecture.md §5.1, §9 D-58, technical-backlog.md TB-7 | Implemented |
+| DEC-1.18 | WP-1.6 | Stdio Streaming Proxy Connection Resilience and Dual-Entrypoint Dispatch | Technical Trade-off | technical-backlog.md TB-4, architecture.md §8 | Implemented |
+| DEC-1.19 | WP-1.6 | Polymorphic Staging Node Inspection REST Endpoint with Verbatim ODB Slicing | API/Contract Elaboration | architecture.md §6, §8, §9 D-83 | Implemented |
 
 ---
 
@@ -218,4 +221,41 @@
   * *Option B: Single atomic transaction with strict lock acquisition hierarchy.* Pros: acquiring `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))` and `pg_advisory_xact_lock(hashtext(doc_path))` before any row mutations guarantees total ordering, mathematically preventing deadlock cycles (40P01) and ensuring complete ACID atomicity across span re-anchoring, draft deletion, node promotion, revision squashing, and embedding queueing. Cons: transaction locks the document and structural mutation space for ~5–10ms during approval.
 * **Decision Taken & Rationale:** Option B. Executing the entire staging promotion within a single advisory-locked transaction guarantees strict topological integrity, zero orphan draft residue, and complete audit immutability.
 * **Upstream Impact & Target Document:** `architecture.md` §3 INV-1, INV-2, §5.1, §9 D-34, D-46, D-47, D-61, D-65, D-74, D-82, and D-83.
+* **Status:** Implemented
+
+### DEC-1.17: Canonical Key Deduping and Single-Entity Assignment per Document and Promotion Batch
+
+* **Work Package:** WP-1.6
+* **Category:** Technical Trade-off
+* **Context & Problem:** When documents (such as `docs/vision/strategic-planning-backlog.md`) mention canonical requirement keys (e.g., `TB-1`) across multiple body paragraphs or bullet points, an unconstrained regex extractor extracts and tags multiple distinct AST chunks with the same canonical `node_key`. When staged candidate nodes are subsequently approved via `POST /api/v1/staging/approve`, setting `lifecycle_state = 'ACTIVE'` across these candidate nodes triggers a PostgreSQL unique constraint violation on `idx_graph_nodes_node_key_active` (`ON graph_nodes (node_key) WHERE lifecycle_state = 'ACTIVE'`).
+* **Options Considered:**
+  * *Option A: Relax the database partial unique index `idx_graph_nodes_node_key_active` to allow duplicate active canonical keys.* Pros: eliminates promotion failures without code changes. Cons: violates core architectural invariant D-58 that canonical requirement identifiers uniquely address a single functional entity.
+  * *Option B: Enforce single-entity assignment during AST reconciliation and pre-promotion deduplication in staging approval.* Pros: During reconciliation (`reconcile_reingestion_with_options`), an in-memory `assigned_node_keys` tracker ensures only the primary chunk claiming the canonical key receives `node_key = Some(key)`, while secondary prose mentions receive `node_key = None`. Furthermore, during staging approval (`execute_approve`), Step 8.5 executes defensive pre-promotion queries to clear duplicate keys among candidate nodes or collisions with pre-existing active nodes. This preserves unique addressability and strict relational invariants without dropping secondary text nodes. Cons: requires secondary mentions to be identified without the primary key tag.
+* **Decision Taken & Rationale:** Option B. Enforcing first-claim canonical key assignment during reconciliation combined with defensive pre-promotion key cleanup guarantees the integrity of `idx_graph_nodes_node_key_active` while preserving all extracted text content in the substrate graph.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 D-58, and `technical-backlog.md` TB-7.
+* **Status:** Implemented
+
+### DEC-1.18: Stdio Streaming Proxy Connection Resilience and Dual-Entrypoint Dispatch
+
+* **Work Package:** WP-1.6
+* **Category:** Technical Trade-off
+* **Context & Problem:** External AI agent harnesses (such as Claude Desktop, Cursor, or Cline) invoke MCP stdio adapters as external child processes. If the daemon (`tks serve`) is offline or restarting when an agent harness launches, standard stdio adapters crash with an immediate non-zero exit code or broken pipe, leading agent harnesses to disable the MCP server. Additionally, different harness configurations invoke the adapter either via unified CLI (`tks mcp-stdio`) or as a dedicated standalone binary (`mcp_stdio`).
+* **Options Considered:**
+  * *Option A: Immediately exit with code 1 if daemon HTTP/SSE endpoint is unreachable.* Pros: minimal adapter code. Cons: agent harnesses disable or drop the tool permanently; fragile development workflow during daemon restarts.
+  * *Option B: Dedicated binary only or unified CLI only.* Pros: single binary target. Cons: breaks standard conventions where agent configs specify executable paths directly without subcommand flags.
+  * *Option C: Exponential backoff connectivity check (up to 2 seconds), structured `-32000` JSON-RPC error response on stdin `initialize` request when offline (exiting 0), strict stderr diagnostic logging, and dual-entrypoint dispatch (`tks mcp-stdio` and `src/bin/mcp_stdio.rs`).* Pros: if the server is offline, reading stdin for the agent harness's initial `{"method": "initialize", "id": 1}` and replying on stdout with a standard JSON-RPC 2.0 error (`code: -32000`) before exiting 0 prevents the harness from panicking or marking the adapter as permanently broken; logging all diagnostics to stderr protects stdout JSON-RPC framing; dual entrypoints provide seamless compatibility. Cons: requires custom request listener handling on daemon unreachable path.
+* **Decision Taken & Rationale:** Option C. Implementing 2-second connection backoff, graceful `-32000` initialization error generation on stdout, stderr-only logging, and dual entrypoint dispatch ensures robust integration with external agent hosts under daemon restarts.
+* **Upstream Impact & Target Document:** `technical-backlog.md` TB-4 and `architecture.md` §8.
+* **Status:** Implemented
+
+### DEC-1.19: Polymorphic Staging Node Inspection REST Endpoint with Verbatim ODB Slicing
+
+* **Work Package:** WP-1.6
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** The terminal staging CLI (`tks staging inspect <node_id>`) requires inspecting candidate draft nodes before approval, including reviewing the exact verbatim Markdown span extracted from Git specifications. Reading Git blobs directly in the CLI would require direct filesystem access to the bare Git repository, violating the client-server separation between CLI and daemon.
+* **Options Considered:**
+  * *Option A: Open the bare Git repository directly from the CLI process.* Pros: bypasses REST gateway. Cons: breaks client-server architecture; fails if CLI runs in a separate container, host machine, or unprivileged context lacking direct volume mounts.
+  * *Option B: Add polymorphic inspection endpoints `GET /api/v1/staging/inspect/{id}` and `GET /api/v1/nodes/{id}` on the Gateway API.* Pros: accepts either 128-bit UUIDs or canonical requirement keys (`TB-1`); retrieves node metadata from PostgreSQL; transparently resolves the Git commit SHA and byte range from `GitReadHandle::read_blob_span`; returns structured JSON including verbatim text content, metadata, attributes, and lifecycle state. The CLI simply renders this JSON response. Cons: requires gateway route registration and git read handle integration.
+* **Decision Taken & Rationale:** Option B. Implementing polymorphic REST inspection endpoints maintains strict client-server decoupling, enables thin CLI ergonomics, and provides unified inspection capabilities for both draft and active nodes across REST, CLI, and MCP callers.
+* **Upstream Impact & Target Document:** `architecture.md` §6, §8, and §9 D-83.
 * **Status:** Implemented
