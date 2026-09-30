@@ -5,6 +5,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod db;
 pub mod ingest;
+pub mod storage;
 
 /// Command-line arguments for the TKS CLI.
 #[derive(Parser, Debug)]
