@@ -726,6 +726,58 @@ async fn test_mcp_sse_transport_initialization() {
 }
 
 #[tokio::test]
+async fn test_polymorphic_node_inspection_by_canonical_key() {
+    let (base_url, cancel, state, _guard) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // 1. Insert a test active node with canonical key
+    let node_id = Uuid::new_v4();
+    let test_key = format!("TEST-INSPECT-KEY-{}", &node_id.to_string()[..8]);
+    let db_client = state.pool.get().await.unwrap();
+    let _ = db_client
+        .execute(
+            "DELETE FROM graph_nodes WHERE node_key LIKE 'TEST-INSPECT-KEY-%';",
+            &[],
+        )
+        .await;
+    db_client
+        .execute(
+            "INSERT INTO graph_nodes (id, node_key, node_type, title, content, lifecycle_state) \
+             VALUES ($1, $2, 'DECISION', 'Test Decision', 'Sample decision content', 'ACTIVE');",
+            &[&node_id, &test_key],
+        )
+        .await
+        .expect("Insert test node");
+
+    // 2. Call GET /api/v1/staging/inspect/{test_key}
+    let resp = client
+        .get(format!("{base_url}/api/v1/staging/inspect/{test_key}"))
+        .header("Authorization", "Bearer tks_dev_token")
+        .send()
+        .await
+        .expect("Call inspect endpoint");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json: serde_json::Value = resp.json().await.expect("Parse json");
+    let node_obj = json.get("node").expect("Response must contain node object");
+    assert_eq!(
+        node_obj.get("node_key").and_then(|v| v.as_str()),
+        Some(test_key.as_str())
+    );
+    assert_eq!(
+        node_obj.get("node_type").and_then(|v| v.as_str()),
+        Some("DECISION")
+    );
+
+    // Clean up
+    let _ = db_client
+        .execute("DELETE FROM graph_nodes WHERE id = $1;", &[&node_id])
+        .await;
+
+    cancel.cancel();
+}
+
+#[tokio::test]
 async fn test_mcp_stdio_resilience() {
     println!("\n=== WP-1.6 Stdio Proxy Resilience Test: Offline Daemon Remediation ===\n");
 

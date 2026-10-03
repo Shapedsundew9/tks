@@ -761,7 +761,7 @@ pub async fn inspect_node(
                  byte_start, byte_end, attributes \
                  FROM graph_nodes \
                  WHERE node_key = $1 \
-                 ORDER BY CASE WHEN lifecycle_state = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC \
+                 ORDER BY CASE WHEN lifecycle_state = 'ACTIVE' THEN 0 ELSE 1 END \
                  LIMIT 1;",
                 &[&id_str],
             )

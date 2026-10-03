@@ -30,7 +30,7 @@
 .DS_Store
 Thumbs.db
 
-.fastembed_cache/*
+**/.fastembed_cache/
 scratchpad/*
 
 # Substrate local storage, bare git repo, and backups

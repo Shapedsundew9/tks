@@ -55,6 +55,16 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         eprintln!("Applied {file_name}");
     }
 
+    // Ensure default development identity exists idempotently (V2 seed)
+    let _ = client
+        .execute(
+            "INSERT INTO agent_identities (agent_id, token_hash, actor_type, is_active) \
+             VALUES ('tks_dev_token', 'tks_dev_token', 'HUMAN', TRUE) \
+             ON CONFLICT (agent_id) DO UPDATE SET is_active = TRUE;",
+            &[],
+        )
+        .await;
+
     if args.migrate_only {
         tracing::info!("Standalone database migrations completed successfully.");
         eprintln!("Standalone database migrations completed successfully.");
