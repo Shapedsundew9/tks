@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::gateway::AppState;
 use crate::gateway::auth::AuthenticatedAgent;
-use crate::storage::envelope::assemble_context_envelope;
+use crate::storage::envelope::assemble_context_envelope_workspace;
 use crate::storage::governance::TaskStatus;
 use crate::storage::mutation::{
     ElaboratedTaskResult, MutationError, TaskUpdateResult, elaborate_task, propose_normative_draft,
@@ -15,7 +15,8 @@ use crate::storage::mutation::{
 use crate::storage::repo::lookup_node_polymorphic;
 use crate::storage::reverify::{ReverifyResult, reverify_node};
 use crate::storage::rollback::{RevertExecutionResult, RevertFilter, revert_mutations};
-use crate::storage::search::query_active_requirements;
+use crate::storage::search::query_requirements_with_workspace;
+use crate::storage::workspace::elaborate_in_workspace;
 use crate::storage::{SearchResultNode, TopologicalEnvelope};
 
 /// Definition of an MCP tool for `tools/list`.
@@ -51,6 +52,10 @@ pub fn list_tools() -> Vec<McpToolDefinition> {
                     "include_drafts": {
                         "type": "boolean",
                         "description": "Whether to include speculative candidate drafts authored by the calling agent (default false)."
+                    },
+                    "workspace_id": {
+                        "type": "string",
+                        "description": "Optional workspace UUID scoping candidate draft visibility to an isolated scratchpad branch (INV-7)."
                     }
                 },
                 "required": []
@@ -69,6 +74,10 @@ pub fn list_tools() -> Vec<McpToolDefinition> {
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of search results to return (default 10, max 50)."
+                    },
+                    "workspace_id": {
+                        "type": "string",
+                        "description": "Optional workspace UUID scoping candidate search to an isolated scratchpad branch (INV-7)."
                     }
                 },
                 "required": ["query"]
@@ -133,6 +142,10 @@ pub fn list_tools() -> Vec<McpToolDefinition> {
                     "edge_type": {
                         "type": "string",
                         "description": "Optional upward structural edge type ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM')."
+                    },
+                    "workspace_id": {
+                        "type": "string",
+                        "description": "Optional workspace UUID scoping candidate mutations to an isolated scratchpad branch without global locking."
                     }
                 },
                 "required": ["target_node_id", "mutation_type"]
@@ -163,6 +176,10 @@ pub fn list_tools() -> Vec<McpToolDefinition> {
                     "attributes": {
                         "type": "object",
                         "description": "Optional progressive JSONB attributes (e.g. node_key, edge_type)."
+                    },
+                    "workspace_id": {
+                        "type": "string",
+                        "description": "Optional workspace UUID to elaborate the task in an isolated branch scratchpad without taking the global advisory lock."
                     }
                 },
                 "required": ["parent_node_id", "title"]
@@ -282,11 +299,48 @@ pub async fn handle_get_context_envelope(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    let workspace_id = args
+        .get("workspace_id")
+        .and_then(|v| v.as_str())
+        .map(Uuid::parse_str)
+        .transpose()
+        .map_err(|e| format!("Invalid workspace_id: {e}"))?;
+
     let client = state
         .pool
         .get()
         .await
         .map_err(|e| format!("Database pool error: {e}"))?;
+
+    // Validate workspace access if workspace_id provided (INV-7)
+    if let Some(ws_id) = workspace_id {
+        let ws_row = client
+            .query_opt(
+                "SELECT id, owner_agent, status FROM workspaces WHERE id = $1;",
+                &[&ws_id],
+            )
+            .await
+            .map_err(|e| format!("Database error: {e}"))?;
+
+        let (ws_owner, ws_status): (String, String) = ws_row
+            .map(|r| (r.get(1), r.get(2)))
+            .ok_or_else(|| format!("Workspace '{ws_id}' not found"))?;
+
+        if ws_status != "ACTIVE" {
+            return Err(format!("Workspace '{ws_id}' is not ACTIVE"));
+        }
+
+        if let Some(c) = caller {
+            if ws_owner != c.agent_id && c.actor_type != "HUMAN" && c.agent_id != "system" {
+                return Err(format!(
+                    "Caller '{}' is not authorized to access workspace owned by '{ws_owner}'",
+                    c.agent_id
+                ));
+            }
+        } else {
+            return Err("Authentication required to access workspace context".to_string());
+        }
+    }
 
     // Polymorphic resolution (UUID or canonical node_key; TB-7)
     let target_node = lookup_node_polymorphic(&client, target_str)
@@ -294,7 +348,7 @@ pub async fn handle_get_context_envelope(
         .map_err(|e| format!("Lookup error: {e}"))?
         .ok_or_else(|| format!("Target node '{target_str}' not found"))?;
 
-    let caller_author = if include_drafts {
+    let caller_author = if include_drafts || workspace_id.is_some() {
         caller.map(|c| c.agent_id.as_str())
     } else {
         None
@@ -302,28 +356,53 @@ pub async fn handle_get_context_envelope(
 
     // Draft isolation check
     if target_node.lifecycle_state == "DRAFT" {
-        let is_visible = caller_author
-            .map(|author| author == target_node.created_by)
-            .unwrap_or(false);
-        if !is_visible {
-            return Err(format!(
-                "Target node '{target_str}' is an unapproved draft not accessible to caller"
-            ));
+        let node_ws = target_node
+            .attributes
+            .get("workspace_id")
+            .and_then(|v| v.as_str());
+
+        if let Some(nws) = node_ws {
+            let ws_matches = workspace_id.map(|w| w.to_string() == nws).unwrap_or(false);
+            let author_matches = caller_author
+                .map(|a| a == target_node.created_by)
+                .unwrap_or(true);
+
+            if !ws_matches || !author_matches {
+                return Err(format!(
+                    "Target node '{target_str}' is an isolated workspace draft not accessible to caller"
+                ));
+            }
+        } else {
+            let is_visible = caller_author
+                .map(|author| author == target_node.created_by)
+                .unwrap_or(false);
+            if !is_visible {
+                return Err(format!(
+                    "Target node '{target_str}' is an unapproved draft not accessible to caller"
+                ));
+            }
         }
     }
 
-    // Assemble complete context envelope with vector neighbors (TB-6, §6.1)
-    let envelope = assemble_context_envelope(&client, target_node.id, depth, caller_author)
-        .await
-        .map_err(|e| format!("Failed to assemble context envelope: {e}"))?;
+    // Assemble complete context envelope with vector neighbors and optional workspace candidate overlay (TB-6, §6.1, WP-3.2)
+    let envelope = assemble_context_envelope_workspace(
+        &client,
+        target_node.id,
+        depth,
+        caller_author,
+        workspace_id,
+    )
+    .await
+    .map_err(|e| format!("Failed to assemble context envelope: {e}"))?;
 
     Ok(envelope)
 }
 
-/// Executes the `query_requirements` tool.
+/// Executes the `query_requirements` tool with optional workspace candidate overlay.
 pub async fn handle_query_requirements(
     state: &AppState,
     args: Value,
+    caller: Option<&AuthenticatedAgent>,
 ) -> Result<Vec<SearchResultNode>, String> {
     let query = args
         .get("query")
@@ -336,13 +415,50 @@ pub async fn handle_query_requirements(
         .map(|l| (l as u32).clamp(1, 50))
         .unwrap_or(10);
 
+    let workspace_id = args
+        .get("workspace_id")
+        .and_then(|v| v.as_str())
+        .map(Uuid::parse_str)
+        .transpose()
+        .map_err(|e| format!("Invalid workspace_id: {e}"))?;
+
     let client = state
         .pool
         .get()
         .await
         .map_err(|e| format!("Database pool error: {e}"))?;
 
-    let results = query_active_requirements(&client, query, limit)
+    if let Some(ws_id) = workspace_id {
+        // Verify workspace exists, is ACTIVE, and caller is authorized (INV-7)
+        let ws_row = client
+            .query_opt(
+                "SELECT id, owner_agent, status FROM workspaces WHERE id = $1;",
+                &[&ws_id],
+            )
+            .await
+            .map_err(|e| format!("Database error: {e}"))?;
+
+        let (ws_owner, ws_status): (String, String) = ws_row
+            .map(|r| (r.get(1), r.get(2)))
+            .ok_or_else(|| format!("Workspace '{ws_id}' not found"))?;
+
+        if ws_status != "ACTIVE" {
+            return Err(format!("Workspace '{ws_id}' is not ACTIVE"));
+        }
+
+        if let Some(c) = caller {
+            if ws_owner != c.agent_id && c.actor_type != "HUMAN" && c.agent_id != "system" {
+                return Err(format!(
+                    "Caller '{}' is not authorized to access workspace owned by '{ws_owner}'",
+                    c.agent_id
+                ));
+            }
+        } else {
+            return Err("Authentication required to access workspace requirements".to_string());
+        }
+    }
+
+    let results = query_requirements_with_workspace(&client, query, limit, workspace_id)
         .await
         .map_err(|e| format!("Full-text search error: {e}"))?;
 
@@ -431,6 +547,13 @@ pub async fn handle_propose_node_mutation(
 
     let edge_type = args.get("edge_type").and_then(|v| v.as_str());
 
+    let workspace_id = args
+        .get("workspace_id")
+        .and_then(|v| v.as_str())
+        .map(Uuid::parse_str)
+        .transpose()
+        .map_err(|e| MutationError::Other(format!("Invalid workspace_id: {e}")))?;
+
     let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
 
     let mut_type_upper = mutation_type.to_uppercase();
@@ -458,15 +581,28 @@ pub async fn handle_propose_node_mutation(
             attrs["edge_type"] = serde_json::json!(et);
         }
 
-        let res = elaborate_task(
-            &mut client,
-            target_node_id,
-            &title,
-            proposed_content,
-            Some(attrs),
-            caller,
-        )
-        .await?;
+        let res = if let Some(ws_id) = workspace_id {
+            elaborate_in_workspace(
+                &mut client,
+                ws_id,
+                target_node_id,
+                &title,
+                proposed_content,
+                Some(attrs),
+                caller,
+            )
+            .await?
+        } else {
+            elaborate_task(
+                &mut client,
+                target_node_id,
+                &title,
+                proposed_content,
+                Some(attrs),
+                caller,
+            )
+            .await?
+        };
 
         Ok(serde_json::json!({
             "status": "COMMITTED",
@@ -559,16 +695,37 @@ pub async fn handle_create_subtask(
     let content = args.get("content").and_then(|v| v.as_str());
     let attributes = args.get("attributes").cloned();
 
+    let workspace_id = args
+        .get("workspace_id")
+        .and_then(|v| v.as_str())
+        .map(Uuid::parse_str)
+        .transpose()
+        .map_err(|e| MutationError::Other(format!("Invalid workspace_id: {e}")))?;
+
     let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
-    elaborate_task(
-        &mut client,
-        parent_node_id,
-        title,
-        content,
-        attributes,
-        caller,
-    )
-    .await
+
+    if let Some(ws_id) = workspace_id {
+        elaborate_in_workspace(
+            &mut client,
+            ws_id,
+            parent_node_id,
+            title,
+            content,
+            attributes,
+            caller,
+        )
+        .await
+    } else {
+        elaborate_task(
+            &mut client,
+            parent_node_id,
+            title,
+            content,
+            attributes,
+            caller,
+        )
+        .await
+    }
 }
 
 /// Executes the `update_node_status` MCP tool.

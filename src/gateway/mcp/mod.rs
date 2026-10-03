@@ -286,22 +286,24 @@ async fn dispatch_tool_call(
             }
         }
 
-        "query_requirements" => match handle_query_requirements(state, arguments).await {
-            Ok(results) => {
-                let serialized = serde_json::to_string_pretty(&results).unwrap_or_default();
-                let result = serde_json::json!({
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": serialized
-                        }
-                    ],
-                    "results": results
-                });
-                Some(JsonRpcResponse::success(id, result))
+        "query_requirements" => {
+            match handle_query_requirements(state, arguments, effective_caller.as_ref()).await {
+                Ok(results) => {
+                    let serialized = serde_json::to_string_pretty(&results).unwrap_or_default();
+                    let result = serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": serialized
+                            }
+                        ],
+                        "results": results
+                    });
+                    Some(JsonRpcResponse::success(id, result))
+                }
+                Err(err) => Some(JsonRpcResponse::error(id, -32000, err)),
             }
-            Err(err) => Some(JsonRpcResponse::error(id, -32000, err)),
-        },
+        }
 
         "get_document_span" => match handle_get_document_span(state, arguments).await {
             Ok(span) => {
@@ -381,12 +383,13 @@ async fn dispatch_tool_call(
                         "content": [
                             {
                                 "type": "text",
-                                "text": format!("Subtask created: task_id={}, status=ACTIVE", res.task_id)
+                                "text": format!("Subtask created: task_id={}, lifecycle_state={}, status={}", res.task_id, res.lifecycle_state, res.status)
                             }
                         ],
                         "task_id": res.task_id,
                         "node_key": res.node_key,
                         "status": res.status,
+                        "lifecycle_state": res.lifecycle_state,
                         "batch_id": res.batch_id,
                         "subtask": res
                     });

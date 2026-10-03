@@ -6,6 +6,8 @@ use tokio_postgres::Client;
 
 use crate::storage::{SearchResultNode, StorageError};
 
+use uuid::Uuid;
+
 static CANONICAL_KEY_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z]+-[0-9A-Za-z-]+$").expect("Invalid regex"));
 
@@ -23,42 +25,97 @@ pub async fn query_active_requirements(
     query: &str,
     limit: u32,
 ) -> Result<Vec<SearchResultNode>, StorageError> {
+    query_requirements_with_workspace(client, query, limit, None).await
+}
+
+/// Queries requirements with optional workspace candidate draft overlay (WP-3.2, INV-7).
+///
+/// When `workspace_id` is `Some(ws_id)`, transparently overlays candidate draft nodes
+/// belonging to that workspace onto active requirements. When `None`, restricts results
+/// strictly to `ACTIVE` substrate requirements.
+///
+/// # Errors
+///
+/// Returns `StorageError` if the database query fails.
+pub async fn query_requirements_with_workspace(
+    client: &Client,
+    query: &str,
+    limit: u32,
+    workspace_id: Option<Uuid>,
+) -> Result<Vec<SearchResultNode>, StorageError> {
     let query = query.trim();
     if query.is_empty() {
         return Ok(Vec::new());
     }
 
     let limit_i64 = if limit == 0 { 20 } else { limit.min(100) } as i64;
+    let ws_id_str = workspace_id.map(|w| w.to_string());
 
-    let rows = if CANONICAL_KEY_REGEX.is_match(query) {
-        client
-            .query(
-                "SELECT id, node_key, title, content, \
-                 (CASE WHEN node_key ILIKE $1 THEN 100.0::real \
-                       WHEN node_key ILIKE $1 || '%' THEN 50.0::real \
-                       ELSE 0.0::real END + \
-                  ts_rank(search_tsv, plainto_tsquery('english', $1))) AS rank \
-                 FROM graph_nodes \
-                 WHERE lifecycle_state = 'ACTIVE' \
-                   AND (node_key ILIKE $1 || '%' OR search_tsv @@ plainto_tsquery('english', $1)) \
-                 ORDER BY rank DESC \
-                 LIMIT $2;",
-                &[&query, &limit_i64],
-            )
-            .await?
-    } else {
-        client
-            .query(
-                "SELECT id, node_key, title, content, \
-                 ts_rank(search_tsv, websearch_to_tsquery('english', $1)) AS rank \
-                 FROM graph_nodes \
-                 WHERE lifecycle_state = 'ACTIVE' \
-                   AND (search_tsv @@ websearch_to_tsquery('english', $1) OR node_key ILIKE '%' || $1 || '%') \
-                 ORDER BY rank DESC \
-                 LIMIT $2;",
-                &[&query, &limit_i64],
-            )
-            .await?
+    let rows = match ws_id_str {
+        Some(ref ws_id) => {
+            if CANONICAL_KEY_REGEX.is_match(query) {
+                client
+                    .query(
+                        "SELECT id, node_key, title, content, \
+                         (CASE WHEN node_key ILIKE $1 THEN 100.0::real \
+                               WHEN node_key ILIKE $1 || '%' THEN 50.0::real \
+                               ELSE 0.0::real END + \
+                          ts_rank(search_tsv, plainto_tsquery('english', $1))) AS rank \
+                         FROM graph_nodes \
+                         WHERE (lifecycle_state = 'ACTIVE' OR (lifecycle_state = 'DRAFT' AND (attributes->>'workspace_id') = $3)) \
+                           AND (node_key ILIKE $1 || '%' OR search_tsv @@ plainto_tsquery('english', $1)) \
+                         ORDER BY rank DESC \
+                         LIMIT $2;",
+                        &[&query, &limit_i64, &ws_id],
+                    )
+                    .await?
+            } else {
+                client
+                    .query(
+                        "SELECT id, node_key, title, content, \
+                         ts_rank(search_tsv, websearch_to_tsquery('english', $1)) AS rank \
+                         FROM graph_nodes \
+                         WHERE (lifecycle_state = 'ACTIVE' OR (lifecycle_state = 'DRAFT' AND (attributes->>'workspace_id') = $3)) \
+                           AND (search_tsv @@ websearch_to_tsquery('english', $1) OR node_key ILIKE '%' || $1 || '%') \
+                         ORDER BY rank DESC \
+                         LIMIT $2;",
+                        &[&query, &limit_i64, &ws_id],
+                    )
+                    .await?
+            }
+        }
+        None => {
+            if CANONICAL_KEY_REGEX.is_match(query) {
+                client
+                    .query(
+                        "SELECT id, node_key, title, content, \
+                         (CASE WHEN node_key ILIKE $1 THEN 100.0::real \
+                               WHEN node_key ILIKE $1 || '%' THEN 50.0::real \
+                               ELSE 0.0::real END + \
+                          ts_rank(search_tsv, plainto_tsquery('english', $1))) AS rank \
+                         FROM graph_nodes \
+                         WHERE lifecycle_state = 'ACTIVE' \
+                           AND (node_key ILIKE $1 || '%' OR search_tsv @@ plainto_tsquery('english', $1)) \
+                         ORDER BY rank DESC \
+                         LIMIT $2;",
+                        &[&query, &limit_i64],
+                    )
+                    .await?
+            } else {
+                client
+                    .query(
+                        "SELECT id, node_key, title, content, \
+                         ts_rank(search_tsv, websearch_to_tsquery('english', $1)) AS rank \
+                         FROM graph_nodes \
+                         WHERE lifecycle_state = 'ACTIVE' \
+                           AND (search_tsv @@ websearch_to_tsquery('english', $1) OR node_key ILIKE '%' || $1 || '%') \
+                         ORDER BY rank DESC \
+                         LIMIT $2;",
+                        &[&query, &limit_i64],
+                    )
+                    .await?
+            }
+        }
     };
 
     let results = rows

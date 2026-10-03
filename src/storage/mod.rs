@@ -12,6 +12,7 @@ pub mod repo;
 pub mod reverify;
 pub mod rollback;
 pub mod search;
+pub mod workspace;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -21,8 +22,9 @@ pub use cascade::{
     trigger_downward_invalidation_client, trigger_downward_invalidation_with_bus,
 };
 pub use envelope::{
-    TopologicalEnvelope, assemble_context_envelope, assemble_topological_envelope,
-    query_vector_neighbors, validate_ancestor_path,
+    TopologicalEnvelope, assemble_context_envelope, assemble_context_envelope_workspace,
+    assemble_topological_envelope, assemble_topological_envelope_workspace, query_vector_neighbors,
+    validate_ancestor_path,
 };
 pub use event_bus::{
     DEFAULT_EVENT_BUS_CAPACITY, GRAPH_EVENTS_CHANNEL, GraphChangeEvent, GraphEventBus,
@@ -46,7 +48,13 @@ pub use rollback::{
     RevertExecutionResult, RevertFilter, RevertPreview, RevertResult, revert_mutations,
     revert_mutations_client,
 };
-pub use search::query_active_requirements;
+pub use search::{query_active_requirements, query_requirements_with_workspace};
+pub use workspace::{
+    WorkspaceRecord, create_workspace, create_workspace_client, create_workspace_with_attributes,
+    discard_workspace, discard_workspace_client, elaborate_in_workspace,
+    elaborate_in_workspace_client, get_workspace, get_workspace_client, get_workspace_edges,
+    get_workspace_nodes, list_workspaces, list_workspaces_client,
+};
 
 /// Relational domain entity representing a requirement, specification, task, or verification node.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -99,6 +107,7 @@ pub struct GraphEdge {
     pub edge_type: String,
     pub created_by: String,
     pub lifecycle_state: String,
+    pub attributes: serde_json::Value,
 }
 
 impl GraphEdge {
@@ -112,6 +121,9 @@ impl GraphEdge {
             edge_type: row.get("edge_type"),
             created_by: row.get("created_by"),
             lifecycle_state: row.get("lifecycle_state"),
+            attributes: row
+                .try_get("attributes")
+                .unwrap_or_else(|_| serde_json::json!({})),
         }
     }
 }

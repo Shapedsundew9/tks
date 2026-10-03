@@ -136,6 +136,25 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/nodes/{id}/reverify",
             post(routes::mutation::reverify_node_route),
         )
+        // Multi-agent workspace routes (WP-3.2, PHASE3-003)
+        .route(
+            "/api/v1/workspaces",
+            post(routes::workspaces::create_workspace_route)
+                .get(routes::workspaces::list_workspaces_route),
+        )
+        .route(
+            "/api/v1/workspaces/{id}",
+            get(routes::workspaces::inspect_workspace_route)
+                .delete(routes::workspaces::discard_workspace_route),
+        )
+        .route(
+            "/api/v1/workspaces/{id}/subtasks",
+            post(routes::workspaces::elaborate_workspace_task_route),
+        )
+        .route(
+            "/api/v1/workspaces/{id}/elaborate",
+            post(routes::workspaces::elaborate_workspace_task_route),
+        )
         // Model Context Protocol (MCP) endpoints over HTTP/SSE and direct JSON-RPC (D-19, TB-4)
         .route("/mcp/sse", get(mcp::handle_mcp_sse))
         .route("/mcp/message", post(mcp::handle_mcp_message))

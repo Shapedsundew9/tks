@@ -7,6 +7,8 @@
 | DEC-3.1 | WP-3.1 | Single-Roundtrip Multi-Statement Recursive CTE for Invalidation, Batch Update, Audit Append, and pg_notify | Technical Trade-off | architecture.md §5.1, §5.2 | Implemented |
 | DEC-3.2 | WP-3.1 | Shortest-Path Staleness Propagation in Diamond and Multipath Dependency Subgraphs | Specification Gap | architecture.md §5.1 | Implemented |
 | DEC-3.3 | WP-3.1 | Dedicated Asynchronous PostgreSQL LISTEN/NOTIFY Driver and Tokio Broadcast Event Bus | Technical Trade-off | architecture.md §6 | Implemented |
+| DEC-3.4 | WP-3.2 | Bypassing Structural Advisory Lock for Workspace Candidate Elaboration | Technical Trade-off | architecture.md §5.2, technical-backlog.md TB-1 | Implemented |
+| DEC-3.5 | WP-3.2 | Caller-Scoped Dynamic Draft Overlay in Context Envelopes and Requirement Searches (INV-7) | API/Contract Elaboration | architecture.md §5.2, §6.1, vision.md INV-7 | Implemented |
 
 ---
 
@@ -46,4 +48,28 @@
   * *Option B:* Dedicated asynchronous background listener combining connection driving and notification dispatch via Tokio tasks. To avoid the `tokio_postgres` handshake/execution deadlock, the listener drives connection polling while executing `LISTEN tks_graph_events`, then continuously yields server notifications into a 1,024-capacity Tokio broadcast channel with JSON payload deserialization. Pros: Sub-millisecond notification latency ($< 5\text{ ms}$ SLA); non-blocking broadcast dispatch; zero polling query overhead; resilient error handling. Cons: Requires dedicated connection management and cooperative cancellation token handling.
 * **Decision Taken & Rationale:** Adopted Option B. In `src/storage/event_bus.rs`, `run_pg_listener` and `start_pg_listener` implement a dedicated connection listener with cooperative Tokio task driving and broadcast forwarding.
 * **Upstream Impact & Target Document:** `docs/vision/architecture.md` §6 Gateway & Event Streaming should document the dedicated `LISTEN`/`NOTIFY` Tokio broadcast integration.
+* **Status:** Implemented
+
+### DEC-3.4: Bypassing Structural Advisory Lock for Workspace Candidate Elaboration
+
+* **Work Package:** WP-3.2
+* **Category:** Technical Trade-off
+* **Context & Problem:** Work Package WP-3.2 requires multi-agent branch-isolated workspace containers enabling concurrent external coding agents to elaborate candidate tasks, spec updates, and edge attachments without taking the global advisory lock `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))` or creating lock contention/deadlocks on uncommitted changes. In Phase 2, `elaborate_task` acquires the global advisory lock to guarantee global topological invariants and prevent DAG cycles on the live substrate. Applying the same lock to workspace elaborations would serialize all external agents, causing severe lock contention, queueing, and deadlocks under concurrent multi-agent workloads.
+* **Options Considered:**
+  * *Option A:* Retain the global advisory lock across all task elaborations, including inside workspaces. Pros: Reuses existing single code pathway without branching. Cons: Completely violates the core objective of WP-3.2; causes severe contention and transaction timeouts when multiple agents work concurrently in distinct workspaces.
+  * *Option B:* Bypass global structural advisory lock for workspace candidate mutations, stamping created nodes and edges with `lifecycle_state = 'DRAFT'` and `attributes->'workspace_id' = workspace_id`. Because these candidate entities are isolated within the workspace container and do not affect the live active substrate topology, global cycle checking and advisory serialization can be safely deferred to the promotion/merge phase (WP-3.3). Pros: Unlocks 100% concurrent lock-free elaboration across arbitrary numbers of agents; eliminates lock wait timeouts and `40P01` deadlocks; preserves live graph integrity. Cons: Workspace candidate edges are unpromoted drafts and must be rigorously filtered or overlaid only for authorized callers.
+* **Decision Taken & Rationale:** Adopted Option B. In `src/storage/workspace.rs`, `elaborate_in_workspace` directly creates candidate nodes in `DRAFT` state and links them via candidate edges stamped with `attributes->'workspace_id'`, entirely bypassing `pg_advisory_xact_lock`. Global cycle and structural integrity verification is deferred to `promote_workspace` (WP-3.3).
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.2 Multi-Agent Workspaces & Concurrency Model; `docs/vision/technical-backlog.md` TB-1.
+* **Status:** Implemented
+
+### DEC-3.5: Caller-Scoped Dynamic Draft Overlay in Context Envelopes and Requirement Searches (INV-7)
+
+* **Work Package:** WP-3.2
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** Under Invariant INV-7 and Constraints C-13/C-21, candidate drafts created in a workspace must be visible to the authoring agent within that workspace to provide natural contextual continuity during iterative reasoning and task decomposition, but must remain strictly confidential and invisible to external agents querying the substrate or other workspaces. MCP tools `get_context_envelope` and `query_requirements` as well as REST APIs need to present a coherent view of the substrate with workspace candidate tasks overlaid onto the live topology without persisting speculative changes to the live graph.
+* **Options Considered:**
+  * *Option A:* Ephemeral in-memory copy of the entire substrate graph per workspace session. Pros: Simple conceptual model. Cons: Prohibitive memory consumption for large substrates; misses concurrent updates to live requirements committed by other agents; lacks transactional consistency.
+  * *Option B:* Dynamic query-time overlay and strict caller-ownership gating. When `workspace_id` is supplied to `assemble_context_envelope_workspace` or `query_requirements_with_workspace`, the storage layer validates that the caller owns the workspace (or returns `ERR_NOT_FOUND` to prevent information leakage). It then executes the standard live substrate queries and dynamically overlays candidate tasks (`candidate_tasks`) and draft requirement nodes belonging to that specific `workspace_id`. If `workspace_id` is omitted or belongs to another agent, draft nodes are strictly excluded. Pros: Zero memory footprint overhead; perfect caller confidentiality (INV-7); seamlessly reflects the authoring agent's in-progress drafts alongside live requirements; backwards-compatible with existing callers. Cons: Requires dual-path envelope and search assembly routines supporting optional workspace overlays.
+* **Decision Taken & Rationale:** Adopted Option B. Implemented `assemble_context_envelope_workspace` in `src/storage/envelope.rs` and `query_requirements_with_workspace` in `src/storage/search.rs` with strict caller verification. Default APIs delegate with `workspace_id = None`, preserving existing behavior.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.2 and §6.1; `docs/vision/vision.md` INV-7.
 * **Status:** Implemented

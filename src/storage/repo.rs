@@ -13,7 +13,8 @@ use crate::storage::mutation::{
 };
 use crate::storage::reverify::ReverifyResult;
 use crate::storage::rollback::{RevertExecutionResult, RevertFilter};
-use crate::storage::{GraphNode, SearchResultNode, StorageError, TopologicalEnvelope};
+use crate::storage::workspace::WorkspaceRecord;
+use crate::storage::{GraphEdge, GraphNode, SearchResultNode, StorageError, TopologicalEnvelope};
 
 /// Core storage repository wrapping a PostgreSQL connection pool (`deadpool-postgres`).
 #[derive(Clone)]
@@ -384,6 +385,102 @@ impl StorageRepo {
             caller,
         )
         .await
+    }
+
+    /// Creates a branch-isolated workspace container (WP-3.2).
+    pub async fn create_workspace(
+        &self,
+        name: &str,
+        actor: &AuthenticatedAgent,
+    ) -> Result<WorkspaceRecord, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::workspace::create_workspace(&mut client, name, actor).await
+    }
+
+    /// Creates a workspace container with custom attributes (WP-3.2).
+    pub async fn create_workspace_with_attributes(
+        &self,
+        name: &str,
+        attributes: Option<serde_json::Value>,
+        actor: &AuthenticatedAgent,
+    ) -> Result<WorkspaceRecord, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::workspace::create_workspace_with_attributes(
+            &mut client,
+            name,
+            attributes,
+            actor,
+        )
+        .await
+    }
+
+    /// Inspects a workspace container by ID (WP-3.2).
+    pub async fn get_workspace(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<Option<WorkspaceRecord>, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::workspace::get_workspace(&mut client, workspace_id).await
+    }
+
+    /// Lists workspace containers, optionally filtered by owner agent (WP-3.2).
+    pub async fn list_workspaces(
+        &self,
+        owner_agent: Option<&str>,
+    ) -> Result<Vec<WorkspaceRecord>, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::workspace::list_workspaces(&mut client, owner_agent).await
+    }
+
+    /// Discards a workspace container (WP-3.2).
+    pub async fn discard_workspace(
+        &self,
+        workspace_id: Uuid,
+        actor: &AuthenticatedAgent,
+    ) -> Result<WorkspaceRecord, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::workspace::discard_workspace(&mut client, workspace_id, actor).await
+    }
+
+    /// Autonomously elaborates a candidate execution task inside a branch workspace (WP-3.2).
+    pub async fn elaborate_in_workspace(
+        &self,
+        workspace_id: Uuid,
+        parent_id: &str,
+        title: &str,
+        content: Option<&str>,
+        attributes: Option<serde_json::Value>,
+        actor: &AuthenticatedAgent,
+    ) -> Result<ElaboratedTaskResult, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::workspace::elaborate_in_workspace(
+            &mut client,
+            workspace_id,
+            parent_id,
+            title,
+            content,
+            attributes,
+            actor,
+        )
+        .await
+    }
+
+    /// Retrieves candidate draft nodes in the specified workspace container.
+    pub async fn get_workspace_nodes(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<Vec<GraphNode>, StorageError> {
+        let client = self.get_client().await?;
+        crate::storage::workspace::get_workspace_nodes(&client, workspace_id).await
+    }
+
+    /// Retrieves candidate draft edges in the specified workspace container.
+    pub async fn get_workspace_edges(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<Vec<GraphEdge>, StorageError> {
+        let client = self.get_client().await?;
+        crate::storage::workspace::get_workspace_edges(&client, workspace_id).await
     }
 }
 

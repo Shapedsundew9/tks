@@ -14,6 +14,8 @@ pub struct TopologicalEnvelope {
     pub sibling_constraints: Vec<GraphNode>,
     #[serde(default)]
     pub vector_neighbors: Vec<GraphNode>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidate_tasks: Vec<GraphNode>,
     pub total_nodes: usize,
     pub staleness_warning: bool,
 }
@@ -89,6 +91,19 @@ impl TopologicalEnvelope {
             out.push('\n');
         }
 
+        if !self.candidate_tasks.is_empty() {
+            out.push_str("#### Workspace Candidate Subtasks (DRAFT):\n");
+            for task in &self.candidate_tasks {
+                let tkey = task.node_key.as_deref().unwrap_or("UNTITLED");
+                let ttitle = task.title.as_deref().unwrap_or("");
+                let tcontent = task.content.as_deref().unwrap_or("");
+                out.push_str(&format!(
+                    "- **[{tkey}] {ttitle}** (TASK - DRAFT)\n  {tcontent}\n"
+                ));
+            }
+            out.push('\n');
+        }
+
         out.push_str(&format!(
             "=== END CONTEXT ENVELOPE (Total Bound Nodes: {}) ===\n",
             self.total_nodes
@@ -113,6 +128,24 @@ pub async fn assemble_topological_envelope(
     depth: u32,
     include_drafts_for: Option<&str>,
 ) -> Result<TopologicalEnvelope, StorageError> {
+    assemble_topological_envelope_workspace(client, target_id, depth, include_drafts_for, None)
+        .await
+}
+
+/// Assembles a graph-bounded topological context envelope for `target_id` with optional
+/// workspace candidate draft overlay (WP-3.2, INV-7).
+///
+/// # Errors
+///
+/// Returns `StorageError::NotFound` if `target_id` is missing or invisible to caller.
+/// Returns `StorageError::Database` on query execution error.
+pub async fn assemble_topological_envelope_workspace(
+    client: &Client,
+    target_id: Uuid,
+    depth: u32,
+    include_drafts_for: Option<&str>,
+    workspace_id: Option<Uuid>,
+) -> Result<TopologicalEnvelope, StorageError> {
     // 1. Fetch target node
     let target_row = client
         .query_opt(
@@ -130,15 +163,33 @@ pub async fn assemble_topological_envelope(
 
     let target_node = GraphNode::from_row(&target_row);
 
-    // Verify draft visibility
+    // Verify draft visibility and workspace boundary isolation (INV-7)
     if target_node.lifecycle_state == "DRAFT" {
-        let is_visible = include_drafts_for
-            .map(|author| author == target_node.created_by)
-            .unwrap_or(false);
-        if !is_visible {
-            return Err(StorageError::NotFound(format!(
-                "Target node '{target_id}' is a draft not accessible to caller"
-            )));
+        let node_ws = target_node
+            .attributes
+            .get("workspace_id")
+            .and_then(|v| v.as_str());
+
+        if let Some(nws) = node_ws {
+            let ws_matches = workspace_id.map(|w| w.to_string() == nws).unwrap_or(false);
+            let author_matches = include_drafts_for
+                .map(|a| a == target_node.created_by)
+                .unwrap_or(true);
+
+            if !ws_matches || !author_matches {
+                return Err(StorageError::NotFound(format!(
+                    "Target node '{target_id}' is a workspace candidate draft not accessible to caller"
+                )));
+            }
+        } else {
+            let is_visible = include_drafts_for
+                .map(|author| author == target_node.created_by)
+                .unwrap_or(false);
+            if !is_visible {
+                return Err(StorageError::NotFound(format!(
+                    "Target node '{target_id}' is a draft not accessible to caller"
+                )));
+            }
         }
     }
 
@@ -147,6 +198,7 @@ pub async fn assemble_topological_envelope(
 
     // 2. Execute CTE query for ancestors and constraints
     let author_param = include_drafts_for.map(|s| s.to_string());
+    let workspace_param = workspace_id.map(|w| w.to_string());
 
     let cte_query = "
         WITH RECURSIVE
@@ -161,12 +213,23 @@ pub async fn assemble_topological_envelope(
               AND e.edge_type IN ('DERIVED_FROM', 'FULFILLS')
               AND (
                   e.lifecycle_state = 'ACTIVE'
-                  OR (e.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND e.created_by = $2))
+                  OR (
+                      e.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (e.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (e.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND e.created_by = $2)
+                      )
+                  )
               )
               AND (
-                  parent.lifecycle_state = 'ACTIVE'
-                  OR parent.lifecycle_state = 'NEEDS_REVERIFICATION'
-                  OR (parent.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND parent.created_by = $2))
+                  parent.lifecycle_state IN ('ACTIVE', 'NEEDS_REVERIFICATION')
+                  OR (
+                      parent.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (parent.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (parent.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND parent.created_by = $2)
+                      )
+                  )
               )
             UNION ALL
             SELECT
@@ -181,12 +244,23 @@ pub async fn assemble_topological_envelope(
               AND e.edge_type IN ('DERIVED_FROM', 'FULFILLS')
               AND (
                   e.lifecycle_state = 'ACTIVE'
-                  OR (e.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND e.created_by = $2))
+                  OR (
+                      e.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (e.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (e.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND e.created_by = $2)
+                      )
+                  )
               )
               AND (
-                  parent.lifecycle_state = 'ACTIVE'
-                  OR parent.lifecycle_state = 'NEEDS_REVERIFICATION'
-                  OR (parent.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND parent.created_by = $2))
+                  parent.lifecycle_state IN ('ACTIVE', 'NEEDS_REVERIFICATION')
+                  OR (
+                      parent.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (parent.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (parent.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND parent.created_by = $2)
+                      )
+                  )
               )
         ),
         distinct_ancestors AS (
@@ -209,7 +283,13 @@ pub async fn assemble_topological_envelope(
             WHERE e.edge_type = 'CONSTRAINED_BY'
               AND (
                   e.lifecycle_state = 'ACTIVE'
-                  OR (e.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND e.created_by = $2))
+                  OR (
+                      e.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (e.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (e.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND e.created_by = $2)
+                      )
+                  )
               )
             UNION
             SELECT e.from_node_id AS node_id
@@ -218,7 +298,13 @@ pub async fn assemble_topological_envelope(
             WHERE e.edge_type = 'CONSTRAINED_BY'
               AND (
                   e.lifecycle_state = 'ACTIVE'
-                  OR (e.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND e.created_by = $2))
+                  OR (
+                      e.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (e.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (e.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND e.created_by = $2)
+                      )
+                  )
               )
         ),
         immediate_parents AS (
@@ -228,7 +314,13 @@ pub async fn assemble_topological_envelope(
               AND e.edge_type IN ('DERIVED_FROM', 'FULFILLS')
               AND (
                   e.lifecycle_state = 'ACTIVE'
-                  OR (e.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND e.created_by = $2))
+                  OR (
+                      e.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (e.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (e.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND e.created_by = $2)
+                      )
+                  )
               )
         ),
         sibling_invariants AS (
@@ -241,7 +333,13 @@ pub async fn assemble_topological_envelope(
               AND (n.node_key LIKE 'INV-%' OR n.node_key LIKE 'C-%' OR n.node_type = 'REQUIREMENT')
               AND (
                   e.lifecycle_state = 'ACTIVE'
-                  OR (e.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND e.created_by = $2))
+                  OR (
+                      e.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (e.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (e.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND e.created_by = $2)
+                      )
+                  )
               )
         ),
         all_constraints AS (
@@ -255,9 +353,14 @@ pub async fn assemble_topological_envelope(
             JOIN graph_nodes n ON n.id = ac.node_id
             WHERE ac.node_id NOT IN (SELECT id FROM context_ids)
               AND (
-                  n.lifecycle_state = 'ACTIVE'
-                  OR n.lifecycle_state = 'NEEDS_REVERIFICATION'
-                  OR (n.lifecycle_state = 'DRAFT' AND ($2::text IS NOT NULL AND n.created_by = $2))
+                  n.lifecycle_state IN ('ACTIVE', 'NEEDS_REVERIFICATION')
+                  OR (
+                      n.lifecycle_state = 'DRAFT'
+                      AND (
+                          ($4::text IS NOT NULL AND (n.attributes->>'workspace_id') = $4)
+                          OR ($4::text IS NULL AND (n.attributes->>'workspace_id') IS NULL AND $2::text IS NOT NULL AND n.created_by = $2)
+                      )
+                  )
               )
             LIMIT 15
         )
@@ -272,7 +375,15 @@ pub async fn assemble_topological_envelope(
     ";
 
     let rows = client
-        .query(cte_query, &[&target_id, &author_param, &effective_depth])
+        .query(
+            cte_query,
+            &[
+                &target_id,
+                &author_param,
+                &effective_depth,
+                &workspace_param,
+            ],
+        )
         .await?;
 
     let mut ancestor_requirements = Vec::new();
@@ -288,13 +399,39 @@ pub async fn assemble_topological_envelope(
         }
     }
 
-    let total_nodes = 1 + ancestor_requirements.len() + sibling_constraints.len();
+    // 3. Harvest candidate draft tasks elaborated under this node in the workspace
+    let mut candidate_tasks = Vec::new();
+    if let Some(ref ws_str) = workspace_param {
+        let task_rows = client
+            .query(
+                "SELECT n.id, n.node_key, n.node_type, n.title, n.content, n.lifecycle_state, \
+                 n.governance_policy, n.created_by, n.job_id, n.doc_path, n.doc_hash, \
+                 n.byte_start, n.byte_end, n.attributes \
+                 FROM graph_edges e \
+                 JOIN graph_nodes n ON n.id = e.from_node_id \
+                 WHERE e.to_node_id = $1 \
+                   AND e.lifecycle_state = 'DRAFT' \
+                   AND (e.attributes->>'workspace_id') = $2 \
+                   AND n.lifecycle_state = 'DRAFT' \
+                   AND (n.attributes->>'workspace_id') = $2 \
+                 ORDER BY n.created_by, n.title;",
+                &[&target_id, &ws_str],
+            )
+            .await?;
+        for row in task_rows {
+            candidate_tasks.push(GraphNode::from_row(&row));
+        }
+    }
+
+    let total_nodes =
+        1 + ancestor_requirements.len() + sibling_constraints.len() + candidate_tasks.len();
 
     Ok(TopologicalEnvelope {
         target_node,
         ancestor_requirements,
         sibling_constraints,
         vector_neighbors: Vec::new(),
+        candidate_tasks,
         total_nodes,
         staleness_warning,
     })
@@ -376,8 +513,26 @@ pub async fn assemble_context_envelope(
     depth: u32,
     include_drafts_for: Option<&str>,
 ) -> Result<TopologicalEnvelope, StorageError> {
-    let mut envelope =
-        assemble_topological_envelope(client, target_id, depth, include_drafts_for).await?;
+    assemble_context_envelope_workspace(client, target_id, depth, include_drafts_for, None).await
+}
+
+/// Assembles the complete context envelope including topological ancestors, constraints,
+/// workspace candidate task overlays, and vector neighbors (WP-3.2, TB-6, DEC-0.8, §6.1).
+pub async fn assemble_context_envelope_workspace(
+    client: &Client,
+    target_id: Uuid,
+    depth: u32,
+    include_drafts_for: Option<&str>,
+    workspace_id: Option<Uuid>,
+) -> Result<TopologicalEnvelope, StorageError> {
+    let mut envelope = assemble_topological_envelope_workspace(
+        client,
+        target_id,
+        depth,
+        include_drafts_for,
+        workspace_id,
+    )
+    .await?;
 
     let mut excluded_ids = Vec::with_capacity(envelope.total_nodes);
     excluded_ids.push(envelope.target_node.id);
@@ -385,6 +540,9 @@ pub async fn assemble_context_envelope(
         excluded_ids.push(n.id);
     }
     for n in &envelope.sibling_constraints {
+        excluded_ids.push(n.id);
+    }
+    for n in &envelope.candidate_tasks {
         excluded_ids.push(n.id);
     }
 

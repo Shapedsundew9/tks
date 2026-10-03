@@ -18,6 +18,7 @@ use crate::storage::mutation::{
 };
 use crate::storage::reverify::reverify_node;
 use crate::storage::rollback::{RevertExecutionResult, RevertFilter, revert_mutations};
+use crate::storage::workspace::elaborate_in_workspace;
 
 /// Converts a `MutationError` into a structured Axum HTTP response with appropriate status code.
 pub fn mutation_error_to_response(err: MutationError) -> (StatusCode, Json<Value>) {
@@ -128,6 +129,8 @@ pub struct NodeMutateRequest {
     pub proposed_attributes: Option<Value>,
     pub attributes: Option<Value>,
     pub edge_type: Option<String>,
+    #[serde(default)]
+    pub workspace_id: Option<Uuid>,
 }
 
 /// Request payload for `POST /api/v1/nodes/{id}/subtasks`.
@@ -136,6 +139,8 @@ pub struct CreateSubtaskRequest {
     pub title: String,
     pub content: Option<String>,
     pub attributes: Option<Value>,
+    #[serde(default)]
+    pub workspace_id: Option<Uuid>,
 }
 
 /// Request payload for `PATCH /api/v1/nodes/{id}/status`.
@@ -220,16 +225,30 @@ pub async fn mutate_node(
 
         let content = payload.proposed_content.or(payload.content);
 
-        let res = elaborate_task(
-            &mut client,
-            &target,
-            &title,
-            content.as_deref(),
-            Some(attrs),
-            &caller,
-        )
-        .await
-        .map_err(mutation_error_to_response)?;
+        let res = if let Some(ws_id) = payload.workspace_id {
+            elaborate_in_workspace(
+                &mut client,
+                ws_id,
+                &target,
+                &title,
+                content.as_deref(),
+                Some(attrs),
+                &caller,
+            )
+            .await
+            .map_err(mutation_error_to_response)?
+        } else {
+            elaborate_task(
+                &mut client,
+                &target,
+                &title,
+                content.as_deref(),
+                Some(attrs),
+                &caller,
+            )
+            .await
+            .map_err(mutation_error_to_response)?
+        };
 
         Ok((
             StatusCode::CREATED,
@@ -337,23 +356,38 @@ pub async fn create_subtask_route(
         .await
         .map_err(|e| mutation_error_to_response(MutationError::Pool(e)))?;
 
-    let res = elaborate_task(
-        &mut client,
-        &parent_id,
-        &payload.title,
-        payload.content.as_deref(),
-        payload.attributes,
-        &caller,
-    )
-    .await
-    .map_err(mutation_error_to_response)?;
+    let res = if let Some(ws_id) = payload.workspace_id {
+        elaborate_in_workspace(
+            &mut client,
+            ws_id,
+            &parent_id,
+            &payload.title,
+            payload.content.as_deref(),
+            payload.attributes,
+            &caller,
+        )
+        .await
+        .map_err(mutation_error_to_response)?
+    } else {
+        elaborate_task(
+            &mut client,
+            &parent_id,
+            &payload.title,
+            payload.content.as_deref(),
+            payload.attributes,
+            &caller,
+        )
+        .await
+        .map_err(mutation_error_to_response)?
+    };
 
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({
             "task_id": res.task_id,
             "node_key": res.node_key,
-            "status": "ACTIVE",
+            "status": res.lifecycle_state,
+            "lifecycle_state": res.lifecycle_state,
             "batch_id": res.batch_id,
             "event_seq": res.event_seq,
             "governance_policy": res.governance_policy
