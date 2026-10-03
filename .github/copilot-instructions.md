@@ -45,3 +45,22 @@ Read `.shared/ai/core/common-instructions.md`.
 - Prefer well-established, maintained crates when a dependency is genuinely needed.
 - Add every new dependency to the appropriate section of `Cargo.toml` and verify with `cargo check`.
 - Avoid introducing a dependency for functionality that is small and clear to implement with the standard library.
+
+## Devcontainer local LLM (Ollama)
+
+The devcontainer compose stack includes an isolated Ollama service for local inference.
+
+- Service name: `ollama`
+- Network endpoint (compose-internal): `http://ollama:11434`
+- OpenAI-compatible endpoint: `http://ollama:11434/v1`
+- No host port is published by default.
+
+### Defaults
+
+- Primary model: `qwen3:8b`
+- Alternate model: `gemma4:e4b`
+- Context length: `8192`
+- Parallel requests: `1`
+- Keep-alive: `-1`
+- Max loaded models: `1`
+- Flash attention: enabled
