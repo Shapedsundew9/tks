@@ -278,16 +278,16 @@ flowchart TD
 
 ### 4.1 Verification Checklist
 
-- [ ] All work package test suites passing cleanly across WP-2.1 through WP-2.5 (`cargo test --all-targets`).
-- [ ] Project linting, type-checking, and format checks pass cleanly with zero warnings/errors (`cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`).
-- [ ] Strict lock acquisition hierarchy verified: global advisory lock `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))` acquired *before* row locks on structural mutations, DAG cycle checks, batch approvals, and rollbacks ([D-66](file:///workspaces/tks/docs/vision/architecture.md#L1214)).
-- [ ] DAG cycle prevention verified: cyclic constraint or derivation edges rejected with `ERR_GRAPH_CYCLE_DETECTED` ([D-8](file:///workspaces/tks/docs/vision/architecture.md#L648)).
-- [ ] Disambiguated mutation pathways verified: autonomous task elaboration creates directly active tasks with inherited governance policy; leaf task updates lock rows via `SELECT ... FOR UPDATE` and commit discrete audit events; active normative specs require candidate drafts ([D-57](file:///workspaces/tks/docs/vision/architecture.md#L1108), [D-81](file:///workspaces/tks/docs/vision/architecture.md#L1367)).
-- [ ] Unified administrative rollback (`revert_mutations`) verified: dry-run previews return affected subgraphs; cross-agent dependencies require `force = true` confirmation; compensating transactions emit `REVERT` events with monotonic `event_seq` and cascade child nodes to `NEEDS_REVERIFICATION` ([D-73](file:///workspaces/tks/docs/vision/architecture.md#L1284), [D-80](file:///workspaces/tks/docs/vision/architecture.md#L1358)).
-- [ ] Explicit reverification interface (`reverify_node`) verified: checks active parents, restores node to `ACTIVE`, commits `REVERIFIED` event, and unblocks dependent tasks ([D-76](file:///workspaces/tks/docs/vision/architecture.md#L1311)).
-- [ ] Mutation MCP tools and REST endpoints verified with caller authentication and token verification ([INV-7](file:///workspaces/tks/docs/vision/architecture.md#L92), [TB-5](file:///workspaces/tks/docs/vision/technical-backlog.md#L81)).
-- [ ] SLA-2 Performance Target verified: Context Envelope Assembly Latency strictly $<100\text{ ms}$ at $10^5$ nodes in PostgreSQL ([SLA-2](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L81)).
-- [ ] Dogfooding Milestone (Gate 2 - Autonomous Self-Evolution) successfully executed: External agents author, review, and track Phase 3 preparation tasks within the substrate itself ([INV-6](file:///workspaces/tks/docs/vision/architecture.md#L91)).
+- [x] All work package test suites passing cleanly across WP-2.1 through WP-2.5 (`cargo test --all-targets`).
+- [x] Project linting, type-checking, and format checks pass cleanly with zero warnings/errors (`cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`).
+- [x] Strict lock acquisition hierarchy verified: global advisory lock `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))` acquired *before* row locks on structural mutations, DAG cycle checks, batch approvals, and rollbacks ([D-66](file:///workspaces/tks/docs/vision/architecture.md#L1214)).
+- [x] DAG cycle prevention verified: cyclic constraint or derivation edges rejected with `ERR_GRAPH_CYCLE_DETECTED` ([D-8](file:///workspaces/tks/docs/vision/architecture.md#L648)).
+- [x] Disambiguated mutation pathways verified: autonomous task elaboration creates directly active tasks with inherited governance policy; leaf task updates lock rows via `SELECT ... FOR UPDATE` and commit discrete audit events; active normative specs require candidate drafts ([D-57](file:///workspaces/tks/docs/vision/architecture.md#L1108), [D-81](file:///workspaces/tks/docs/vision/architecture.md#L1367)).
+- [x] Unified administrative rollback (`revert_mutations`) verified: dry-run previews return affected subgraphs; cross-agent dependencies require `force = true` confirmation; compensating transactions emit `REVERT` events with monotonic `event_seq` and cascade child nodes to `NEEDS_REVERIFICATION` ([D-73](file:///workspaces/tks/docs/vision/architecture.md#L1284), [D-80](file:///workspaces/tks/docs/vision/architecture.md#L1358)).
+- [x] Explicit reverification interface (`reverify_node`) verified: checks active parents, restores node to `ACTIVE`, commits `REVERIFIED` event, and unblocks dependent tasks ([D-76](file:///workspaces/tks/docs/vision/architecture.md#L1311)).
+- [x] Mutation MCP tools and REST endpoints verified with caller authentication and token verification ([INV-7](file:///workspaces/tks/docs/vision/architecture.md#L92), [TB-5](file:///workspaces/tks/docs/vision/technical-backlog.md#L81)).
+- [x] SLA-2 Performance Target verified: Context Envelope Assembly Latency strictly $<100\text{ ms}$ at $10^5$ nodes in PostgreSQL ([SLA-2](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md#L81)).
+- [x] Dogfooding Milestone (Gate 2 - Autonomous Self-Evolution) successfully executed: External agents author, review, and track Phase 3 preparation tasks within the substrate itself ([INV-6](file:///workspaces/tks/docs/vision/architecture.md#L91)).
 
 ### 4.2 Gate / Milestone Demonstration
 
