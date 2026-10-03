@@ -364,6 +364,27 @@ impl StorageRepo {
         )
         .await
     }
+
+    /// Triggers recursive downward invalidation cascading degraded nodes to `NEEDS_REVERIFICATION` (WP-3.1).
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError` if root node is not found or database execution fails.
+    pub async fn trigger_downward_invalidation(
+        &self,
+        root_node_id: Uuid,
+        reason: &str,
+        caller: &AuthenticatedAgent,
+    ) -> Result<crate::storage::cascade::CascadeInvalidationResult, MutationError> {
+        let mut client = self.get_client().await?;
+        crate::storage::cascade::trigger_downward_invalidation(
+            &mut client,
+            root_node_id,
+            reason,
+            caller,
+        )
+        .await
+    }
 }
 
 /// Acquires the global transaction advisory lock:

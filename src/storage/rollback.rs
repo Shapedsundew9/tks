@@ -512,10 +512,3 @@ pub async fn revert_mutations_client(
         cascade_reverified_nodes,
     }))
 }
-
-impl AuthenticatedAgent {
-    /// Returns token fingerprint or agent id fallback for audit ledger logging.
-    fn token_fingerprint(&self) -> String {
-        self.agent_id.clone()
-    }
-}

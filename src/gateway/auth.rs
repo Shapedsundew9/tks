@@ -24,6 +24,14 @@ pub struct AuthenticatedAgent {
     pub actor_type: String,
 }
 
+impl AuthenticatedAgent {
+    /// Returns token fingerprint or agent id fallback for audit ledger logging.
+    #[must_use]
+    pub fn token_fingerprint(&self) -> String {
+        self.agent_id.clone()
+    }
+}
+
 /// Errors originating from authentication and identity validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthError {

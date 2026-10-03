@@ -2,7 +2,9 @@
 //!
 //! Provides bare Git document storage and relational graph persistence.
 
+pub mod cascade;
 pub mod envelope;
+pub mod event_bus;
 pub mod git;
 pub mod governance;
 pub mod mutation;
@@ -14,9 +16,17 @@ pub mod search;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub use cascade::{
+    CascadeInvalidationResult, calculate_staleness_score, trigger_downward_invalidation,
+    trigger_downward_invalidation_client, trigger_downward_invalidation_with_bus,
+};
 pub use envelope::{
     TopologicalEnvelope, assemble_context_envelope, assemble_topological_envelope,
     query_vector_neighbors, validate_ancestor_path,
+};
+pub use event_bus::{
+    DEFAULT_EVENT_BUS_CAPACITY, GRAPH_EVENTS_CHANNEL, GraphChangeEvent, GraphEventBus,
+    run_pg_listener, start_pg_listener, subscribe_graph_events,
 };
 pub use governance::{
     GovernanceAction, GovernancePolicy, MutationPathway, TaskStatus, evaluate_governance_action,

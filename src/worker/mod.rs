@@ -1,8 +1,10 @@
 //! Cooperative background worker manager orchestrating decomposition and offline vector queue loops (WP-1.4).
 
+pub mod cascade;
 pub mod decomp;
 pub mod embedding;
 
+pub use cascade::{CascadeJob, CascadeWorkerError, process_cascade_job, run_cascade_worker};
 pub use decomp::{
     DEFAULT_DECOMP_POLL_INTERVAL, DecompError, JOB_TIMEOUT_SECONDS, process_one_job,
     run_decomposition_worker,
@@ -23,6 +25,8 @@ pub struct WorkerManager {
     git_handle: GitWriteHandle,
     cancel_token: CancellationToken,
     git_read: GitReadHandle,
+    cascade_tx: tokio::sync::mpsc::Sender<CascadeJob>,
+    cascade_rx: Option<tokio::sync::mpsc::Receiver<CascadeJob>>,
 }
 
 impl WorkerManager {
@@ -30,11 +34,14 @@ impl WorkerManager {
     #[must_use]
     pub fn new(pool: Pool, git_handle: GitWriteHandle, cancel_token: CancellationToken) -> Self {
         let git_read = GitReadHandle::new(resolve_git_dir());
+        let (cascade_tx, cascade_rx) = tokio::sync::mpsc::channel(1024);
         Self {
             pool,
             git_handle,
             cancel_token,
             git_read,
+            cascade_tx,
+            cascade_rx: Some(cascade_rx),
         }
     }
 
@@ -69,6 +76,12 @@ impl WorkerManager {
         &self.git_read
     }
 
+    /// Accessor for cascade invalidation job sender.
+    #[must_use]
+    pub fn cascade_sender(&self) -> tokio::sync::mpsc::Sender<CascadeJob> {
+        self.cascade_tx.clone()
+    }
+
     /// Spawns the cooperative background workers and returns a join handle.
     pub fn start(self) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
@@ -77,7 +90,7 @@ impl WorkerManager {
     }
 
     /// Runs the cooperative worker loops until cancelled.
-    pub async fn run(self) {
+    pub async fn run(mut self) {
         let decomp_handle = tokio::spawn(run_decomposition_worker(
             self.pool.clone(),
             self.git_read.clone(),
@@ -89,7 +102,17 @@ impl WorkerManager {
             self.cancel_token.clone(),
         ));
 
-        let _ = tokio::join!(decomp_handle, embed_handle);
+        let cascade_rx = self.cascade_rx.take().unwrap_or_else(|| {
+            let (_, rx) = tokio::sync::mpsc::channel(1);
+            rx
+        });
+        let cascade_handle = tokio::spawn(run_cascade_worker(
+            self.pool.clone(),
+            cascade_rx,
+            self.cancel_token.clone(),
+        ));
+
+        let _ = tokio::join!(decomp_handle, embed_handle, cascade_handle);
     }
 }
 

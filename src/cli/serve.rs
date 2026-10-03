@@ -83,13 +83,17 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
     let pool = db::create_pool(&database_url).map_err(|e| e.to_string())?;
     let storage = StorageRepo::new(pool.clone());
 
-    // Step 4: Initialize shared gateway application state (WP-1.5)
-    let state = AppState::new(pool.clone(), storage, git_write.clone(), git_read);
-
-    // Step 5: Start background worker manager (WP-1.4)
+    // Step 4: Initialize shared gateway application state and event bus (WP-1.5, WP-3.1)
     let cancel_token = CancellationToken::new();
+    let event_bus = crate::storage::GraphEventBus::default();
+    let _pg_listener_handle =
+        crate::storage::start_pg_listener(&database_url, event_bus.clone(), cancel_token.clone());
+    let state =
+        AppState::new(pool.clone(), storage, git_write.clone(), git_read).with_event_bus(event_bus);
+
+    // Step 5: Start background worker manager (WP-1.4, WP-3.1)
     let worker_token = cancel_token.clone();
-    tracing::info!("Starting background decomposition and embedding worker loops...");
+    tracing::info!("Starting background decomposition, embedding, and cascade worker loops...");
     let _worker_handle = start_worker_manager(pool, git_write, worker_token).await;
 
     // Step 6: Spawn Ctrl-C listener for graceful shutdown coordination

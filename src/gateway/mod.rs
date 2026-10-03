@@ -31,6 +31,7 @@ pub struct AppState {
     pub git_write: GitWriteHandle,
     pub git_read: GitReadHandle,
     pub auth: AuthState,
+    pub event_bus: crate::storage::GraphEventBus,
 }
 
 impl AppState {
@@ -43,13 +44,22 @@ impl AppState {
         git_read: GitReadHandle,
     ) -> Self {
         let auth = AuthState::new(pool.clone());
+        let event_bus = crate::storage::GraphEventBus::default();
         Self {
             pool,
             storage,
             git_write,
             git_read,
             auth,
+            event_bus,
         }
+    }
+
+    /// Sets custom `GraphEventBus` on `AppState`.
+    #[must_use]
+    pub fn with_event_bus(mut self, event_bus: crate::storage::GraphEventBus) -> Self {
+        self.event_bus = event_bus;
+        self
     }
 }
 
