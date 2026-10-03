@@ -4,6 +4,7 @@
 
 pub mod envelope;
 pub mod git;
+pub mod mutation;
 pub mod repo;
 pub mod search;
 
@@ -13,6 +14,12 @@ use uuid::Uuid;
 pub use envelope::{
     TopologicalEnvelope, assemble_context_envelope, assemble_topological_envelope,
     query_vector_neighbors, validate_ancestor_path,
+};
+pub use mutation::{
+    EdgeMutationPayload, MutationError, MutationResult, NodeMutationPayload, StructuralMutationTx,
+    assert_ancestor_path, assert_no_dag_cycle, begin_structural_mutation, check_dag_cycle,
+    insert_audit_event, insert_audit_event_full, insert_structural_edge, resolve_node_polymorphic,
+    update_leaf_attributes_locked,
 };
 pub use repo::{StorageRepo, acquire_structural_lock, lookup_node_polymorphic};
 pub use search::query_active_requirements;

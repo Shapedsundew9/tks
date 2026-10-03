@@ -72,6 +72,84 @@ impl StorageRepo {
         acquire_structural_lock(client).await
     }
 
+    /// Begins a structural mutation transaction on `client` holding the global advisory lock (C-19, D-66).
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError` if starting the transaction or acquiring the advisory lock fails.
+    pub async fn begin_structural_mutation<'a>(
+        &self,
+        client: &'a mut Client,
+    ) -> Result<
+        crate::storage::mutation::StructuralMutationTx<'a>,
+        crate::storage::mutation::MutationError,
+    > {
+        crate::storage::mutation::begin_structural_mutation(client).await
+    }
+
+    /// Executes an operation inside a structural mutation transaction with the global advisory lock held.
+    ///
+    /// The transaction is automatically committed upon success or rolled back on error.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError` if connection acquisition, transaction start, lock acquisition,
+    /// closure execution, or commit fails.
+    pub async fn execute_structural_mutation<T, F>(
+        &self,
+        op: F,
+    ) -> Result<T, crate::storage::mutation::MutationError>
+    where
+        F: for<'tx> FnOnce(
+            &'tx mut crate::storage::mutation::StructuralMutationTx<'_>,
+        ) -> futures_util::future::BoxFuture<
+            'tx,
+            Result<T, crate::storage::mutation::MutationError>,
+        >,
+    {
+        let mut client = self.get_client().await?;
+        let mut tx = crate::storage::mutation::begin_structural_mutation(&mut client).await?;
+        let res = op(&mut tx).await;
+        match res {
+            Ok(val) => {
+                tx.commit().await?;
+                Ok(val)
+            }
+            Err(e) => {
+                let _ = tx.rollback().await;
+                Err(e)
+            }
+        }
+    }
+
+    /// Updates leaf attributes of `node_id` under a native row-level lock (`SELECT ... FOR UPDATE`),
+    /// without holding the global advisory lock (D-30).
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError` if node is not found or database update fails.
+    pub async fn update_leaf_attributes_locked(
+        &self,
+        node_id: Uuid,
+        payload: &crate::storage::mutation::NodeMutationPayload,
+        actor_id: &str,
+        actor_type: &str,
+        token_fingerprint: &str,
+        batch_id: Option<Uuid>,
+    ) -> Result<(GraphNode, i64), crate::storage::mutation::MutationError> {
+        let mut client = self.get_client().await?;
+        crate::storage::mutation::update_leaf_attributes_locked(
+            &mut client,
+            node_id,
+            payload,
+            actor_id,
+            actor_type,
+            token_fingerprint,
+            batch_id,
+        )
+        .await
+    }
+
     /// Validates Invariant INV-1 ancestor paths for candidate node IDs.
     ///
     /// # Errors
