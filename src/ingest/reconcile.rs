@@ -479,6 +479,43 @@ pub fn reconcile_reingestion_with_options(
         }
     }
 
+    // Extract table metadata across all chunks in this document to enrich corresponding decision/requirement nodes
+    let mut key_to_table_metadata: std::collections::HashMap<
+        String,
+        serde_json::Map<String, serde_json::Value>,
+    > = std::collections::HashMap::new();
+
+    for chunk in new_chunks {
+        if let Some(ref td) = chunk.table_data {
+            for row in &td.rows {
+                for val in row.values() {
+                    for key in crate::ingest::matcher::extract_canonical_keys(val) {
+                        let mut meta = serde_json::Map::new();
+                        for (col_name, col_val) in row {
+                            let norm_col = col_name.to_lowercase().replace(' ', "_");
+                            meta.insert(norm_col, serde_json::Value::String(col_val.clone()));
+                        }
+                        key_to_table_metadata.insert(key, meta);
+                    }
+                }
+            }
+        }
+    }
+
+    // Enrich replaced drafts with table metadata if matching
+    for draft in &mut new_draft_nodes {
+        if let Some(ref key) = draft.node_key
+            && let Some(meta) = key_to_table_metadata.get(key)
+            && let serde_json::Value::Object(ref mut map) = draft.attributes
+        {
+            for (k, v) in meta {
+                if !map.contains_key(k) {
+                    map.insert(k.clone(), v.clone());
+                }
+            }
+        }
+    }
+
     // Track assigned canonical keys to ensure node_key uniqueness across active nodes and drafts (DEC-1.17, D-58)
     let mut assigned_node_keys: std::collections::HashSet<String> =
         std::collections::HashSet::new();
@@ -494,47 +531,114 @@ pub fn reconcile_reingestion_with_options(
     }
 
     // Remaining unmatched chunks: newly added sections
-    for (c_idx, chunk) in new_chunks.iter().enumerate() {
-        if !matched_chunk_indices.contains(&c_idx) {
-            let (node_type, governance_policy) = classify_chunk_fallback(chunk);
-            let mut attrs = serde_json::Map::new();
-            attrs.insert(
-                "ast_anchor".to_string(),
-                serde_json::Value::String(chunk.ast_anchor.clone()),
-            );
+    // Prioritize heading chunks before table row chunks and other blocks
+    let mut unmatched_indices: Vec<usize> = (0..new_chunks.len())
+        .filter(|idx| !matched_chunk_indices.contains(idx))
+        .collect();
 
-            let doc_path = doc_path_override
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| chunk.ast_anchor.split('#').next().unwrap_or("").to_string());
+    unmatched_indices.sort_by_key(|&idx| {
+        let c = &new_chunks[idx];
+        if c.heading.is_some()
+            && !c.ast_anchor.contains("#block-")
+            && !c.ast_anchor.contains("#table-row-")
+        {
+            0
+        } else if c.ast_anchor.contains("#table-row-") {
+            1
+        } else {
+            2
+        }
+    });
 
-            let node_key = if let Some(key) = chunk.primary_node_key() {
-                if !assigned_node_keys.contains(key) {
-                    assigned_node_keys.insert(key.to_string());
-                    Some(key.to_string())
-                } else {
-                    None
-                }
+    for c_idx in unmatched_indices {
+        let chunk = &new_chunks[c_idx];
+        let (node_type, governance_policy) = classify_chunk_fallback(chunk);
+        let mut attrs = serde_json::Map::new();
+        attrs.insert(
+            "ast_anchor".to_string(),
+            serde_json::Value::String(chunk.ast_anchor.clone()),
+        );
+
+        // If chunk has table_data, attach it to attributes
+        if let Some(ref td) = chunk.table_data {
+            attrs.insert("is_table".to_string(), serde_json::json!(true));
+            attrs.insert("table_headers".to_string(), serde_json::json!(td.headers));
+            attrs.insert("table_rows".to_string(), serde_json::json!(td.rows));
+        }
+
+        let doc_path = doc_path_override
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| chunk.ast_anchor.split('#').next().unwrap_or("").to_string());
+
+        let node_key = if let Some(key) = chunk.primary_node_key() {
+            if !assigned_node_keys.contains(key) {
+                assigned_node_keys.insert(key.to_string());
+                Some(key.to_string())
             } else {
                 None
-            };
+            }
+        } else {
+            None
+        };
 
-            let draft = NewDraftNode {
-                chunk: chunk.clone(),
-                node_key,
-                title: chunk.heading.clone(),
-                content: chunk.content.clone().unwrap_or_default(),
-                node_type,
-                governance_policy,
-                doc_path,
-                doc_hash: doc_hash.map(|s| s.to_string()),
-                byte_start: chunk.byte_start as i32,
-                byte_end: chunk.byte_end as i32,
-                ast_anchor: chunk.ast_anchor.clone(),
-                replaces_node_id: None,
-                attributes: serde_json::Value::Object(attrs),
-            };
-            new_draft_nodes.push(draft);
+        // If this node has a node_key, enrich attributes with table metadata if available
+        if let Some(ref key) = node_key
+            && let Some(meta) = key_to_table_metadata.get(key)
+        {
+            for (k, v) in meta {
+                if !attrs.contains_key(k) {
+                    attrs.insert(k.clone(), v.clone());
+                }
+            }
         }
+
+        // Title resolution: for table row chunks, derive an informative title from row columns if available
+        let title = if chunk.ast_anchor.contains("#table-row-") {
+            if let Some(ref key) = node_key {
+                let candidate_title = chunk
+                    .table_data
+                    .as_ref()
+                    .and_then(|td| td.rows.first())
+                    .and_then(|row| {
+                        row.get("Constraint")
+                            .or_else(|| row.get("Statement"))
+                            .or_else(|| row.get("Title"))
+                            .or_else(|| row.get("Name"))
+                    })
+                    .map(|text| {
+                        let trimmed = text.trim();
+                        if trimmed.len() > 80 {
+                            format!("{key}: {}...", &trimmed[..77])
+                        } else {
+                            format!("{key}: {trimmed}")
+                        }
+                    });
+                candidate_title
+                    .or_else(|| chunk.heading.as_ref().map(|h| format!("{h}: {key}")))
+                    .or(chunk.heading.clone())
+            } else {
+                chunk.heading.clone()
+            }
+        } else {
+            chunk.heading.clone()
+        };
+
+        let draft = NewDraftNode {
+            chunk: chunk.clone(),
+            node_key,
+            title,
+            content: chunk.content.clone().unwrap_or_default(),
+            node_type,
+            governance_policy,
+            doc_path,
+            doc_hash: doc_hash.map(|s| s.to_string()),
+            byte_start: chunk.byte_start as i32,
+            byte_end: chunk.byte_end as i32,
+            ast_anchor: chunk.ast_anchor.clone(),
+            replaces_node_id: None,
+            attributes: serde_json::Value::Object(attrs),
+        };
+        new_draft_nodes.push(draft);
     }
 
     // Remaining unmatched active nodes: deleted sections missing from revised document
@@ -605,6 +709,7 @@ mod tests {
             canonical_keys: canonical_keys.into_iter().map(|s| s.to_string()).collect(),
             is_candidate: true,
             content: Some(content.to_string()),
+            table_data: None,
         }
     }
 
@@ -803,5 +908,144 @@ mod tests {
 
         assert_eq!(plan.superseded_node_ids, vec![node_deleted.id]);
         assert_eq!(plan.deleted_node_ids(), vec![node_deleted.id]);
+    }
+
+    #[test]
+    fn test_table_metadata_enrichment_and_heading_priority() {
+        use crate::ingest::parser::TableData;
+        use std::collections::HashMap;
+
+        // Table row metadata for DEC-1.1 and C-1
+        let mut row_dec = HashMap::new();
+        row_dec.insert("Decision ID".to_string(), "DEC-1.1".to_string());
+        row_dec.insert("Category".to_string(), "Technical Trade-off".to_string());
+        row_dec.insert("Status".to_string(), "Implemented".to_string());
+
+        let mut row_c = HashMap::new();
+        row_c.insert("ID".to_string(), "C-1".to_string());
+        row_c.insert("Constraint".to_string(), "Pure Rust package".to_string());
+        row_c.insert("Source".to_string(), "GEMINI.md".to_string());
+
+        let table_td = TableData {
+            headers: vec![
+                "Decision ID".to_string(),
+                "Category".to_string(),
+                "Status".to_string(),
+            ],
+            rows: vec![row_dec.clone()],
+        };
+
+        let row_c_td = TableData {
+            headers: vec![
+                "ID".to_string(),
+                "Constraint".to_string(),
+                "Source".to_string(),
+            ],
+            rows: vec![row_c.clone()],
+        };
+
+        // Table chunk (container)
+        let mut table_chunk = make_test_chunk(
+            "specs/dec.md#ledger#block-0",
+            vec![],
+            Some("Decision Ledger"),
+            "| DEC-1.1 | Technical Trade-off | Implemented |",
+            0,
+            100,
+        );
+        table_chunk.table_data = Some(table_td);
+
+        // Table row chunk for DEC-1.1
+        let mut table_row_dec_chunk = make_test_chunk(
+            "specs/dec.md#ledger#table-row-dec-1-1",
+            vec!["DEC-1.1"],
+            Some("Decision Ledger"),
+            "| DEC-1.1 | Technical Trade-off | Implemented |",
+            10,
+            50,
+        );
+        table_row_dec_chunk.table_data = Some(TableData {
+            headers: vec![
+                "Decision ID".to_string(),
+                "Category".to_string(),
+                "Status".to_string(),
+            ],
+            rows: vec![row_dec],
+        });
+
+        // Table row chunk for C-1 (only defined in table, no heading)
+        let mut table_row_c_chunk = make_test_chunk(
+            "specs/dec.md#constraints#table-row-c-1",
+            vec!["C-1"],
+            Some("Derived Constraints"),
+            "| C-1 | Pure Rust package | GEMINI.md |",
+            60,
+            90,
+        );
+        table_row_c_chunk.table_data = Some(row_c_td);
+
+        // Heading chunk for DEC-1.1
+        let heading_dec_chunk = make_test_chunk(
+            "specs/dec.md#dec-1-1",
+            vec!["DEC-1.1"],
+            Some("DEC-1.1: Direct Writes"),
+            "### DEC-1.1: Direct Writes",
+            150,
+            200,
+        );
+
+        let plan = reconcile_reingestion(
+            &[
+                table_chunk,
+                table_row_dec_chunk,
+                table_row_c_chunk,
+                heading_dec_chunk,
+            ],
+            &[],
+        );
+
+        assert_eq!(plan.new_draft_nodes.len(), 4);
+
+        // 1. Heading chunk should have claimed node_key = Some("DEC-1.1")
+        let dec_draft = plan
+            .new_draft_nodes
+            .iter()
+            .find(|d| d.node_key == Some("DEC-1.1".to_string()))
+            .expect("DEC-1.1 draft exists");
+        assert_eq!(dec_draft.node_type, "DECISION");
+        assert_eq!(dec_draft.governance_policy, "HUMAN_REVIEW_REQUIRED");
+        assert_eq!(
+            dec_draft
+                .attributes
+                .get("category")
+                .and_then(|v| v.as_str()),
+            Some("Technical Trade-off")
+        );
+        assert_eq!(
+            dec_draft.attributes.get("status").and_then(|v| v.as_str()),
+            Some("Implemented")
+        );
+
+        // 2. Table row chunk for DEC-1.1 should have yielded its key (node_key = None)
+        let row_dec_draft = plan
+            .new_draft_nodes
+            .iter()
+            .find(|d| d.ast_anchor.contains("#table-row-dec-1-1"))
+            .expect("row draft exists");
+        assert_eq!(row_dec_draft.node_key, None);
+
+        // 3. Table row chunk for C-1 should have claimed node_key = Some("C-1")
+        let c_draft = plan
+            .new_draft_nodes
+            .iter()
+            .find(|d| d.node_key == Some("C-1".to_string()))
+            .expect("C-1 draft exists");
+        assert_eq!(c_draft.node_type, "UNCLASSIFIED");
+        assert_eq!(c_draft.governance_policy, "HUMAN_REVIEW_REQUIRED");
+        assert_eq!(
+            c_draft.attributes.get("source").and_then(|v| v.as_str()),
+            Some("GEMINI.md")
+        );
+        assert_eq!(c_draft.title.as_deref(), Some("C-1: Pure Rust package"));
     }
 }

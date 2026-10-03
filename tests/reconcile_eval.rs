@@ -338,6 +338,7 @@ fn test_graceful_degradation_offline_fallback() {
         canonical_keys: vec!["REQ-SEC-01".to_string()],
         is_candidate: true,
         content: Some("Requests MUST include a valid bearer token.".to_string()),
+        table_data: None,
     };
 
     let chunk_unkeyed = ExtractedChunk {
@@ -350,6 +351,7 @@ fn test_graceful_degradation_offline_fallback() {
         canonical_keys: vec!["TB-5".to_string()],
         is_candidate: true,
         content: Some("General overview of identity seeding mechanism.".to_string()),
+        table_data: None,
     };
 
     let results = fallback_classify(&[chunk_rfc, chunk_unkeyed]);

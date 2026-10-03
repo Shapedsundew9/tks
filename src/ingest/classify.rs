@@ -80,7 +80,7 @@ Classify each candidate chunk below into a compact JSON array of classification 
 
 CRITICAL INSTRUCTIONS:
 1. Output ONLY a valid JSON array matching the schema:
-   [{"chunk_id": "c1", "node_type": "REQUIREMENT|SPECIFICATION|TASK", "governance_policy": "HUMAN_REVIEW_REQUIRED|AUTONOMOUS_ELABORATION"}]
+   [{"chunk_id": "c1", "node_type": "REQUIREMENT|SPECIFICATION|TASK|DECISION", "governance_policy": "HUMAN_REVIEW_REQUIRED|AUTONOMOUS_ELABORATION"}]
 2. Do NOT echo, quote, or repeat any chunk text in your output.
 3. Output NO explanation, conversational text, or surrounding markdown fences.
 
@@ -88,6 +88,7 @@ Allowed node_type values:
 - "REQUIREMENT": Normative rules, constraints, architectural invariants, or RFC 2119 statements (MUST, SHALL, REQUIRED).
 - "SPECIFICATION": Technical architecture, data structures, interface designs, schemas, component definitions.
 - "TASK": Concrete implementation action items, work packages, or execution steps.
+- "DECISION": Design choices, architectural resolutions, or tactical implementation decisions (e.g. DEC-*).
 
 Allowed governance_policy values:
 - "HUMAN_REVIEW_REQUIRED": Core requirements, architectural decisions, and safety-critical constraints.
@@ -292,6 +293,7 @@ mod tests {
             canonical_keys: vec!["INV-1".to_string()],
             is_candidate: true,
             content: Some("The substrate MUST enforce 0-based byte offsets.".to_string()),
+            table_data: None,
         };
 
         let prompt = build_classification_prompt(&[chunk]);
@@ -368,6 +370,7 @@ mod tests {
             canonical_keys: vec![],
             is_candidate: true,
             content: Some("chunk 1".to_string()),
+            table_data: None,
         };
         let chunk2 = ExtractedChunk {
             byte_start: 11,
@@ -379,6 +382,7 @@ mod tests {
             canonical_keys: vec![],
             is_candidate: true,
             content: Some("chunk 2".to_string()),
+            table_data: None,
         };
 
         let chunks = vec![chunk1, chunk2];

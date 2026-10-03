@@ -171,6 +171,7 @@ async fn test_precision_recall_h4_eval() {
             canonical_keys: gt.canonical_keys.clone(),
             is_candidate: is_cand,
             content: Some(gt.text.clone()),
+            table_data: None,
         });
     }
 

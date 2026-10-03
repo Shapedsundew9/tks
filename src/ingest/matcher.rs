@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn test_extract_canonical_keys() {
-        let text = "Governed by REQ-AUTH-01, INV-4, DR-11, C-1, TB-2, and TASK-123. See also [INV-2](link).";
+        let text = "Governed by REQ-AUTH-01, INV-4, DR-11, C-1, TB-2, DEC-1.1, and TASK-123. See also [INV-2](link).";
         let keys = extract_canonical_keys(text);
         assert_eq!(
             keys,
@@ -86,6 +86,7 @@ mod tests {
                 "DR-11",
                 "C-1",
                 "TB-2",
+                "DEC-1.1",
                 "TASK-123",
                 "INV-2"
             ]

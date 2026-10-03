@@ -1,6 +1,6 @@
 //! CommonMark AST streaming parser and exact span extraction.
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -8,6 +8,15 @@ use std::fmt;
 use crate::ingest::IngestError;
 use crate::ingest::matcher::scan_for_candidates;
 use crate::ingest::span::{SpanError, slice_source_span};
+
+/// Structured tabular data extracted from a CommonMark table block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TableData {
+    /// Header column names in order of appearance.
+    pub headers: Vec<String>,
+    /// Table rows as maps from column header to cell text value.
+    pub rows: Vec<HashMap<String, String>>,
+}
 
 /// Extracted structural Markdown chunk with 0-based byte offsets and provenance attributes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +39,9 @@ pub struct ExtractedChunk {
     pub is_candidate: bool,
     /// Exact sliced text content from the source span.
     pub content: Option<String>,
+    /// Structured table data if this chunk represents a table or table row.
+    #[serde(default)]
+    pub table_data: Option<TableData>,
 }
 
 impl ExtractedChunk {
@@ -155,6 +167,18 @@ pub fn parse_markdown_blocks(
     let mut current_heading_level = HeadingLevel::H1;
     let mut heading_text_buf = String::new();
 
+    // Table tracking state
+    let mut in_table = false;
+    let mut in_table_head = false;
+    let mut in_table_row = false;
+    let mut in_table_cell = false;
+    let mut current_cell_buf = String::new();
+    let mut table_headers: Vec<String> = Vec::new();
+    let mut current_row_cells: Vec<String> = Vec::new();
+    let mut current_row_start = 0usize;
+    let mut table_rows: Vec<HashMap<String, String>> = Vec::new();
+    let mut table_row_chunks: Vec<ExtractedChunk> = Vec::new();
+
     for (event, range) in parser.into_offset_iter() {
         match event {
             Event::Start(tag) => {
@@ -170,8 +194,33 @@ pub fn parse_markdown_blocks(
                     } else {
                         is_heading = false;
                     }
-                } else if is_heading {
-                    // Nested tags inside heading (e.g. emphasis, code, links)
+
+                    if let Tag::Table(_) = tag {
+                        in_table = true;
+                        in_table_head = false;
+                        in_table_row = false;
+                        in_table_cell = false;
+                        current_cell_buf.clear();
+                        table_headers.clear();
+                        table_rows.clear();
+                        table_row_chunks.clear();
+                    } else {
+                        in_table = false;
+                    }
+                } else if in_table {
+                    match tag {
+                        Tag::TableHead => in_table_head = true,
+                        Tag::TableRow => {
+                            in_table_row = true;
+                            current_row_cells.clear();
+                            current_row_start = range.start;
+                        }
+                        Tag::TableCell => {
+                            in_table_cell = true;
+                            current_cell_buf.clear();
+                        }
+                        _ => {}
+                    }
                 }
                 block_depth += 1;
             }
@@ -179,8 +228,115 @@ pub fn parse_markdown_blocks(
                 if is_heading {
                     heading_text_buf.push_str(&text);
                 }
+                if in_table_cell {
+                    current_cell_buf.push_str(&text);
+                }
             }
-            Event::End(_tag_end) => {
+            Event::End(ref tag_end) => {
+                if in_table {
+                    match tag_end {
+                        TagEnd::TableCell => {
+                            in_table_cell = false;
+                            let cell_text = current_cell_buf.trim().to_string();
+                            if in_table_head {
+                                table_headers.push(cell_text);
+                            } else if in_table_row {
+                                current_row_cells.push(cell_text);
+                            }
+                        }
+                        TagEnd::TableHead => {
+                            in_table_head = false;
+                        }
+                        TagEnd::TableRow => {
+                            in_table_row = false;
+                            let current_row_end = range.end;
+                            let mut row_map = HashMap::new();
+                            for (idx, header) in table_headers.iter().enumerate() {
+                                let val = current_row_cells.get(idx).cloned().unwrap_or_default();
+                                row_map.insert(header.clone(), val);
+                            }
+                            table_rows.push(row_map.clone());
+
+                            if current_row_start < current_row_end
+                                && current_row_end <= source_bytes.len()
+                                && let Ok(row_text) = slice_source_span(
+                                    source_bytes,
+                                    current_row_start,
+                                    current_row_end,
+                                )
+                            {
+                                // Identify if this row is a specification/decision entity by checking if
+                                // the primary identifier column (column named 'ID', 'Key', or the first column)
+                                // contains an explicit canonical key (e.g. DR-1, C-1, INV-1, DEC-1.1).
+                                let row_id_val = table_headers
+                                    .iter()
+                                    .enumerate()
+                                    .find(|(_, h)| {
+                                        let h_lower = h.to_lowercase();
+                                        h_lower == "id"
+                                            || h_lower.ends_with(" id")
+                                            || h_lower == "key"
+                                            || h_lower.ends_with(" key")
+                                    })
+                                    .and_then(|(idx, _)| current_row_cells.get(idx))
+                                    .or_else(|| current_row_cells.first());
+
+                                let entity_keys = row_id_val
+                                    .map(|val| crate::ingest::matcher::extract_canonical_keys(val))
+                                    .unwrap_or_default();
+
+                                if !entity_keys.is_empty() {
+                                    let (row_rfc, _all_keys, _row_cand) =
+                                        scan_for_candidates(row_text);
+                                    let (parent_id, parent_scope, enclosing_h) =
+                                        match heading_stack.last() {
+                                            Some(parent) => (
+                                                Some(parent.ast_anchor.clone()),
+                                                parent.ast_anchor.clone(),
+                                                Some(parent.title.clone()),
+                                            ),
+                                            None => (None, doc_path.to_string(), None),
+                                        };
+                                    let primary_k = entity_keys
+                                        .first()
+                                        .cloned()
+                                        .unwrap_or_else(|| format!("row-{}", table_rows.len()));
+                                    let clean_k = slugify(&primary_k);
+                                    let base_row_slug = format!("table-row-{clean_k}");
+                                    let count_entry = slug_scope_counts
+                                        .entry((parent_scope.clone(), base_row_slug.clone()))
+                                        .or_insert(0);
+                                    let occurrence = *count_entry;
+                                    *count_entry += 1;
+
+                                    let row_anchor = if occurrence == 0 {
+                                        format!("{parent_scope}#{base_row_slug}")
+                                    } else {
+                                        format!("{parent_scope}#{base_row_slug}-{occurrence}")
+                                    };
+
+                                    table_row_chunks.push(ExtractedChunk {
+                                        byte_start: current_row_start,
+                                        byte_end: current_row_end,
+                                        heading: enclosing_h,
+                                        ast_anchor: row_anchor,
+                                        parent_heading_chunk_id: parent_id,
+                                        rfc2119_keywords: row_rfc,
+                                        canonical_keys: entity_keys,
+                                        is_candidate: true,
+                                        content: Some(row_text.to_string()),
+                                        table_data: Some(TableData {
+                                            headers: table_headers.clone(),
+                                            rows: vec![row_map],
+                                        }),
+                                    });
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
                 block_depth = block_depth.saturating_sub(1);
 
                 if block_depth == 0 && in_block {
@@ -193,8 +349,26 @@ pub fn parse_markdown_blocks(
 
                     // Validate UTF-8 slice
                     let chunk_text = slice_source_span(source_bytes, block_start, block_end)?;
-                    let (rfc2119_keywords, canonical_keys, is_candidate) =
+                    let (rfc2119_keywords, mut canonical_keys, mut is_candidate) =
                         scan_for_candidates(chunk_text);
+
+                    let table_data = if in_table {
+                        in_table = false;
+                        Some(TableData {
+                            headers: std::mem::take(&mut table_headers),
+                            rows: std::mem::take(&mut table_rows),
+                        })
+                    } else {
+                        None
+                    };
+
+                    let extracted_rows = if !table_row_chunks.is_empty() {
+                        canonical_keys.clear();
+                        is_candidate = false;
+                        std::mem::take(&mut table_row_chunks)
+                    } else {
+                        Vec::new()
+                    };
 
                     if is_heading {
                         let level_u8 = heading_level_to_u8(current_heading_level);
@@ -248,6 +422,7 @@ pub fn parse_markdown_blocks(
                             canonical_keys,
                             is_candidate,
                             content: Some(chunk_text.to_string()),
+                            table_data: None,
                         };
 
                         chunks.push(chunk);
@@ -288,9 +463,14 @@ pub fn parse_markdown_blocks(
                             canonical_keys,
                             is_candidate,
                             content: Some(chunk_text.to_string()),
+                            table_data,
                         };
 
                         chunks.push(chunk);
+
+                        for row_chunk in extracted_rows {
+                            chunks.push(row_chunk);
+                        }
                     }
                 }
             }
@@ -490,6 +670,69 @@ Paragraph in A.1.
         assert_eq!(
             res.edges[4].to_anchor,
             "specs/doc.md#root-title/section-a/subsection-a-1"
+        );
+    }
+
+    #[test]
+    fn test_parse_markdown_table_with_keys() {
+        let md = r#"# Architecture Decisions
+
+## Decision Ledger
+
+| Decision ID | Work Package | Title | Category | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| DEC-1.1 | WP-1.1 | In-Memory Index ODB Direct Writes | Technical Trade-off | Implemented |
+| DEC-1.2 | WP-1.2 | Idempotent Root Empty Commit | Specification Gap | Implemented |
+"#;
+        let res = parse_markdown("specs/decisions.md", md).expect("valid parse");
+        // Chunks:
+        // 0: H1 Architecture Decisions
+        // 1: H2 Decision Ledger
+        // 2: Container Table block
+        // 3: Table row DEC-1.1
+        // 4: Table row DEC-1.2
+        assert_eq!(res.chunks.len(), 5);
+
+        // Check container table chunk
+        let table_chunk = &res.chunks[2];
+        assert!(table_chunk.table_data.is_some());
+        let td = table_chunk.table_data.as_ref().unwrap();
+        assert_eq!(
+            td.headers,
+            vec!["Decision ID", "Work Package", "Title", "Category", "Status"]
+        );
+        assert_eq!(td.rows.len(), 2);
+        // Container table chunk clears canonical keys so it doesn't steal keys from rows
+        assert!(table_chunk.canonical_keys.is_empty());
+
+        // Check row chunk 1
+        let row1 = &res.chunks[3];
+        assert_eq!(row1.canonical_keys, vec!["DEC-1.1"]);
+        assert!(row1.ast_anchor.contains("#table-row-dec-1-1"));
+        assert!(row1.table_data.is_some());
+        let row1_td = row1.table_data.as_ref().unwrap();
+        assert_eq!(
+            row1_td.rows[0].get("Decision ID").map(String::as_str),
+            Some("DEC-1.1")
+        );
+        assert_eq!(
+            row1_td.rows[0].get("Category").map(String::as_str),
+            Some("Technical Trade-off")
+        );
+
+        // Check row chunk 2
+        let row2 = &res.chunks[4];
+        assert_eq!(row2.canonical_keys, vec!["DEC-1.2"]);
+        assert!(row2.ast_anchor.contains("#table-row-dec-1-2"));
+        assert!(row2.table_data.is_some());
+        let row2_td = row2.table_data.as_ref().unwrap();
+        assert_eq!(
+            row2_td.rows[0].get("Decision ID").map(String::as_str),
+            Some("DEC-1.2")
+        );
+        assert_eq!(
+            row2_td.rows[0].get("Category").map(String::as_str),
+            Some("Specification Gap")
         );
     }
 }
