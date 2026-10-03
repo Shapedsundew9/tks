@@ -1,12 +1,20 @@
-//! Read-only MCP tool handlers (WP-1.5, TB-1, TB-6, TB-7).
+//! Model Context Protocol (MCP) tool handlers (WP-1.5, WP-2.4, TB-1, TB-6, TB-7).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::gateway::AppState;
 use crate::gateway::auth::AuthenticatedAgent;
 use crate::storage::envelope::assemble_context_envelope;
+use crate::storage::governance::TaskStatus;
+use crate::storage::mutation::{
+    ElaboratedTaskResult, MutationError, TaskUpdateResult, elaborate_task, propose_normative_draft,
+    update_task_status,
+};
 use crate::storage::repo::lookup_node_polymorphic;
+use crate::storage::reverify::{ReverifyResult, reverify_node};
+use crate::storage::rollback::{RevertExecutionResult, RevertFilter, revert_mutations};
 use crate::storage::search::query_active_requirements;
 use crate::storage::{SearchResultNode, TopologicalEnvelope};
 
@@ -18,7 +26,7 @@ pub struct McpToolDefinition {
     pub input_schema: Value,
 }
 
-/// Returns definitions for all read-only MCP tools supported in Phase 1.
+/// Returns definitions for all MCP tools supported in Phase 1 and Phase 2 (8 tools total).
 #[must_use]
 pub fn list_tools() -> Vec<McpToolDefinition> {
     vec![
@@ -78,6 +86,173 @@ pub fn list_tools() -> Vec<McpToolDefinition> {
                     }
                 },
                 "required": ["node_id"]
+            }),
+        },
+        McpToolDefinition {
+            name: "propose_node_mutation".to_string(),
+            description: "Submits a candidate mutation (subtask elaboration, normative requirement proposal, or status transition) under governance policy enforcement, polymorphic identifier resolution, and cycle prevention.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "target_node_id": {
+                        "type": "string",
+                        "description": "Polymorphic target node identifier (UUID or canonical key such as 'REQ-CORE-001')."
+                    },
+                    "node_id": {
+                        "type": "string",
+                        "description": "Alias for target_node_id."
+                    },
+                    "mutation_type": {
+                        "type": "string",
+                        "description": "Mutation type: 'TASK', 'SUBTASK', 'MODIFY_REQUIREMENT', 'NORM_SPEC', 'STATUS', etc."
+                    },
+                    "proposed_title": {
+                        "type": "string",
+                        "description": "Optional title for elaborated subtask or candidate draft."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Alias for proposed_title."
+                    },
+                    "proposed_content": {
+                        "type": "string",
+                        "description": "Optional content or description for elaborated subtask or candidate draft."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Alias for proposed_content."
+                    },
+                    "proposed_attributes": {
+                        "type": "object",
+                        "description": "Optional progressive JSONB attributes."
+                    },
+                    "attributes": {
+                        "type": "object",
+                        "description": "Alias for proposed_attributes."
+                    },
+                    "edge_type": {
+                        "type": "string",
+                        "description": "Optional upward structural edge type ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM')."
+                    }
+                },
+                "required": ["target_node_id", "mutation_type"]
+            }),
+        },
+        McpToolDefinition {
+            name: "create_subtask".to_string(),
+            description: "Autonomously elaborates a non-normative execution task (TASK) directly in ACTIVE state under an AUTONOMOUS_ELABORATION parent node, inheriting governance policy and establishing upward structural edges (INV-1, INV-5).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "parent_node_id": {
+                        "type": "string",
+                        "description": "Polymorphic parent node identifier (UUID or canonical key)."
+                    },
+                    "parent_id": {
+                        "type": "string",
+                        "description": "Alias for parent_node_id."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the execution subtask."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Optional specification or description of the subtask."
+                    },
+                    "attributes": {
+                        "type": "object",
+                        "description": "Optional progressive JSONB attributes (e.g. node_key, edge_type)."
+                    }
+                },
+                "required": ["parent_node_id", "title"]
+            }),
+        },
+        McpToolDefinition {
+            name: "update_node_status".to_string(),
+            description: "Updates the execution status ('OPEN', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED') of an active task in-place under native row-level lock, appending a discrete reversible audit ledger event (INV-2, D-30).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "node_id": {
+                        "type": "string",
+                        "description": "Polymorphic node identifier of the task (UUID or canonical key)."
+                    },
+                    "task_id": {
+                        "type": "string",
+                        "description": "Alias for node_id."
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Target execution status ('OPEN', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED')."
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional operational transition notes."
+                    }
+                },
+                "required": ["node_id", "status"]
+            }),
+        },
+        McpToolDefinition {
+            name: "revert_mutations".to_string(),
+            description: "Administrative rollback utility supporting dry-run previews under READ COMMITTED, cross-agent confirmation safety aborts, and compensating inverse REVERT events under global advisory lock, cascading active child tasks to NEEDS_REVERIFICATION (INV-1, INV-2, D-73, D-80).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "batch_id": {
+                        "type": "string",
+                        "description": "Optional batch UUID correlating mutations to revert."
+                    },
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Optional authoring agent identifier whose mutations should be reverted."
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "Optional ISO 8601 timestamp threshold reverting mutations committed since this time."
+                    },
+                    "event_seq_range": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Optional sequence range [min_event_seq, max_event_seq] to revert."
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true, simulates rollback under READ COMMITTED and returns preview without modifying state."
+                    },
+                    "force": {
+                        "type": "boolean",
+                        "description": "If true, overrides cross-agent safety confirmation abort."
+                    }
+                },
+                "required": []
+            }),
+        },
+        McpToolDefinition {
+            name: "reverify_node".to_string(),
+            description: "Explicit reverification interface validating that all direct upstream dependencies are in ACTIVE state (INV-1), restoring degraded nodes from NEEDS_REVERIFICATION back to ACTIVE, resetting staleness_score to 0.0, and appending a REVERIFIED audit event (D-76).".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "node_id": {
+                        "type": "string",
+                        "description": "Polymorphic node identifier of the degraded node (UUID or canonical key)."
+                    },
+                    "target_node_id": {
+                        "type": "string",
+                        "description": "Alias for node_id."
+                    },
+                    "rationale": {
+                        "type": "string",
+                        "description": "Operational rationale explaining why the node has been reverified."
+                    },
+                    "updated_attributes": {
+                        "type": "object",
+                        "description": "Optional updated attributes (e.g. reparent_to / parent_id for re-anchoring)."
+                    }
+                },
+                "required": ["node_id", "rationale"]
             }),
         },
     ]
@@ -217,4 +392,282 @@ pub async fn handle_get_document_span(state: &AppState, args: Value) -> Result<S
         .map_err(|e| format!("Failed to read git blob span: {e}"))?;
 
     Ok(span_text)
+}
+
+/// Executes the `propose_node_mutation` MCP tool.
+pub async fn handle_propose_node_mutation(
+    state: &AppState,
+    args: Value,
+    caller: &AuthenticatedAgent,
+) -> Result<Value, MutationError> {
+    let target_node_id = args
+        .get("target_node_id")
+        .or_else(|| args.get("node_id"))
+        .or_else(|| args.get("target_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            MutationError::Other("Missing required argument 'target_node_id'".to_string())
+        })?;
+
+    let mutation_type = args
+        .get("mutation_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("TASK");
+
+    let proposed_title = args
+        .get("proposed_title")
+        .or_else(|| args.get("title"))
+        .and_then(|v| v.as_str());
+
+    let proposed_content = args
+        .get("proposed_content")
+        .or_else(|| args.get("content"))
+        .and_then(|v| v.as_str());
+
+    let proposed_attributes = args
+        .get("proposed_attributes")
+        .or_else(|| args.get("attributes"))
+        .cloned();
+
+    let edge_type = args.get("edge_type").and_then(|v| v.as_str());
+
+    let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
+
+    let mut_type_upper = mutation_type.to_uppercase();
+
+    if mut_type_upper.contains("TASK")
+        || mut_type_upper.contains("SUBTASK")
+        || mut_type_upper.contains("ELABORAT")
+    {
+        let title = proposed_title
+            .map(|s| s.to_string())
+            .or_else(|| {
+                proposed_attributes
+                    .as_ref()
+                    .and_then(|a| a.get("title"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "Subtask".to_string());
+
+        let mut attrs = proposed_attributes.unwrap_or_else(|| serde_json::json!({}));
+        if !attrs.is_object() {
+            attrs = serde_json::json!({});
+        }
+        if let Some(et) = edge_type {
+            attrs["edge_type"] = serde_json::json!(et);
+        }
+
+        let res = elaborate_task(
+            &mut client,
+            target_node_id,
+            &title,
+            proposed_content,
+            Some(attrs),
+            caller,
+        )
+        .await?;
+
+        Ok(serde_json::json!({
+            "status": "COMMITTED",
+            "node_id": res.task_id,
+            "task_id": res.task_id,
+            "batch_id": res.batch_id,
+            "event_seq": res.event_seq,
+            "lifecycle_state": res.lifecycle_state,
+            "governance_policy": res.governance_policy,
+            "node_key": res.node_key,
+            "node": res.node
+        }))
+    } else if mut_type_upper.contains("STATUS") {
+        let status_str = proposed_attributes
+            .as_ref()
+            .and_then(|a| a.get("execution_status").or_else(|| a.get("status")))
+            .and_then(|v| v.as_str())
+            .or(proposed_content)
+            .unwrap_or("IN_PROGRESS");
+
+        let task_status = status_str
+            .parse::<TaskStatus>()
+            .map_err(MutationError::GovernanceRejected)?;
+
+        let notes = proposed_attributes
+            .as_ref()
+            .and_then(|a| a.get("notes"))
+            .and_then(|v| v.as_str())
+            .or(proposed_content);
+
+        let res =
+            update_task_status(&mut client, target_node_id, task_status, notes, caller).await?;
+
+        Ok(serde_json::json!({
+            "status": "COMMITTED",
+            "node_id": res.task_id,
+            "task_id": res.task_id,
+            "batch_id": res.batch_id,
+            "event_seq": res.event_seq,
+            "execution_status": res.execution_status,
+            "node": res.node
+        }))
+    } else {
+        // Normative candidate draft proposal (Pathway 3)
+        let content = proposed_content.unwrap_or_default();
+        let res = propose_normative_draft(
+            &mut client,
+            target_node_id,
+            proposed_title,
+            content,
+            proposed_attributes,
+            caller,
+        )
+        .await?;
+
+        let batch_id = res.batch_id.unwrap_or(res.draft_id);
+
+        Ok(serde_json::json!({
+            "status": "PENDING_REVIEW",
+            "node_id": res.draft_id,
+            "draft_id": res.draft_id,
+            "target_id": res.target_id,
+            "batch_id": batch_id,
+            "lifecycle_state": res.lifecycle_state,
+            "governance_policy": res.governance_policy,
+            "node": res.node
+        }))
+    }
+}
+
+/// Executes the `create_subtask` MCP tool.
+pub async fn handle_create_subtask(
+    state: &AppState,
+    args: Value,
+    caller: &AuthenticatedAgent,
+) -> Result<ElaboratedTaskResult, MutationError> {
+    let parent_node_id = args
+        .get("parent_node_id")
+        .or_else(|| args.get("parent_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            MutationError::Other("Missing required argument 'parent_node_id'".to_string())
+        })?;
+
+    let title = args
+        .get("title")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| MutationError::Other("Missing required argument 'title'".to_string()))?;
+
+    let content = args.get("content").and_then(|v| v.as_str());
+    let attributes = args.get("attributes").cloned();
+
+    let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
+    elaborate_task(
+        &mut client,
+        parent_node_id,
+        title,
+        content,
+        attributes,
+        caller,
+    )
+    .await
+}
+
+/// Executes the `update_node_status` MCP tool.
+pub async fn handle_update_node_status(
+    state: &AppState,
+    args: Value,
+    caller: &AuthenticatedAgent,
+) -> Result<TaskUpdateResult, MutationError> {
+    let node_id = args
+        .get("node_id")
+        .or_else(|| args.get("task_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| MutationError::Other("Missing required argument 'node_id'".to_string()))?;
+
+    let status_str = args
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| MutationError::Other("Missing required argument 'status'".to_string()))?;
+
+    let task_status = status_str
+        .parse::<TaskStatus>()
+        .map_err(MutationError::GovernanceRejected)?;
+
+    let notes = args.get("notes").and_then(|v| v.as_str());
+
+    let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
+    update_task_status(&mut client, node_id, task_status, notes, caller).await
+}
+
+/// Executes the `revert_mutations` MCP tool.
+pub async fn handle_revert_mutations(
+    state: &AppState,
+    args: Value,
+    caller: &AuthenticatedAgent,
+) -> Result<RevertExecutionResult, MutationError> {
+    let batch_id = args
+        .get("batch_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok());
+
+    let agent_id = args
+        .get("agent_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let since = args
+        .get("since")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc));
+
+    let event_seq_range = args
+        .get("event_seq_range")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| {
+            if arr.len() == 2 {
+                let start = arr[0].as_i64()?;
+                let end = arr[1].as_i64()?;
+                Some((start, end))
+            } else {
+                None
+            }
+        });
+
+    let dry_run = args.get("dry_run").and_then(|v| v.as_bool());
+    let force = args.get("force").and_then(|v| v.as_bool());
+
+    let filter = RevertFilter {
+        batch_id,
+        agent_id,
+        since,
+        event_seq_range,
+        dry_run,
+        force,
+    };
+
+    let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
+    revert_mutations(&mut client, filter, caller).await
+}
+
+/// Executes the `reverify_node` MCP tool.
+pub async fn handle_reverify_node(
+    state: &AppState,
+    args: Value,
+    caller: &AuthenticatedAgent,
+) -> Result<ReverifyResult, MutationError> {
+    let node_id = args
+        .get("node_id")
+        .or_else(|| args.get("target_node_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| MutationError::Other("Missing required argument 'node_id'".to_string()))?;
+
+    let rationale = args
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| MutationError::Other("Missing required argument 'rationale'".to_string()))?;
+
+    let updated_attributes = args.get("updated_attributes").cloned();
+
+    let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
+    reverify_node(&mut client, node_id, rationale, updated_attributes, caller).await
 }

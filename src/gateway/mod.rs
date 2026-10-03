@@ -10,7 +10,7 @@ use std::time::Duration;
 use axum::extract::FromRef;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use deadpool_postgres::Pool;
 use tower_http::cors::CorsLayer;
@@ -105,6 +105,25 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/identities/{id}/revoke",
             post(routes::identities::revoke_identity),
+        )
+        // Node mutation and execution task routes (WP-2.4, D-57, D-63)
+        .route("/api/v1/nodes/mutate", post(routes::mutation::mutate_node))
+        .route(
+            "/api/v1/nodes/{id}/subtasks",
+            post(routes::mutation::create_subtask_route),
+        )
+        .route(
+            "/api/v1/nodes/{id}/status",
+            patch(routes::mutation::update_status_route),
+        )
+        // Administrative rollback and node reverification routes (WP-2.4, D-73, D-76)
+        .route(
+            "/api/v1/admin/revert-mutations",
+            post(routes::mutation::revert_mutations_route),
+        )
+        .route(
+            "/api/v1/nodes/{id}/reverify",
+            post(routes::mutation::reverify_node_route),
         )
         // Model Context Protocol (MCP) endpoints over HTTP/SSE and direct JSON-RPC (D-19, TB-4)
         .route("/mcp/sse", get(mcp::handle_mcp_sse))
