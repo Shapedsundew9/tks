@@ -4,6 +4,7 @@
 
 pub mod envelope;
 pub mod git;
+pub mod governance;
 pub mod mutation;
 pub mod repo;
 pub mod search;
@@ -15,11 +16,17 @@ pub use envelope::{
     TopologicalEnvelope, assemble_context_envelope, assemble_topological_envelope,
     query_vector_neighbors, validate_ancestor_path,
 };
+pub use governance::{
+    GovernanceAction, GovernancePolicy, MutationPathway, TaskStatus, evaluate_governance_action,
+};
 pub use mutation::{
-    EdgeMutationPayload, MutationError, MutationResult, NodeMutationPayload, StructuralMutationTx,
+    DraftMutationResult, DraftProposalResult, EdgeMutationPayload, ElaboratedTaskResult,
+    MutationError, MutationResult, NodeMutationPayload, StructuralMutationTx, TaskUpdateResult,
     assert_ancestor_path, assert_no_dag_cycle, begin_structural_mutation, check_dag_cycle,
-    insert_audit_event, insert_audit_event_full, insert_structural_edge, resolve_node_polymorphic,
-    update_leaf_attributes_locked,
+    elaborate_task, elaborate_task_client, insert_audit_event, insert_audit_event_full,
+    insert_structural_edge, mutate_draft_entity, mutate_draft_entity_client,
+    propose_normative_draft, propose_normative_draft_client, resolve_node_polymorphic,
+    update_leaf_attributes_locked, update_task_status, update_task_status_client,
 };
 pub use repo::{StorageRepo, acquire_structural_lock, lookup_node_polymorphic};
 pub use search::query_active_requirements;

@@ -6,6 +6,11 @@ use tokio_postgres::Client;
 use uuid::Uuid;
 
 use crate::db;
+use crate::gateway::auth::AuthenticatedAgent;
+use crate::storage::governance::TaskStatus;
+use crate::storage::mutation::{
+    DraftMutationResult, DraftProposalResult, ElaboratedTaskResult, MutationError, TaskUpdateResult,
+};
 use crate::storage::{GraphNode, SearchResultNode, StorageError, TopologicalEnvelope};
 
 /// Core storage repository wrapping a PostgreSQL connection pool (`deadpool-postgres`).
@@ -233,6 +238,88 @@ impl StorageRepo {
             include_drafts_for,
         )
         .await
+    }
+
+    /// Pathway 1: Autonomously elaborates an execution task under an `AUTONOMOUS_ELABORATION` parent node.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError` if parent is not found, locked, lacks active requirement ancestors, or SQL fails.
+    pub async fn elaborate_task(
+        &self,
+        parent_id: &str,
+        title: &str,
+        content: Option<&str>,
+        attributes: Option<serde_json::Value>,
+        actor: &AuthenticatedAgent,
+    ) -> Result<ElaboratedTaskResult, MutationError> {
+        let mut client = self.get_client().await?;
+        crate::storage::mutation::elaborate_task(
+            &mut client,
+            parent_id,
+            title,
+            content,
+            attributes,
+            actor,
+        )
+        .await
+    }
+
+    /// Pathway 2: Updates status of an active execution task under native row-level lock.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError` if task is not found, locked, not active, or SQL fails.
+    pub async fn update_task_status(
+        &self,
+        task_id: &str,
+        status: TaskStatus,
+        notes: Option<&str>,
+        actor: &AuthenticatedAgent,
+    ) -> Result<TaskUpdateResult, MutationError> {
+        let mut client = self.get_client().await?;
+        crate::storage::mutation::update_task_status(&mut client, task_id, status, notes, actor)
+            .await
+    }
+
+    /// Pathway 3: Proposes a candidate normative draft replacing an active requirement/specification.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError` if target is not found, locked, or SQL fails.
+    pub async fn propose_normative_draft(
+        &self,
+        target_id: &str,
+        title: Option<&str>,
+        content: &str,
+        attributes: Option<serde_json::Value>,
+        actor: &AuthenticatedAgent,
+    ) -> Result<DraftProposalResult, MutationError> {
+        let mut client = self.get_client().await?;
+        crate::storage::mutation::propose_normative_draft(
+            &mut client,
+            target_id,
+            title,
+            content,
+            attributes,
+            actor,
+        )
+        .await
+    }
+
+    /// Pathway 4: Mutates an unapproved candidate draft entity in-place, appending to draft revisions.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError` if draft is not found, not in DRAFT state, violates caller isolation, or SQL fails.
+    pub async fn mutate_draft_entity(
+        &self,
+        draft_id: &str,
+        patch: serde_json::Value,
+        actor: &AuthenticatedAgent,
+    ) -> Result<DraftMutationResult, MutationError> {
+        let mut client = self.get_client().await?;
+        crate::storage::mutation::mutate_draft_entity(&mut client, draft_id, patch, actor).await
     }
 }
 

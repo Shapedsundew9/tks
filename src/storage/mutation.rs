@@ -12,9 +12,14 @@
 //! - Monotonic `event_seq` assignment and atomic `batch_id UUID` correlation in `audit_ledger` (INV-2, D-45, D-65).
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio_postgres::Client;
 use uuid::Uuid;
 
+use crate::gateway::auth::AuthenticatedAgent;
+use crate::storage::governance::{
+    GovernanceAction, GovernancePolicy, TaskStatus, evaluate_governance_action,
+};
 use crate::storage::{GraphEdge, GraphNode, StorageError};
 
 /// SQL advisory lock query for structural graph mutations.
@@ -30,6 +35,8 @@ pub enum MutationError {
     NotFound(String),
     /// Invariant INV-1 violated: node does not have an unbroken directed path to an active requirement.
     InvalidAncestorPath(String),
+    /// Per-node governance policy rejects proposed operation because node is LOCKED.
+    GovernanceLocked(String),
     /// Per-node governance policy rejects proposed operation.
     GovernanceRejected(String),
     /// Lock acquisition failure or contention timeout.
@@ -52,6 +59,7 @@ impl MutationError {
             Self::CycleDetected { .. } => "ERR_GRAPH_CYCLE_DETECTED",
             Self::NotFound(_) => "ERR_NOT_FOUND",
             Self::InvalidAncestorPath(_) => "ERR_INVALID_ANCESTOR_PATH",
+            Self::GovernanceLocked(_) => "ERR_GOVERNANCE_LOCKED",
             Self::GovernanceRejected(_) => "ERR_GOVERNANCE_REJECTED",
             Self::LockFailure(_) => "ERR_LOCK_FAILURE",
             Self::Database(_) => "ERR_DATABASE",
@@ -73,6 +81,7 @@ impl std::fmt::Display for MutationError {
             }
             Self::NotFound(msg) => write!(f, "ERR_NOT_FOUND: {msg}"),
             Self::InvalidAncestorPath(msg) => write!(f, "ERR_INVALID_ANCESTOR_PATH: {msg}"),
+            Self::GovernanceLocked(msg) => write!(f, "ERR_GOVERNANCE_LOCKED: {msg}"),
             Self::GovernanceRejected(msg) => write!(f, "ERR_GOVERNANCE_REJECTED: {msg}"),
             Self::LockFailure(msg) => write!(f, "ERR_LOCK_FAILURE: {msg}"),
             Self::Database(e) => write!(f, "Database error: {e}"),
@@ -133,6 +142,12 @@ impl From<MutationError> for StorageError {
             MutationError::Serialization(err) => Self::Serialization(err),
             MutationError::NotFound(msg) => Self::NotFound(msg),
             MutationError::LockFailure(msg) => Self::LockAcquisitionFailed(msg),
+            MutationError::GovernanceLocked(msg) => {
+                Self::InvalidState(format!("ERR_GOVERNANCE_LOCKED: {msg}"))
+            }
+            MutationError::GovernanceRejected(msg) => {
+                Self::InvalidState(format!("ERR_GOVERNANCE_REJECTED: {msg}"))
+            }
             MutationError::CycleDetected { from_id, to_id } => Self::InvalidState(format!(
                 "ERR_GRAPH_CYCLE_DETECTED: cycle between {from_id} and {to_id}"
             )),
@@ -677,4 +692,720 @@ pub async fn assert_ancestor_path(
     } else {
         Ok(())
     }
+}
+
+/// Result returned upon successful autonomous task elaboration (Pathway 1, D-57, D-63, D-81).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElaboratedTaskResult {
+    pub task_id: Uuid,
+    pub node_key: Option<String>,
+    pub status: String,
+    pub lifecycle_state: String,
+    pub governance_policy: String,
+    pub edge_id: Uuid,
+    pub batch_id: Uuid,
+    pub event_seq: i64,
+    pub node: GraphNode,
+}
+
+/// Result returned upon successful execution task status update (Pathway 2, D-30, D-57).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskUpdateResult {
+    pub task_id: Uuid,
+    pub status: String,
+    pub execution_status: String,
+    pub batch_id: Uuid,
+    pub event_seq: i64,
+    pub node: GraphNode,
+}
+
+/// Result returned upon proposing a normative draft for active requirement/specification (Pathway 3, INV-2, D-57).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftProposalResult {
+    pub draft_id: Uuid,
+    pub target_id: Uuid,
+    pub status: String,
+    pub lifecycle_state: String,
+    pub governance_policy: String,
+    pub batch_id: Option<Uuid>,
+    pub node: GraphNode,
+}
+
+/// Result returned upon mutating an in-flight draft entity (Pathway 4, D-16, D-61).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftMutationResult {
+    pub draft_id: Uuid,
+    pub status: String,
+    pub revisions_count: usize,
+    pub node: GraphNode,
+}
+
+/// Executes Pathway 1 (Autonomous Task Elaboration): permits verified external agents to create
+/// non-normative execution tasks (`TASK`) directly in `ACTIVE` state under parent nodes with
+/// `governance_policy = 'AUTONOMOUS_ELABORATION'` (INV-5, D-57, D-63, D-81, TB-7.7).
+///
+/// Inherits the parent's `governance_policy` (`AUTONOMOUS_ELABORATION`) by default unless explicitly
+/// overridden in `attributes`. Enforces Invariant INV-1 ancestor path validation via recursive CTE.
+/// Commits a discrete audit event with monotonic `event_seq` and transaction correlation `batch_id`.
+///
+/// # Errors
+///
+/// - Returns `MutationError::NotFound` if parent node is not found.
+/// - Returns `MutationError::GovernanceLocked` if parent node is `LOCKED`.
+/// - Returns `MutationError::GovernanceRejected` if parent policy does not permit autonomous elaboration.
+/// - Returns `MutationError::InvalidAncestorPath` if parent lacks an unbroken path to an active requirement.
+/// - Returns `MutationError::CycleDetected` if adding the structural edge creates a directed cycle.
+/// - Returns `MutationError::Database` on SQL errors.
+pub async fn elaborate_task(
+    client: &mut deadpool_postgres::Client,
+    parent_id: &str,
+    title: &str,
+    content: Option<&str>,
+    attributes: Option<serde_json::Value>,
+    actor: &AuthenticatedAgent,
+) -> Result<ElaboratedTaskResult, MutationError> {
+    elaborate_task_client(client, parent_id, title, content, attributes, actor).await
+}
+
+/// Variant of `elaborate_task` operating on a standard `tokio_postgres::Client`.
+pub async fn elaborate_task_client(
+    client: &mut Client,
+    parent_id: &str,
+    title: &str,
+    content: Option<&str>,
+    attributes: Option<serde_json::Value>,
+    actor: &AuthenticatedAgent,
+) -> Result<ElaboratedTaskResult, MutationError> {
+    let tx = client.transaction().await?;
+
+    // 1. Enforce strict lock hierarchy (C-19, D-66): global transaction advisory lock
+    tx.execute(STRUCTURAL_ADVISORY_LOCK_SQL, &[]).await?;
+
+    // 2. Resolve parent node polymorphically
+    let parent = resolve_node_polymorphic(&tx, parent_id).await?;
+
+    // 3. Evaluate governance action
+    let parent_policy = parent
+        .governance_policy
+        .parse::<GovernancePolicy>()
+        .map_err(MutationError::GovernanceRejected)?;
+
+    evaluate_governance_action(
+        parent_policy,
+        GovernanceAction::ElaborateTask,
+        &parent.node_type,
+        &parent.lifecycle_state,
+    )?;
+
+    // 4. Validate Invariant INV-1 ancestor path for parent
+    if parent.lifecycle_state != "ACTIVE" {
+        return Err(MutationError::GovernanceRejected(format!(
+            "Parent node is in state '{}', expected 'ACTIVE' for task elaboration",
+            parent.lifecycle_state
+        )));
+    }
+
+    if parent.node_type != "REQUIREMENT" {
+        assert_ancestor_path(&tx, &[parent.id], false).await?;
+    }
+
+    // 5. Determine task attributes and inherited governance policy (D-81, TB-7.7)
+    let task_id = Uuid::new_v4();
+    let inherited_policy = attributes
+        .as_ref()
+        .and_then(|a| a.get("governance_policy"))
+        .and_then(|v| v.as_str())
+        .map(|s| {
+            s.parse::<GovernancePolicy>()
+                .map_err(MutationError::GovernanceRejected)
+        })
+        .transpose()?
+        .unwrap_or(GovernancePolicy::AutonomousElaboration);
+
+    let node_key = attributes
+        .as_ref()
+        .and_then(|a| a.get("node_key"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let mut task_attributes = attributes.unwrap_or_else(|| serde_json::json!({}));
+    if !task_attributes.is_object() {
+        task_attributes = serde_json::json!({});
+    }
+    if task_attributes.get("execution_status").is_none() {
+        task_attributes["execution_status"] = serde_json::json!("OPEN");
+    }
+    task_attributes["parent_node_id"] = serde_json::json!(parent.id.to_string());
+    task_attributes["created_by"] = serde_json::json!(actor.agent_id);
+
+    // 6. Insert TASK directly into graph_nodes in ACTIVE state
+    let row = tx
+        .query_one(
+            "INSERT INTO graph_nodes ( \
+                 id, node_key, node_type, title, content, lifecycle_state, \
+                 governance_policy, created_by, attributes \
+             ) VALUES ($1, $2, 'TASK', $3, $4, 'ACTIVE', $5, $6, $7) \
+             RETURNING id, node_key, node_type, title, content, lifecycle_state, \
+                       governance_policy, created_by, job_id, doc_path, doc_hash, \
+                       byte_start, byte_end, attributes;",
+            &[
+                &task_id,
+                &node_key,
+                &title,
+                &content,
+                &inherited_policy.as_str(),
+                &actor.agent_id,
+                &task_attributes,
+            ],
+        )
+        .await?;
+
+    let task_node = GraphNode::from_row(&row);
+
+    // 7. Insert upward structural edge (FULFILLS if parent is REQ/SPEC, DERIVED_FROM if parent is TASK)
+    let explicit_edge_type = task_attributes
+        .get("edge_type")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_uppercase());
+
+    let edge_type = match explicit_edge_type.as_deref() {
+        Some(et) if is_structural_edge_type(et) => et.to_string(),
+        _ => {
+            if parent.node_type == "TASK" {
+                "DERIVED_FROM".to_string()
+            } else {
+                "FULFILLS".to_string()
+            }
+        }
+    };
+
+    assert_no_dag_cycle(&tx, task_id, parent.id).await?;
+
+    let edge = insert_structural_edge(
+        &tx,
+        task_id,
+        parent.id,
+        &edge_type,
+        &actor.agent_id,
+        "ACTIVE",
+    )
+    .await?;
+
+    // 8. Commit discrete audit event with monotonic event_seq and batch_id
+    let batch_id = Uuid::new_v4();
+    let delta = serde_json::json!({
+        "parent_id": parent.id,
+        "title": title,
+        "content": content,
+        "edge_type": edge_type,
+        "governance_policy": inherited_policy.as_str(),
+    });
+    let snapshot = serde_json::to_value(&task_node)?;
+
+    let event_seq = insert_audit_event(
+        &tx,
+        batch_id,
+        "TASK_ELABORATED",
+        task_id,
+        "TASK",
+        &actor.agent_id,
+        &actor.actor_type,
+        &actor.agent_id,
+        delta,
+        snapshot,
+    )
+    .await?;
+
+    // 9. Enqueue vector embedding in node_embeddings for promoted active task
+    let combined_text = format!("{} {}", title, content.unwrap_or(""));
+    let mut hasher = Sha256::new();
+    hasher.update(combined_text.as_bytes());
+    let content_hash = format!("{:x}", hasher.finalize());
+
+    tx.execute(
+        "INSERT INTO node_embeddings (node_id, content_hash, status, scheduled_at) \
+         VALUES ($1, $2, 'PENDING', clock_timestamp()) \
+         ON CONFLICT (node_id) DO UPDATE SET \
+             content_hash = EXCLUDED.content_hash, \
+             status = 'PENDING', \
+             scheduled_at = clock_timestamp();",
+        &[&task_id, &content_hash],
+    )
+    .await?;
+
+    // 10. Commit transaction
+    tx.commit().await?;
+
+    Ok(ElaboratedTaskResult {
+        task_id,
+        node_key: task_node.node_key.clone(),
+        status: "ACTIVE".to_string(),
+        lifecycle_state: "ACTIVE".to_string(),
+        governance_policy: inherited_policy.as_str().to_string(),
+        edge_id: edge.edge_id,
+        batch_id,
+        event_seq,
+        node: task_node,
+    })
+}
+
+/// Executes Pathway 2 (Active Leaf Task Updates): row-level locked status updates on active
+/// execution tasks (`node_type = 'TASK'`) committing discrete reversible audit events directly
+/// to `audit_ledger` without touching draft revision logs (D-30, D-57).
+///
+/// # Errors
+///
+/// - Returns `MutationError::NotFound` if task is not found.
+/// - Returns `MutationError::GovernanceRejected` if node is not a task or not in `ACTIVE` state.
+/// - Returns `MutationError::GovernanceLocked` if task is `LOCKED`.
+/// - Returns `MutationError::Database` on SQL errors.
+pub async fn update_task_status(
+    client: &mut deadpool_postgres::Client,
+    task_id: &str,
+    status: TaskStatus,
+    notes: Option<&str>,
+    actor: &AuthenticatedAgent,
+) -> Result<TaskUpdateResult, MutationError> {
+    update_task_status_client(client, task_id, status, notes, actor).await
+}
+
+/// Variant of `update_task_status` operating on a standard `tokio_postgres::Client`.
+pub async fn update_task_status_client(
+    client: &mut Client,
+    task_id: &str,
+    status: TaskStatus,
+    notes: Option<&str>,
+    actor: &AuthenticatedAgent,
+) -> Result<TaskUpdateResult, MutationError> {
+    let tx = client.transaction().await?;
+
+    // 1. Acquire row lock via SELECT ... FOR UPDATE (D-30) without advisory lock
+    let row_opt = if let Ok(uuid) = Uuid::parse_str(task_id.trim()) {
+        tx.query_opt(
+            "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                    governance_policy, created_by, job_id, doc_path, doc_hash, \
+                    byte_start, byte_end, attributes \
+             FROM graph_nodes \
+             WHERE id = $1 \
+             FOR UPDATE;",
+            &[&uuid],
+        )
+        .await?
+    } else {
+        tx.query_opt(
+            "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                    governance_policy, created_by, job_id, doc_path, doc_hash, \
+                    byte_start, byte_end, attributes \
+             FROM graph_nodes \
+             WHERE node_key = $1 AND lifecycle_state = 'ACTIVE' \
+             FOR UPDATE;",
+            &[&task_id.trim()],
+        )
+        .await?
+    };
+
+    let row = match row_opt {
+        Some(r) => r,
+        None => {
+            return Err(MutationError::NotFound(format!(
+                "Task not found: {task_id}"
+            )));
+        }
+    };
+
+    let existing = GraphNode::from_row(&row);
+
+    // 2. Validate node_type == 'TASK'
+    if existing.node_type != "TASK" {
+        return Err(MutationError::GovernanceRejected(format!(
+            "Cannot update task status on node {} with type '{}'",
+            existing.id, existing.node_type
+        )));
+    }
+
+    // 3. Evaluate governance policy
+    let policy = existing
+        .governance_policy
+        .parse::<GovernancePolicy>()
+        .map_err(MutationError::GovernanceRejected)?;
+
+    evaluate_governance_action(
+        policy,
+        GovernanceAction::UpdateTaskStatus,
+        &existing.node_type,
+        &existing.lifecycle_state,
+    )?;
+
+    // 4. Update status in attributes->'execution_status'
+    let mut updated_attributes = existing.attributes.clone();
+    if !updated_attributes.is_object() {
+        updated_attributes = serde_json::json!({});
+    }
+
+    let previous_status = updated_attributes
+        .get("execution_status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("OPEN")
+        .to_string();
+
+    updated_attributes["execution_status"] = serde_json::json!(status.as_str());
+    if let Some(n) = notes {
+        updated_attributes["status_notes"] = serde_json::json!(n);
+    }
+    updated_attributes["status_updated_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
+    updated_attributes["status_updated_by"] = serde_json::json!(actor.agent_id);
+
+    // 5. Update row in place
+    let updated_row = tx
+        .query_one(
+            "UPDATE graph_nodes \
+             SET attributes = $2 \
+             WHERE id = $1 \
+             RETURNING id, node_key, node_type, title, content, lifecycle_state, \
+                       governance_policy, created_by, job_id, doc_path, doc_hash, \
+                       byte_start, byte_end, attributes;",
+            &[&existing.id, &updated_attributes],
+        )
+        .await?;
+
+    let updated_node = GraphNode::from_row(&updated_row);
+
+    // 6. Record state transition event in audit_ledger with monotonic event_seq
+    let batch_id = Uuid::new_v4();
+    let delta = serde_json::json!({
+        "previous_status": previous_status,
+        "execution_status": status.as_str(),
+        "notes": notes,
+    });
+    let snapshot = serde_json::to_value(&updated_node)?;
+
+    let event_seq = insert_audit_event(
+        &tx,
+        batch_id,
+        "TASK_STATUS_UPDATE",
+        existing.id,
+        "TASK",
+        &actor.agent_id,
+        &actor.actor_type,
+        &actor.agent_id,
+        delta,
+        snapshot,
+    )
+    .await?;
+
+    // 7. Commit transaction
+    tx.commit().await?;
+
+    Ok(TaskUpdateResult {
+        task_id: existing.id,
+        status: "UPDATED".to_string(),
+        execution_status: status.as_str().to_string(),
+        batch_id,
+        event_seq,
+        node: updated_node,
+    })
+}
+
+/// Executes Pathway 3 (Normative Requirement Proposals): strictly prohibits in-place updates to
+/// active normative specifications (`REQUIREMENT`, `SPECIFICATION`), intercepting mutations and
+/// creating candidate entities in `lifecycle_state = 'DRAFT'` with `PENDING_REVIEW` policy (INV-2, INV-3, D-57).
+///
+/// Mirrors active upward edges from target to candidate draft and establishes an upward `DERIVED_FROM`
+/// draft edge to target, preserving requirement lineage.
+///
+/// # Errors
+///
+/// - Returns `MutationError::NotFound` if target node is not found.
+/// - Returns `MutationError::GovernanceLocked` if target node is `LOCKED`.
+/// - Returns `MutationError::Database` on SQL errors.
+pub async fn propose_normative_draft(
+    client: &mut deadpool_postgres::Client,
+    target_id: &str,
+    title: Option<&str>,
+    content: &str,
+    attributes: Option<serde_json::Value>,
+    actor: &AuthenticatedAgent,
+) -> Result<DraftProposalResult, MutationError> {
+    propose_normative_draft_client(client, target_id, title, content, attributes, actor).await
+}
+
+/// Variant of `propose_normative_draft` operating on a standard `tokio_postgres::Client`.
+pub async fn propose_normative_draft_client(
+    client: &mut Client,
+    target_id: &str,
+    title: Option<&str>,
+    content: &str,
+    attributes: Option<serde_json::Value>,
+    actor: &AuthenticatedAgent,
+) -> Result<DraftProposalResult, MutationError> {
+    let tx = client.transaction().await?;
+
+    // 1. Structural advisory lock (C-19, D-66)
+    tx.execute(STRUCTURAL_ADVISORY_LOCK_SQL, &[]).await?;
+
+    // 2. Resolve target node polymorphically
+    let target = resolve_node_polymorphic(&tx, target_id).await?;
+
+    // 3. Evaluate governance action
+    let target_policy = target
+        .governance_policy
+        .parse::<GovernancePolicy>()
+        .map_err(MutationError::GovernanceRejected)?;
+
+    evaluate_governance_action(
+        target_policy,
+        GovernanceAction::ProposeNormativeMutation,
+        &target.node_type,
+        &target.lifecycle_state,
+    )?;
+
+    // 4. Prohibit in-place mutation of active normative specification (INV-2, INV-3)
+    let draft_id = Uuid::new_v4();
+    let proposed_title = title.map(|t| t.to_string()).or(target.title.clone());
+
+    let mut draft_attrs = attributes.unwrap_or_else(|| serde_json::json!({}));
+    if !draft_attrs.is_object() {
+        draft_attrs = serde_json::json!({});
+    }
+    draft_attrs["replaces_node_id"] = serde_json::json!(target.id.to_string());
+    draft_attrs["draft_revisions"] = serde_json::json!([]);
+    draft_attrs["proposed_by"] = serde_json::json!(actor.agent_id);
+    draft_attrs["proposed_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
+
+    // 5. Insert candidate DRAFT entity
+    let row = tx
+        .query_one(
+            "INSERT INTO graph_nodes ( \
+                 id, node_key, node_type, title, content, lifecycle_state, \
+                 governance_policy, created_by, attributes \
+             ) VALUES ($1, NULL, $2, $3, $4, 'DRAFT', 'HUMAN_REVIEW_REQUIRED', $5, $6) \
+             RETURNING id, node_key, node_type, title, content, lifecycle_state, \
+                       governance_policy, created_by, job_id, doc_path, doc_hash, \
+                       byte_start, byte_end, attributes;",
+            &[
+                &draft_id,
+                &target.node_type,
+                &proposed_title,
+                &content,
+                &actor.agent_id,
+                &draft_attrs,
+            ],
+        )
+        .await?;
+
+    let draft_node = GraphNode::from_row(&row);
+
+    // 6. Mirror target's active upward edges as DRAFT edges
+    let parent_edges = tx
+        .query(
+            "SELECT to_node_id, edge_type \
+             FROM graph_edges \
+             WHERE from_node_id = $1 \
+               AND edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM') \
+               AND lifecycle_state = 'ACTIVE';",
+            &[&target.id],
+        )
+        .await?;
+
+    for p_edge in parent_edges {
+        let to_id: Uuid = p_edge.get("to_node_id");
+        let edge_type: String = p_edge.get("edge_type");
+
+        let _ = tx
+            .execute(
+                "INSERT INTO graph_edges (from_node_id, to_node_id, edge_type, created_by, lifecycle_state) \
+                 VALUES ($1, $2, $3, $4, 'DRAFT');",
+                &[&draft_id, &to_id, &edge_type, &actor.agent_id],
+            )
+            .await?;
+    }
+
+    // Also link candidate draft upward to target node with DERIVED_FROM edge (satisfies INV-1)
+    let _ = tx
+        .execute(
+            "INSERT INTO graph_edges (from_node_id, to_node_id, edge_type, created_by, lifecycle_state) \
+             VALUES ($1, $2, 'DERIVED_FROM', $3, 'DRAFT');",
+            &[&draft_id, &target.id, &actor.agent_id],
+        )
+        .await?;
+
+    // 7. Commit transaction
+    tx.commit().await?;
+
+    Ok(DraftProposalResult {
+        draft_id,
+        target_id: target.id,
+        status: "PENDING_REVIEW".to_string(),
+        lifecycle_state: "DRAFT".to_string(),
+        governance_policy: "HUMAN_REVIEW_REQUIRED".to_string(),
+        batch_id: Some(Uuid::new_v4()),
+        node: draft_node,
+    })
+}
+
+/// Executes Pathway 4 (Candidate Draft Evolution): intermediate edits on unapproved candidate `DRAFT`
+/// entities append to `graph_nodes.attributes->'draft_revisions'` JSONB array without touching `audit_ledger`,
+/// preserving caller-scoped draft isolation (INV-7, C-21, D-16, D-61).
+///
+/// # Errors
+///
+/// - Returns `MutationError::NotFound` if draft entity is not found.
+/// - Returns `MutationError::GovernanceRejected` if target is not in `DRAFT` state or violates caller isolation.
+/// - Returns `MutationError::Database` on SQL errors.
+pub async fn mutate_draft_entity(
+    client: &mut deadpool_postgres::Client,
+    draft_id: &str,
+    patch: serde_json::Value,
+    actor: &AuthenticatedAgent,
+) -> Result<DraftMutationResult, MutationError> {
+    mutate_draft_entity_client(client, draft_id, patch, actor).await
+}
+
+/// Variant of `mutate_draft_entity` operating on a standard `tokio_postgres::Client`.
+pub async fn mutate_draft_entity_client(
+    client: &mut Client,
+    draft_id: &str,
+    patch: serde_json::Value,
+    actor: &AuthenticatedAgent,
+) -> Result<DraftMutationResult, MutationError> {
+    let tx = client.transaction().await?;
+
+    // 1. Acquire row lock on draft entity
+    let row_opt = if let Ok(uuid) = Uuid::parse_str(draft_id.trim()) {
+        tx.query_opt(
+            "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                    governance_policy, created_by, job_id, doc_path, doc_hash, \
+                    byte_start, byte_end, attributes \
+             FROM graph_nodes \
+             WHERE id = $1 \
+             FOR UPDATE;",
+            &[&uuid],
+        )
+        .await?
+    } else {
+        tx.query_opt(
+            "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                    governance_policy, created_by, job_id, doc_path, doc_hash, \
+                    byte_start, byte_end, attributes \
+             FROM graph_nodes \
+             WHERE node_key = $1 \
+             FOR UPDATE;",
+            &[&draft_id.trim()],
+        )
+        .await?
+    };
+
+    let row = match row_opt {
+        Some(r) => r,
+        None => {
+            return Err(MutationError::NotFound(format!(
+                "Draft entity not found: {draft_id}"
+            )));
+        }
+    };
+
+    let existing = GraphNode::from_row(&row);
+
+    // 2. Validate lifecycle_state == 'DRAFT'
+    if existing.lifecycle_state != "DRAFT" {
+        return Err(MutationError::GovernanceRejected(format!(
+            "Cannot mutate non-draft node {} via draft evolution pathway (lifecycle_state: '{}')",
+            existing.id, existing.lifecycle_state
+        )));
+    }
+
+    // 3. Caller-scoped draft isolation check (INV-7, C-21)
+    if existing.created_by != actor.agent_id && actor.actor_type != "HUMAN" {
+        return Err(MutationError::GovernanceRejected(format!(
+            "Caller-scoped draft isolation: draft owned by '{}' cannot be mutated by '{}'",
+            existing.created_by, actor.agent_id
+        )));
+    }
+
+    // 4. Extract fields from patch
+    let patch_title = patch
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let patch_content = patch
+        .get("content")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let mut updated_attributes = existing.attributes.clone();
+    if !updated_attributes.is_object() {
+        updated_attributes = serde_json::json!({});
+    }
+
+    // Merge attributes from patch if present
+    if let Some(patch_attrs) = patch.get("attributes").and_then(|v| v.as_object())
+        && let Some(target_obj) = updated_attributes.as_object_mut()
+    {
+        for (k, v) in patch_attrs {
+            if k != "draft_revisions" {
+                target_obj.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    // Also merge other top-level keys if any
+    if let Some(patch_obj) = patch.as_object()
+        && let Some(target_obj) = updated_attributes.as_object_mut()
+    {
+        for (k, v) in patch_obj {
+            if k != "title" && k != "content" && k != "attributes" && k != "draft_revisions" {
+                target_obj.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    // Append to attributes->'draft_revisions' array
+    let mut revisions = updated_attributes
+        .get("draft_revisions")
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    let rev_seq = revisions.len() + 1;
+    let rev_entry = serde_json::json!({
+        "revision_seq": rev_seq,
+        "actor_id": actor.agent_id,
+        "actor_type": actor.actor_type,
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "patch": patch,
+    });
+    revisions.push(rev_entry);
+    updated_attributes["draft_revisions"] = serde_json::Value::Array(revisions.clone());
+
+    let final_title = patch_title.or(existing.title);
+    let final_content = patch_content.or(existing.content);
+
+    // 5. Update row in place (D-16, D-61) without touching audit_ledger
+    let updated_row = tx
+        .query_one(
+            "UPDATE graph_nodes \
+             SET title = $2, content = $3, attributes = $4 \
+             WHERE id = $1 \
+             RETURNING id, node_key, node_type, title, content, lifecycle_state, \
+                       governance_policy, created_by, job_id, doc_path, doc_hash, \
+                       byte_start, byte_end, attributes;",
+            &[
+                &existing.id,
+                &final_title,
+                &final_content,
+                &updated_attributes,
+            ],
+        )
+        .await?;
+
+    let updated_node = GraphNode::from_row(&updated_row);
+
+    // 6. Commit transaction
+    tx.commit().await?;
+
+    Ok(DraftMutationResult {
+        draft_id: existing.id,
+        status: "UPDATED".to_string(),
+        revisions_count: revisions.len(),
+        node: updated_node,
+    })
 }
