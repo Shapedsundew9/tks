@@ -18,7 +18,7 @@ use crate::storage::workspace::{
 };
 
 /// Request payload for creating a workspace container.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateWorkspacePayload {
     pub name: Option<String>,
     pub workspace_name: Option<String>,
@@ -38,7 +38,7 @@ pub struct WorkspaceCreatedResponse {
 }
 
 /// Request payload for candidate task elaboration inside a workspace.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ElaborateWorkspaceTaskPayload {
     pub parent_id: Option<String>,
     pub parent_node_id: Option<String>,
@@ -302,14 +302,14 @@ pub async fn elaborate_workspace_task_route(
 }
 
 /// Request payload for workspace promotion/merge (WP-3.3).
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PromoteWorkspacePayload {
     #[serde(default)]
     pub auto_reparent: Option<bool>,
 }
 
 /// Request payload for workspace synchronization rebase (WP-3.3).
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RebaseWorkspacePayload {
     #[serde(default)]
     pub auto_reparent: Option<bool>,

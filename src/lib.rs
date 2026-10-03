@@ -11,9 +11,10 @@ pub mod storage;
 pub mod worker;
 
 use cli::{
-    AdminSubcommand, IdentitySubcommand, McpStdioArgs, ServeArgs, StagingSubcommand,
-    TaskSubcommand, resolve_auth_token, resolve_server_url, run_admin, run_identity, run_mcp_stdio,
-    run_serve, run_staging, run_task,
+    AdminSubcommand, ExplorerSubcommand, IdentitySubcommand, McpStdioArgs, ServeArgs,
+    StagingSubcommand, TaskSubcommand, WorkspaceSubcommand, resolve_auth_token, resolve_server_url,
+    run_admin, run_explorer, run_identity, run_mcp_stdio, run_serve, run_staging, run_task,
+    run_workspace,
 };
 
 /// Command-line arguments for the TKS CLI.
@@ -66,6 +67,14 @@ pub enum Commands {
     /// Administrative governance, rollback, and reverification operations.
     #[command(subcommand)]
     Admin(AdminSubcommand),
+
+    /// Multi-agent workspace container operations (create, list, inspect, merge).
+    #[command(subcommand)]
+    Workspace(WorkspaceSubcommand),
+
+    /// Launch or inspect the Real-Time Substrate Web Explorer.
+    #[command(subcommand)]
+    Explorer(ExplorerSubcommand),
 }
 
 /// Returns the default greeting message.
@@ -156,6 +165,18 @@ pub async fn run_with_args(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let server_url = resolve_server_url(cli.server_url.as_deref());
             let auth_token = resolve_auth_token(cli.auth_token.as_deref());
             run_admin(subcmd, &server_url, &auth_token).await
+        }
+
+        Some(Commands::Workspace(subcmd)) => {
+            let server_url = resolve_server_url(cli.server_url.as_deref());
+            let auth_token = resolve_auth_token(cli.auth_token.as_deref());
+            run_workspace(subcmd, &server_url, &auth_token).await
+        }
+
+        Some(Commands::Explorer(subcmd)) => {
+            let server_url = resolve_server_url(cli.server_url.as_deref());
+            let auth_token = resolve_auth_token(cli.auth_token.as_deref());
+            run_explorer(subcmd, &server_url, &auth_token).await
         }
 
         None => {

@@ -47,8 +47,8 @@ dep_tree AS (
         e.from_node_id AS child_id,
         dt.depth + 1 AS depth,
         dt.visited || e.from_node_id AS visited
-    FROM graph_edges e
-    JOIN dep_tree dt ON dt.child_id = e.to_node_id
+    FROM dep_tree dt
+    JOIN graph_edges e ON e.to_node_id = dt.child_id
     WHERE e.lifecycle_state = 'ACTIVE'
       AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM')
       AND NOT (e.from_node_id = ANY(dt.visited))
@@ -60,9 +60,7 @@ distinct_descendants AS (
         MIN(dt.depth) AS depth,
         (1.0 / MIN(dt.depth)::float8) AS staleness_score
     FROM dep_tree dt
-    JOIN graph_nodes n ON n.id = dt.child_id
-    WHERE n.lifecycle_state = 'ACTIVE'
-      AND dt.child_id != $1
+    WHERE dt.child_id != $1
     GROUP BY dt.child_id
 ),
 updated_nodes AS (
@@ -75,6 +73,7 @@ updated_nodes AS (
         )
     FROM distinct_descendants dd
     WHERE gn.id = dd.child_id
+      AND gn.lifecycle_state = 'ACTIVE'
     RETURNING gn.id, gn.node_type, gn.node_key, gn.attributes, dd.depth, dd.staleness_score
 ),
 inserted_audit AS (
@@ -114,31 +113,34 @@ inserted_audit AS (
         ) AS snapshot,
         clock_timestamp() AS created_at
     FROM updated_nodes un
-    RETURNING event_seq, batch_id, event_type, entity_id, entity_type, actor_id, created_at
+    RETURNING event_seq, batch_id, event_type, entity_id, entity_type, actor_id, created_at, (delta->>'depth')::int4 AS depth
+),
+audit_summary AS (
+    SELECT
+        array_agg(ia.entity_id ORDER BY ia.event_seq ASC) AS invalidated_nodes,
+        coalesce(max(ia.depth), 0)::int4 AS max_depth,
+        coalesce(max(ia.event_seq), 0)::int8 AS event_seq
+    FROM inserted_audit ia
+    WHERE pg_notify(
+        'tks_graph_events',
+        json_build_object(
+            'event_seq', ia.event_seq,
+            'batch_id', ia.batch_id,
+            'event_type', ia.event_type,
+            'entity_id', ia.entity_id,
+            'entity_type', ia.entity_type,
+            'actor_id', ia.actor_id,
+            'timestamp', ia.created_at
+        )::text
+    ) IS NOT NULL
 )
 SELECT
     EXISTS(SELECT 1 FROM root_check) AS root_found,
-    coalesce(
-        (
-            SELECT array_agg(ia.entity_id ORDER BY ia.event_seq ASC)
-            FROM inserted_audit ia
-            WHERE pg_notify(
-                'tks_graph_events',
-                json_build_object(
-                    'event_seq', ia.event_seq,
-                    'batch_id', ia.batch_id,
-                    'event_type', ia.event_type,
-                    'entity_id', ia.entity_id,
-                    'entity_type', ia.entity_type,
-                    'actor_id', ia.actor_id,
-                    'timestamp', ia.created_at
-                )::text
-            ) IS NOT NULL
-        ),
-        '{}'::uuid[]
-    ) AS invalidated_nodes,
-    coalesce((SELECT max(un.depth) FROM updated_nodes un), 0)::int4 AS max_depth,
-    coalesce((SELECT max(ia.event_seq) FROM inserted_audit ia), 0)::int8 AS event_seq;
+    coalesce(asu.invalidated_nodes, '{}'::uuid[]) AS invalidated_nodes,
+    coalesce(asu.max_depth, 0)::int4 AS max_depth,
+    coalesce(asu.event_seq, 0)::int8 AS event_seq
+FROM (SELECT 1) _
+LEFT JOIN audit_summary asu ON true;
 ";
 
 /// Result of an automated downward invalidation sweep.

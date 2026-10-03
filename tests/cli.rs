@@ -90,6 +90,22 @@ fn test_cli_binary_help_flags() {
             .output()
             .expect("Failed to execute tks admin --help"),
         Command::new("cargo")
+            .args([
+                "run",
+                "--quiet",
+                "--bin",
+                "tks",
+                "--",
+                "workspace",
+                "--help",
+            ])
+            .output()
+            .expect("Failed to execute tks workspace --help"),
+        Command::new("cargo")
+            .args(["run", "--quiet", "--bin", "tks", "--", "explorer", "--help"])
+            .output()
+            .expect("Failed to execute tks explorer --help"),
+        Command::new("cargo")
             .args(["run", "--quiet", "--bin", "mcp_stdio", "--", "--help"])
             .output()
             .expect("Failed to execute mcp_stdio --help"),

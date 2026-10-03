@@ -1,13 +1,16 @@
 //! Command-line interface modules (WP-1.6).
 
 pub mod admin;
+pub mod explorer;
 pub mod identity;
 pub mod mcp_stdio;
 pub mod serve;
 pub mod staging;
 pub mod task;
+pub mod workspace;
 
 pub use admin::{AdminReverifyArgs, AdminRevertArgs, AdminSubcommand, run_admin};
+pub use explorer::{ExplorerServeArgs, ExplorerSubcommand, run_explorer};
 pub use identity::{CreateIdentityArgs, IdentitySubcommand, RevokeIdentityArgs, run_identity};
 pub use mcp_stdio::{McpStdioArgs, run_mcp_stdio};
 pub use serve::{ServeArgs, run_serve};
@@ -16,6 +19,10 @@ pub use staging::{
     run_staging,
 };
 pub use task::{CreateTaskArgs, ListTasksArgs, TaskSubcommand, UpdateTaskArgs, run_task};
+pub use workspace::{
+    CreateWorkspaceArgs, DiscardWorkspaceArgs, InspectWorkspaceArgs, ListWorkspacesArgs,
+    MergeWorkspaceArgs, RebaseWorkspaceArgs, WorkspaceSubcommand, run_workspace,
+};
 
 /// Resolves the server base URL from arguments, environment variables, or defaults.
 #[must_use]

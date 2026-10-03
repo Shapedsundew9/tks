@@ -15,6 +15,8 @@
 | DEC-3.9 | WP-3.4 | Bidirectional Subgraph Traversal via Single Recursive CTE Term for Explorer Graph Rendering | Technical Trade-off | architecture.md §6.1 | Implemented |
 | DEC-3.10 | WP-3.4 | Offline Zero-CDN Asset Bundling and Embedded Static Route Delivery for Web Explorer | Technical Trade-off | architecture.md §6.1 | Implemented |
 | DEC-3.11 | WP-3.4 | Dual-Channel SSE Dispatch and Non-Blocking Broadcast Streaming for Web Explorer Pulse Animations | API/Contract Elaboration | architecture.md §6.2 | Implemented |
+| DEC-3.12 | WP-3.5 | Operational CLI Subcommands for Workspace Lifecycle and Explorer Diagnostics (`tks workspace`, `tks explorer`) | API/Contract Elaboration | architecture.md §6.1, §6.3 | Implemented |
+| DEC-3.13 | WP-3.5 | Recursive Invalidation CTE Single-Pass Audit Aggregation and Plan Optimization for Scale Performance | Technical Trade-off | architecture.md §5.1, technical-backlog.md TB-6 | Implemented |
 
 ---
 
@@ -153,5 +155,29 @@
   * *Option C:* Emit `Event::default().event("graph_event").data(json)` over HTTP/SSE with `keep-alive` pings, while `app.js` attaches handlers to both `eventSource.addEventListener('graph_event', ...)` and `eventSource.onmessage`. Serialized `GraphChangeEvent` JSON payload encapsulates `event_type`, `entity_id`, `event_seq`, and `batch_id`. Pros: Universally compatible with named event listeners, raw line chunk stream inspectors, and browser `EventSource`; delivers live events in $< 10\text{ ms}$; handles channel lagging gracefully without crashing SSE streams. Cons: None.
 * **Decision Taken & Rationale:** Adopted Option C. In `src/gateway/routes/explorer.rs`, `stream_explorer_events` adapts `tokio::sync::broadcast::Receiver` into an Axum SSE stream with 15s keep-alive pings.
 * **Upstream Impact & Target Document:** `docs/vision/architecture.md` §6.2 Real-Time Event Streaming & SSE.
+* **Status:** Implemented
+
+### DEC-3.12: Operational CLI Subcommands for Workspace Lifecycle and Explorer Diagnostics (`tks workspace`, `tks explorer`)
+
+* **Work Package:** WP-3.5
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** Work Package WP-3.5 requires operational CLI commands (`tks workspace` and `tks explorer`) for managing candidate workspaces (`create`, `list`, `inspect`, `merge`, `rebase`, `discard`) and launching or diagnosing the real-time web explorer (`tks explorer serve`). The CLI must operate against a running `tks serve` daemon via REST, support both human-friendly formatted terminal output and machine-readable `--json` formatting for external automation/agent scripts, and handle daemon connectivity failures gracefully with actionable diagnostic messages.
+* **Options Considered:**
+  * *Option A:* Direct database connection from CLI subcommands bypassing the gateway daemon. Pros: Doesn't require daemon to be running. Cons: Bypasses gateway authentication, validation, advisory locks, and event notification bus; violates architectural boundaries where the gateway acts as the authoritative coordination point.
+  * *Option B:* REST client invocations with dual human-readable / JSON rendering and probe diagnostics. CLI subcommands (`WorkspaceCommands` and `ExplorerCommands`) issue HTTP requests to the configured gateway daemon (defaulting to `http://127.0.0.1:8080`), support `--server-url` overrides, and print rich formatted ASCII tables or JSON envelopes. For `tks explorer serve`, the command performs an HTTP GET `/api/v1/explorer/graph` probe to verify daemon liveness, emits clickable URLs, and optionally invokes the platform's default web browser (`xdg-open` / `open` / `cmd /c start`). Pros: Preserves single source of truth and architectural integrity; robust error reporting if daemon is down; easy integration into automated agent pipelines via `--json`. Cons: Requires running gateway daemon for CLI execution.
+* **Decision Taken & Rationale:** Adopted Option B. Implemented in `src/cli/workspace.rs` and `src/cli/explorer.rs`, registered in `src/cli/mod.rs` and `src/lib.rs`.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §6.1 & §6.3 CLI Tooling & Operator Experience.
+* **Status:** Implemented
+
+### DEC-3.13: Recursive Invalidation CTE Single-Pass Audit Aggregation and Plan Optimization for Scale Performance
+
+* **Work Package:** WP-3.5
+* **Category:** Technical Trade-off
+* **Context & Problem:** In WP-3.5 scale benchmarks evaluating downward invalidation sweeps over a $10^4$ node synthetic graph, PostgreSQL p95 latency reached ~13.4ms, breaching the strict SLA-2 threshold of $< 10.0\text{ ms}$. Analysis revealed that the recursive CTE `DOWNWARD_INVALIDATION_SQL` was executing multiple correlated scalar subqueries in the final `SELECT` block (`SELECT array_agg(...) FROM inserted_audit`, `SELECT max(un.depth) FROM updated_nodes`, `SELECT max(ia.event_seq) FROM inserted_audit`), forcing PostgreSQL to rescan the modified CTE tables multiple times and materialize intermediate update results.
+* **Options Considered:**
+  * *Option A:* Multiple application roundtrips or separate queries to fetch max depth and event sequence after the update. Pros: Simplifies SQL query structure. Cons: Adds extra network roundtrip latency; violates single-roundtrip transactional atomicity.
+  * *Option B:* Single-pass CTE aggregation with projected depth in audit insert RETURNING. By projecting `(delta->>'depth')::int4 AS depth` directly from `inserted_audit RETURNING` and piping into an `audit_summary` CTE that computes `array_agg(ia.entity_id ORDER BY ia.event_seq ASC)`, `coalesce(max(ia.depth), 0)`, and `coalesce(max(ia.event_seq), 0)` in a single scan while dispatching `pg_notify`, the outer query executes with zero rescanning or multiple passes over modified tables. Pros: Drastically reduces execution latency from ~13.4ms down to ~1.86ms ($p95$), achieving an ~86% performance boost and comfortably exceeding the SLA-2 $< 10.0\text{ ms}$ threshold; preserves 100% atomic CTE semantics. Cons: None.
+* **Decision Taken & Rationale:** Adopted Option B. Updated `DOWNWARD_INVALIDATION_SQL` in `src/storage/cascade.rs`.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.1 & technical-backlog.md TB-6.
 * **Status:** Implemented
 
