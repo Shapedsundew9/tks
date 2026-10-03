@@ -12,9 +12,6 @@
 .env
 .envrc
 
-# Trussflow run artifacts (raw agent input/output)
-artifacts/
-
 # JetBrains / CLion
 .idea/
 
@@ -33,5 +30,5 @@ artifacts/
 .DS_Store
 Thumbs.db
 
-.fastembed_cache/
-scratchpad/
+.fastembed_cache/*
+scratchpad/*

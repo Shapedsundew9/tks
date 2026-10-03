@@ -8,6 +8,7 @@
 
 ## CLI Output Rules
 
-- Whenever you generate Mermaid diagrams, architecture charts, or markdown explanations exceeding 15 lines, DO NOT dump the raw markdown solely into the terminal.
+These rules only apply when a mermaid diagram is part of a response. If there is no mermaid diagram you will output to the terminal as normal.
+
 - Always write or update the output directly into `scratchpad/` creating the folder as necessary.
 - In the terminal, provide only a 1–2 sentence summary and state that the full diagram/plan has been written to the scratchpad.
