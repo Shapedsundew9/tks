@@ -20,6 +20,7 @@ use crate::gateway::auth::AuthenticatedAgent;
 use crate::storage::governance::{
     GovernanceAction, GovernancePolicy, TaskStatus, evaluate_governance_action,
 };
+use crate::storage::rollback::RevertPreview;
 use crate::storage::{GraphEdge, GraphNode, StorageError};
 
 /// SQL advisory lock query for structural graph mutations.
@@ -47,6 +48,10 @@ pub enum MutationError {
     Serialization(serde_json::Error),
     /// Connection pool acquisition error.
     Pool(deadpool_postgres::PoolError),
+    /// Administrative rollback requires explicit confirmation safety flag (`force = true`) due to cross-agent dependencies.
+    ConfirmationRequired(Box<RevertPreview>),
+    /// Node reverification failed because direct upstream dependencies are not active.
+    DependencyInactive(String),
     /// General storage mutation error.
     Other(String),
 }
@@ -65,7 +70,18 @@ impl MutationError {
             Self::Database(_) => "ERR_DATABASE",
             Self::Serialization(_) => "ERR_SERIALIZATION",
             Self::Pool(_) => "ERR_POOL",
+            Self::ConfirmationRequired(_) => "ERR_CONFIRMATION_REQUIRED",
+            Self::DependencyInactive(_) => "ERR_DEPENDENCY_INACTIVE",
             Self::Other(_) => "ERR_MUTATION_FAILED",
+        }
+    }
+
+    /// Returns the preview payload if this error is `ConfirmationRequired`.
+    #[must_use]
+    pub fn preview(&self) -> Option<&RevertPreview> {
+        match self {
+            Self::ConfirmationRequired(p) => Some(p),
+            _ => None,
         }
     }
 }
@@ -87,6 +103,15 @@ impl std::fmt::Display for MutationError {
             Self::Database(e) => write!(f, "Database error: {e}"),
             Self::Serialization(e) => write!(f, "Serialization error: {e}"),
             Self::Pool(e) => write!(f, "Connection pool error: {e}"),
+            Self::ConfirmationRequired(preview) => {
+                write!(
+                    f,
+                    "ERR_CONFIRMATION_REQUIRED: cross-agent dependent tasks detected: {:?}, total affected nodes: {}",
+                    preview.cross_agent_dependencies,
+                    preview.affected_nodes.len()
+                )
+            }
+            Self::DependencyInactive(msg) => write!(f, "ERR_DEPENDENCY_INACTIVE: {msg}"),
             Self::Other(msg) => write!(f, "Mutation error: {msg}"),
         }
     }
@@ -147,6 +172,13 @@ impl From<MutationError> for StorageError {
             }
             MutationError::GovernanceRejected(msg) => {
                 Self::InvalidState(format!("ERR_GOVERNANCE_REJECTED: {msg}"))
+            }
+            MutationError::ConfirmationRequired(preview) => Self::InvalidState(format!(
+                "ERR_CONFIRMATION_REQUIRED: cross-agent dependencies: {:?}",
+                preview.cross_agent_dependencies
+            )),
+            MutationError::DependencyInactive(msg) => {
+                Self::InvalidState(format!("ERR_DEPENDENCY_INACTIVE: {msg}"))
             }
             MutationError::CycleDetected { from_id, to_id } => Self::InvalidState(format!(
                 "ERR_GRAPH_CYCLE_DETECTED: cycle between {from_id} and {to_id}"

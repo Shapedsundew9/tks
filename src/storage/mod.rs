@@ -7,6 +7,8 @@ pub mod git;
 pub mod governance;
 pub mod mutation;
 pub mod repo;
+pub mod reverify;
+pub mod rollback;
 pub mod search;
 
 use serde::{Deserialize, Serialize};
@@ -29,6 +31,11 @@ pub use mutation::{
     update_leaf_attributes_locked, update_task_status, update_task_status_client,
 };
 pub use repo::{StorageRepo, acquire_structural_lock, lookup_node_polymorphic};
+pub use reverify::{ReverifyResult, reverify_node, reverify_node_client};
+pub use rollback::{
+    RevertExecutionResult, RevertFilter, RevertPreview, RevertResult, revert_mutations,
+    revert_mutations_client,
+};
 pub use search::query_active_requirements;
 
 /// Relational domain entity representing a requirement, specification, task, or verification node.

@@ -9,6 +9,9 @@
 | DEC-2.3 | WP-2.2 | Upward Lineage and Active Ancestor Edge Mirroring for Normative Draft Proposals | Specification Gap | architecture.md §5.1 | Implemented |
 | DEC-2.4 | WP-2.2 | Dual Client Signatures (&mut deadpool_postgres::Client and &mut tokio_postgres::Client) for Mutation Pathways | API/Contract Elaboration | architecture.md §5.2 | Implemented |
 | DEC-2.5 | WP-2.2 | Dedicated ERR_GOVERNANCE_LOCKED Error Code and Variant for Safety-Critical Locked Nodes | Specification Gap | architecture.md §5.1 | Implemented |
+| DEC-2.6 | WP-2.3 | Structured MutationError::ConfirmationRequired(`Box<RevertPreview>`) and Error Code Mapping for Rollback Safety Aborts | Specification Gap | architecture.md §5.1 | Implemented |
+| DEC-2.7 | WP-2.3 | Selective State Preservation vs Edge Reversion in Administrative Rollback | Specification Gap | architecture.md §5.1 | Implemented |
+| DEC-2.8 | WP-2.3 | Dedicated ERR_DEPENDENCY_INACTIVE Error and Re-Parenting Operational Unblocking in Reverification Interface | API/Contract Elaboration | architecture.md §5.1 | Implemented |
 
 ---
 
@@ -72,4 +75,40 @@
   * *Option B:* Introduce a first-class `MutationError::GovernanceLocked(String)` variant with error code `"ERR_GOVERNANCE_LOCKED"`, keeping `MutationError::GovernanceRejected(String)` with code `"ERR_GOVERNANCE_REJECTED"` for other policy mismatches. Pros: Strongly typed, unambiguous error taxonomy, directly satisfies the specification requirement. Cons: Adds one variant to `MutationError`.
 * **Decision Taken & Rationale:** Adopted Option B. First-class typing ensures callers and MCP gateways can deterministically identify locked nodes without error string pattern matching.
 * **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.1 Governance policy and §6 Interfaces & Contracts should document `ERR_GOVERNANCE_LOCKED`.
+* **Status:** Implemented
+
+### DEC-2.6: Structured MutationError::ConfirmationRequired(`Box<RevertPreview>`) and Error Code Mapping for Rollback Safety Aborts
+
+* **Work Package:** WP-2.3
+* **Category:** Specification Gap
+* **Context & Problem:** Decision D-80 and the WP-2.3 specification require that when `dry_run = false`, if cross-agent dependent tasks exist and `force != true`, the engine halts with `ERR_CONFIRMATION_REQUIRED` returning the preview payload. The method signature returns `Result<RevertExecutionResult, MutationError>`. If the abort payload is serialized into a string message or returned as an `Ok` variant, downstream API and MCP layers lose structured blast-radius type information or violate standardized error taxonomy.
+* **Options Considered:**
+  * *Option A:* Return `Ok(RevertExecutionResult::ConfirmationRequired(RevertPreview))`. Pros: Encapsulated within `Ok`. Cons: Violates the specification mandate that the operation aborts with error code `ERR_CONFIRMATION_REQUIRED`, creating impedance mismatch with REST 409 Conflict / MCP JSON-RPC error protocols.
+  * *Option B:* Introduce `MutationError::ConfirmationRequired(Box<RevertPreview>)` with error code `"ERR_CONFIRMATION_REQUIRED"` and typed accessor `MutationError::preview(&self) -> Option<&RevertPreview>`. Pros: Preserves error semantics, satisfies contract error taxonomy, provides zero-cost typed access to blast-radius preview without JSON re-parsing, and keeps `MutationError` enum size compact via heap indirection. Cons: Slightly expands `MutationError` variants.
+* **Decision Taken & Rationale:** Adopted Option B. Boxing `RevertPreview` within `MutationError::ConfirmationRequired` provides clean typed error propagation to Axum and MCP layers while satisfying clippy error size lints and exact error contract compliance.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.1 Rollback Cascade Mechanics and §6 Interfaces & Contracts should document `MutationError::ConfirmationRequired` and error code `ERR_CONFIRMATION_REQUIRED`.
+* **Status:** Implemented
+
+### DEC-2.7: Selective State Preservation vs Edge Reversion in Administrative Rollback
+
+* **Work Package:** WP-2.3
+* **Category:** Specification Gap
+* **Context & Problem:** Decision D-73 and WP-2.3 specify administrative rollback via `revert_mutations`, transitioning live nodes to `SUPERSEDED` and edges to `REVERTED`. However, mutations on existing nodes (such as Pathway 2 `TASK_STATUS_UPDATE` or `LEAF_ATTRIBUTE_UPDATE`) modify attributes in place on nodes that were created in earlier batches. If all targeted nodes and their outgoing edges were indiscriminately marked `SUPERSEDED` and `REVERTED`, reverting an in-place task status update would erroneously sever the task's structural parent edge to its requirement root, violating Invariant INV-1 and breaking reverification loops.
+* **Options Considered:**
+  * *Option A:* Treat all targeted nodes identically by transitioning them to `SUPERSEDED` and marking all outgoing edges `REVERTED`. Pros: Uniform handling across all audit event types. Cons: Destroys active tasks when only a leaf attribute or status update was meant to be reverted; breaks Invariant INV-1 traceability for intact nodes.
+  * *Option B:* Differentiate entity creation events (`TASK_ELABORATED`, `NODE_INSERTED`, `STAGING_APPROVED`) from leaf/status update events (`TASK_STATUS_UPDATE`, `LEAF_ATTRIBUTE_UPDATE`). For creation events, transition the node to `SUPERSEDED` and its outgoing edges to `REVERTED`. For leaf/status update events, restore prior attributes/status from event `delta`/`snapshot`, preserve the node's `ACTIVE` state, and keep its structural edges intact while cascading dependent child tasks to `NEEDS_REVERIFICATION`. Pros: Correctly preserves graph topology, faithfully restores prior attribute states, and allows dependent child tasks to be successfully reverified against the restored active parent. Cons: Requires event-type branch logic in the rollback engine.
+* **Decision Taken & Rationale:** Adopted Option B. In `src/storage/rollback.rs`, entity creation events transition to `SUPERSEDED` and revert outgoing edges, while status and leaf attribute rollbacks restore previous state in-place without severing structural edges. This preserves Invariant INV-1, guarantees non-destructive reversible compensation, and enables the invalidation-and-reverification loop to function correctly.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.1 Rollback Cascade Mechanics should document that in-place leaf/status mutation rollbacks restore attributes without severing structural edges or superseding nodes.
+* **Status:** Implemented
+
+### DEC-2.8: Dedicated ERR_DEPENDENCY_INACTIVE Error and Re-Parenting Operational Unblocking in Reverification Interface
+
+* **Work Package:** WP-2.3
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** Decision D-76 and `architecture.md` §6 specify that `reverify_node` validates that all direct upstream dependencies are in `ACTIVE` state (INV-1), returning error `ERR_DEPENDENCY_INACTIVE` if inactive. When a parent node creation has been reverted (transitioned to `SUPERSEDED`), child tasks that cascaded to `NEEDS_REVERIFICATION` cannot be reverified against the superseded parent. Without an explicit re-parenting mechanism, degraded child tasks would remain permanently stuck in operational deadlock unless manual SQL edge updates were performed.
+* **Options Considered:**
+  * *Option A:* Require a multi-step external workflow where callers must invoke a separate edge creation tool/endpoint before calling `reverify_node`. Pros: Minimal implementation in `reverify_node`. Cons: Requires non-atomic two-phase execution, risks leaving orphan nodes in invalid intermediate states, and creates circular dependencies between tools.
+  * *Option B:* Support an optional re-parenting parameter in `updated_attributes` (accepting `reparent_to` or `parent_id` UUID or `node_key`), atomically updating active upward edges to the new active parent under `pg_advisory_xact_lock` before verifying upstream dependencies and promoting the node to `ACTIVE`. Pros: Enables atomic operational unblocking in a single call, verifies acyclicity via `assert_no_dag_cycle`, validates unbroken path to active requirement (INV-1), and returns dedicated `ERR_DEPENDENCY_INACTIVE` when upstream parents are inactive. Cons: Adds edge re-anchoring logic within the reverification transaction.
+* **Decision Taken & Rationale:** Adopted Option B. In `src/storage/reverify.rs`, `reverify_node` supports optional `reparent_to` / `parent_id` in `updated_attributes`, asserting cycle prevention and atomically establishing active edges to the new parent before promoting the node to `ACTIVE`. This provides complete operational recovery for degraded subtrees following parent supersession, eliminating operational deadlocks while strictly preserving Invariant INV-1.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.1 Reverification Interface and §6 Interfaces & Contracts should document `reparent_to` / `parent_id` support in `updated_attributes` and `ERR_DEPENDENCY_INACTIVE`.
 * **Status:** Implemented

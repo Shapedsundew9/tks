@@ -11,6 +11,8 @@ use crate::storage::governance::TaskStatus;
 use crate::storage::mutation::{
     DraftMutationResult, DraftProposalResult, ElaboratedTaskResult, MutationError, TaskUpdateResult,
 };
+use crate::storage::reverify::ReverifyResult;
+use crate::storage::rollback::{RevertExecutionResult, RevertFilter};
 use crate::storage::{GraphNode, SearchResultNode, StorageError, TopologicalEnvelope};
 
 /// Core storage repository wrapping a PostgreSQL connection pool (`deadpool-postgres`).
@@ -320,6 +322,47 @@ impl StorageRepo {
     ) -> Result<DraftMutationResult, MutationError> {
         let mut client = self.get_client().await?;
         crate::storage::mutation::mutate_draft_entity(&mut client, draft_id, patch, actor).await
+    }
+
+    /// Unified administrative rollback utility executing compensating transactions (WP-2.3).
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError::ConfirmationRequired` if cross-agent dependencies exist and `force != true`.
+    /// Returns `MutationError` on query failure, serialization error, or lock contention.
+    pub async fn revert_mutations(
+        &self,
+        filter: RevertFilter,
+        actor: &AuthenticatedAgent,
+    ) -> Result<RevertExecutionResult, MutationError> {
+        let mut client = self.get_client().await?;
+        crate::storage::rollback::revert_mutations(&mut client, filter, actor).await
+    }
+
+    /// Explicit reverification interface for stale and degraded graph nodes (WP-2.3, D-76).
+    ///
+    /// # Errors
+    ///
+    /// Returns `MutationError::NotFound` if `node_id` cannot be resolved.
+    /// Returns `MutationError::DependencyInactive` if any direct upstream parent is not ACTIVE.
+    /// Returns `MutationError::InvalidAncestorPath` if the node lacks an unbroken path to an active requirement root.
+    /// Returns `MutationError` on query failure, serialization error, or lock contention.
+    pub async fn reverify_node(
+        &self,
+        node_id: &str,
+        rationale: &str,
+        updated_attributes: Option<serde_json::Value>,
+        actor: &AuthenticatedAgent,
+    ) -> Result<ReverifyResult, MutationError> {
+        let mut client = self.get_client().await?;
+        crate::storage::reverify::reverify_node(
+            &mut client,
+            node_id,
+            rationale,
+            updated_attributes,
+            actor,
+        )
+        .await
     }
 }
 
