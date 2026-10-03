@@ -34,3 +34,4 @@ artifacts/
 Thumbs.db
 
 .fastembed_cache/
+scratchpad/

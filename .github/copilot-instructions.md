@@ -1,6 +1,7 @@
 # Project Guidelines
 
 Read `.shared/ai/core/service-instructions.md`.
+Read `.shared/ai/core/common-instructions.md`.
 
 ## Repository Layout
 
@@ -44,9 +45,3 @@ Read `.shared/ai/core/service-instructions.md`.
 - Prefer well-established, maintained crates when a dependency is genuinely needed.
 - Add every new dependency to the appropriate section of `Cargo.toml` and verify with `cargo check`.
 - Avoid introducing a dependency for functionality that is small and clear to implement with the standard library.
-
-## Documentation
-
-- Keep `README.md` aligned with the install, usage, development, and publishing workflows.
-- Always run `npx markdownlint-cli2 --fix "**/*.md"` after markdown changes but do not address issues that cannot be fixed without explicit permission.
-- Never modify `.markdownlint-cli2.jsonc`. Ask the user first if a change is necessary.
