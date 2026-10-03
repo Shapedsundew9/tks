@@ -9,7 +9,8 @@
 	// Add "neo4j" and/or "postgres" for experiments that need them.
 	"runServices": [
 		"app",
-		"postgres"
+		"postgres",
+		"ollama"
 	],
 	"workspaceFolder": "/workspace",
 	"postCreateCommand": "bash .devcontainer/post-create.sh",
@@ -85,6 +86,14 @@
 		"CARGO_REGISTRY_URL": "${localEnv:CARGO_REGISTRY_URL}",
 		"CARGO_REGISTRY_TOKEN": "${localEnv:CARGO_REGISTRY_TOKEN}",
 		"DOCKER_HUB_USERNAME": "${localEnv:DOCKER_HUB_USERNAME}",
-		"DOCKER_HUB_TOKEN": "${localEnv:DOCKER_HUB_TOKEN}"
+		"DOCKER_HUB_TOKEN": "${localEnv:DOCKER_HUB_TOKEN}",
+		"OLLAMA_HOST": "${localEnv:OLLAMA_HOST:http://ollama:11434}",
+		"TKS_LLM_BASE_URL": "${localEnv:TKS_LLM_BASE_URL:http://ollama:11434/v1}",
+		"TKS_LLM_MODEL": "${localEnv:TKS_LLM_MODEL:qwen3:8b}",
+		"OLLAMA_CONTEXT_LENGTH": "${localEnv:OLLAMA_CONTEXT_LENGTH:8192}",
+		"OLLAMA_NUM_PARALLEL": "${localEnv:OLLAMA_NUM_PARALLEL:1}",
+		"OLLAMA_KEEP_ALIVE": "${localEnv:OLLAMA_KEEP_ALIVE:30m}",
+		"OLLAMA_MAX_LOADED_MODELS": "${localEnv:OLLAMA_MAX_LOADED_MODELS:1}",
+		"OLLAMA_FLASH_ATTENTION": "${localEnv:OLLAMA_FLASH_ATTENTION:1}"
 	}
 }
