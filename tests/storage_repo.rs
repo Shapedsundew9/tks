@@ -15,7 +15,9 @@ static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 /// Helper to serialize database access across tests, connect, run migrations, and clean up test data.
 async fn setup_test_db() -> (tokio::sync::MutexGuard<'static, ()>, StorageRepo, Client) {
     let guard = TEST_MUTEX.lock().await;
-    let database_url = db::resolve_database_url();
+    let database_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test db");
     let (mut client, _handle) = db::connect(&database_url)
         .await
         .expect("Failed to connect to database");
@@ -41,7 +43,7 @@ async fn setup_test_db() -> (tokio::sync::MutexGuard<'static, ()>, StorageRepo, 
 #[tokio::test]
 async fn test_advisory_lock_serialization() {
     let (_lock, _repo, mut client1) = setup_test_db().await;
-    let database_url = db::resolve_database_url();
+    let database_url = db::resolve_test_database_url();
     let (mut client2, _handle2) = db::connect(&database_url)
         .await
         .expect("Failed to connect client2");

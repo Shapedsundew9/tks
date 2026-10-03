@@ -48,15 +48,15 @@ tags_json="$(curl --fail --silent --show-error "${OLLAMA_HOST}/api/tags")"
 
 model_exists() {
   local candidate="$1"
-  python3 - "$candidate" <<'PY' <<<"${tags_json}"
+  python3 -c '
 import json
 import sys
 
 candidate = sys.argv[1]
-payload = json.load(sys.stdin)
+payload = json.loads(sys.argv[2])
 names = {m.get("name", "") for m in payload.get("models", [])}
 sys.exit(0 if candidate in names else 1)
-PY
+' "$candidate" "${tags_json}"
 }
 
 to_pull=()
@@ -91,10 +91,13 @@ fi
 
 for model in "${to_pull[@]}"; do
   echo "Pulling ${model}..."
-  curl --fail --silent --show-error \
+  if ! response="$(curl --fail-with-body --silent --show-error \
     -X POST "${OLLAMA_HOST}/api/pull" \
     -H "Content-Type: application/json" \
-    -d "{\"model\":\"${model}\",\"stream\":false}" >/dev/null
+    -d "{\"model\":\"${model}\",\"stream\":false}")"; then
+    echo "Error: failed to pull ${model}: ${response}" >&2
+    exit 1
+  fi
   echo "Pulled ${model}"
 done
 

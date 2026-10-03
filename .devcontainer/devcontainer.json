@@ -14,6 +14,7 @@
 	],
 	"workspaceFolder": "/workspace",
 	"postCreateCommand": "bash .devcontainer/post-create.sh",
+	"postStartCommand": "nohup bash scripts/llm/preload-model.sh > /tmp/ollama-preload.log 2>&1 &",
 	"remoteUser": "vscode",
 	"features": {
 		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
@@ -92,7 +93,7 @@
 		"TKS_LLM_MODEL": "${localEnv:TKS_LLM_MODEL:qwen3:8b}",
 		"OLLAMA_CONTEXT_LENGTH": "${localEnv:OLLAMA_CONTEXT_LENGTH:8192}",
 		"OLLAMA_NUM_PARALLEL": "${localEnv:OLLAMA_NUM_PARALLEL:1}",
-		"OLLAMA_KEEP_ALIVE": "${localEnv:OLLAMA_KEEP_ALIVE:30m}",
+		"OLLAMA_KEEP_ALIVE": "${localEnv:OLLAMA_KEEP_ALIVE:-1}",
 		"OLLAMA_MAX_LOADED_MODELS": "${localEnv:OLLAMA_MAX_LOADED_MODELS:1}",
 		"OLLAMA_FLASH_ATTENTION": "${localEnv:OLLAMA_FLASH_ATTENTION:1}"
 	}

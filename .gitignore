@@ -32,3 +32,6 @@ Thumbs.db
 
 .fastembed_cache/*
 scratchpad/*
+
+# Substrate local storage, bare git repo, and backups
+.substrate/

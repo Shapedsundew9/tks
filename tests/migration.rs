@@ -4,7 +4,9 @@ use tks::db;
 
 #[tokio::test]
 async fn test_migration_and_schema_verification() {
-    let database_url = db::resolve_database_url();
+    let database_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test database");
 
     let (mut client, _handle) = db::connect(&database_url)
         .await

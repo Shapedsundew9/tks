@@ -31,8 +31,10 @@ async fn spawn_test_server() -> (
     tokio::sync::MutexGuard<'static, ()>,
 ) {
     let guard = TEST_MUTEX.lock().await;
-    let pool = db::create_pool(&db::resolve_database_url())
-        .expect("Failed to create PostgreSQL connection pool");
+    let test_db_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test database");
+    let pool = db::create_pool(&test_db_url).expect("Failed to create PostgreSQL connection pool");
 
     // Ensure migrations are executed and clean previous test queue residue
     {

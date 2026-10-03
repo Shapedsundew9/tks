@@ -51,7 +51,9 @@ async fn setup_test_context() -> (
     GitReadHandle,
 ) {
     let guard = TEST_MUTEX.lock().await;
-    let database_url = db::resolve_database_url();
+    let database_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test database");
     let (mut client, _handle) = db::connect(&database_url)
         .await
         .expect("Failed to connect to database");

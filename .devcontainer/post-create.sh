@@ -19,6 +19,13 @@ if [[ -x .shared/tools/scripts/configure-subtree.sh ]]; then
     .shared/tools/scripts/configure-subtree.sh
 fi
 
+echo "Initializing test database tks_test..."
+if command -v psql >/dev/null 2>&1; then
+    PGPASSWORD=postgres psql -h postgres -U postgres -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'tks_test'" 2>/dev/null | grep -q 1 || \
+        PGPASSWORD=postgres psql -h postgres -U postgres -d postgres -c "CREATE DATABASE tks_test;" 2>/dev/null || true
+    PGPASSWORD=postgres psql -h postgres -U postgres -d tks_test -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null || true
+fi
+
 ANTIGRAVITY_SETTINGS="$HOME/.gemini/antigravity-cli/settings.json"
 if [[ ! -f "$ANTIGRAVITY_SETTINGS" ]]; then
     mkdir -p "$(dirname "$ANTIGRAVITY_SETTINGS")"

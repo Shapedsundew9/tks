@@ -132,23 +132,17 @@ impl fmt::Display for GitError {
 
 impl std::error::Error for GitError {}
 
-/// Resolves the Git repository directory from environment or devcontainer defaults.
+/// Resolves the Git repository directory from environment or workspace defaults.
 ///
 /// Precedence:
 /// 1. `TKS_GIT_DIR` environment variable
-/// 2. `/git/tks.git` if parent directory `/git` exists (devcontainer volume)
-/// 3. `target/git/tks.git` fallback for local execution and tests
+/// 2. `.substrate/git/tks.git` workspace directory
 pub fn resolve_git_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("TKS_GIT_DIR") {
         return PathBuf::from(dir);
     }
 
-    let container_git = PathBuf::from("/git/tks.git");
-    if container_git.parent().map(|p| p.is_dir()).unwrap_or(false) {
-        container_git
-    } else {
-        PathBuf::from("target/git/tks.git")
-    }
+    PathBuf::from(".substrate/git/tks.git")
 }
 
 /// Normalizes and validates a document path.

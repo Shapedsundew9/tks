@@ -67,9 +67,42 @@ struct DogfoodContext {
     _temp_repo: TempRepoGuard,
 }
 
+impl DogfoodContext {
+    async fn cleanup_database(&self) {
+        if let Ok(client) = self.pool.get().await {
+            let _ = client
+                .execute(
+                    "DELETE FROM node_embeddings WHERE node_id IN (SELECT id FROM graph_nodes WHERE doc_path IN ('specs/vision.md', 'specs/strategic-planning-backlog.md'));",
+                    &[],
+                )
+                .await;
+            let _ = client
+                .execute(
+                    "DELETE FROM graph_edges WHERE from_node_id IN (SELECT id FROM graph_nodes WHERE doc_path IN ('specs/vision.md', 'specs/strategic-planning-backlog.md')) OR to_node_id IN (SELECT id FROM graph_nodes WHERE doc_path IN ('specs/vision.md', 'specs/strategic-planning-backlog.md'));",
+                    &[],
+                )
+                .await;
+            let _ = client
+                .execute(
+                    "DELETE FROM graph_nodes WHERE doc_path IN ('specs/vision.md', 'specs/strategic-planning-backlog.md');",
+                    &[],
+                )
+                .await;
+            let _ = client
+                .execute(
+                    "DELETE FROM ingestion_jobs WHERE doc_path IN ('specs/vision.md', 'specs/strategic-planning-backlog.md');",
+                    &[],
+                )
+                .await;
+        }
+    }
+}
+
 async fn setup_dogfood_environment() -> DogfoodContext {
     let guard = TEST_MUTEX.lock().await;
-    let database_url = db::resolve_database_url();
+    let database_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test database");
 
     // Ensure embedded migrations are applied
     let (mut client, _handle) = db::connect(&database_url)
@@ -821,6 +854,7 @@ async fn test_phase1_dogfooding_gate1_mvd_acceptance() {
     );
 
     ctx.cancel_token.cancel();
+    ctx.cleanup_database().await;
 
     println!("\n===============================================================================");
     println!("DOGFOODING MILESTONE GATE 1 PASSED: READ-ONLY SELF-HOSTING VALIDATED (INV-6)");

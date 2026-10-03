@@ -10,18 +10,18 @@ curl --fail --silent --show-error "${OLLAMA_HOST}/api/version" >/dev/null
 echo "✓ API version endpoint is reachable"
 
 tags_json="$(curl --fail --silent --show-error "${OLLAMA_HOST}/api/tags")"
-python3 - "${MODEL}" <<'PY' <<<"${tags_json}"
+python3 -c '
 import json
 import sys
 
 model = sys.argv[1]
-payload = json.load(sys.stdin)
+payload = json.loads(sys.argv[2])
 names = {m.get("name", "") for m in payload.get("models", [])}
 if model not in names:
     print(f"Model not found: {model}", file=sys.stderr)
     print("Run scripts/llm/pull-models.sh first.", file=sys.stderr)
     sys.exit(1)
-PY
+' "${MODEL}" "${tags_json}"
 echo "✓ Model is present"
 
 curl --fail --silent --show-error \
@@ -32,12 +32,12 @@ curl --fail --silent --show-error \
 echo "✓ OpenAI-compatible /v1 chat completion succeeded"
 
 ps_json="$(curl --fail --silent --show-error "${OLLAMA_HOST}/api/ps")"
-python3 - "${MODEL}" <<'PY' <<<"${ps_json}"
+python3 -c '
 import json
 import sys
 
 model = sys.argv[1]
-payload = json.load(sys.stdin)
+payload = json.loads(sys.argv[2])
 for item in payload.get("models", []):
     if item.get("name") != model:
         continue
@@ -56,6 +56,6 @@ for item in payload.get("models", []):
     break
 else:
     print("⚠ Model is not currently loaded (this is acceptable immediately after idle unload)")
-PY
+' "${MODEL}" "${ps_json}"
 
 echo "Smoke test complete."

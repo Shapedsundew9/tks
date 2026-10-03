@@ -23,6 +23,9 @@
 | DEC-1.17 | WP-1.6 | Canonical Key Deduping and Single-Entity Assignment per Document and Promotion Batch | Technical Trade-off | architecture.md §5.1, §9 D-58, technical-backlog.md TB-7 | Implemented |
 | DEC-1.18 | WP-1.6 | Stdio Streaming Proxy Connection Resilience and Dual-Entrypoint Dispatch | Technical Trade-off | technical-backlog.md TB-4, architecture.md §8 | Implemented |
 | DEC-1.19 | WP-1.6 | Polymorphic Staging Node Inspection REST Endpoint with Verbatim ODB Slicing | API/Contract Elaboration | architecture.md §6, §8, §9 D-83 | Implemented |
+| DEC-1.20 | WP-1.3 | Markdown Table AST Parsing and Candidate Row Entity Extraction | Specification Gap | architecture.md §5.2, technical-backlog.md TB-2 | Implemented |
+| DEC-1.21 | WP-1.3 | Differentiated Architectural and Implementation Decision Taxonomy and Node Classification | Technical Trade-off | architecture.md §5.1, §9 D-1, technical-backlog.md TB-7 | Implemented |
+| DEC-1.22 | WP-1.3 | Table Metadata Cross-Referencing, Tag Ingestion and Heading Precedence Reconciliation | API/Contract Elaboration | architecture.md §5.1, §9 D-58, technical-backlog.md TB-7 | Implemented |
 
 ---
 
@@ -258,4 +261,41 @@
   * *Option B: Add polymorphic inspection endpoints `GET /api/v1/staging/inspect/{id}` and `GET /api/v1/nodes/{id}` on the Gateway API.* Pros: accepts either 128-bit UUIDs or canonical requirement keys (`TB-1`); retrieves node metadata from PostgreSQL; transparently resolves the Git commit SHA and byte range from `GitReadHandle::read_blob_span`; returns structured JSON including verbatim text content, metadata, attributes, and lifecycle state. The CLI simply renders this JSON response. Cons: requires gateway route registration and git read handle integration.
 * **Decision Taken & Rationale:** Option B. Implementing polymorphic REST inspection endpoints maintains strict client-server decoupling, enables thin CLI ergonomics, and provides unified inspection capabilities for both draft and active nodes across REST, CLI, and MCP callers.
 * **Upstream Impact & Target Document:** `architecture.md` §6, §8, and §9 D-83.
+* **Status:** Implemented
+
+### DEC-1.20: Markdown Table AST Parsing and Candidate Row Entity Extraction
+
+* **Work Package:** WP-1.3
+* **Category:** Specification Gap
+* **Context & Problem:** CommonMark documents frequently define key architectural requirements, constraints (e.g., `C-1`), and decision matrices inside Markdown tables. The initial pulldown-cmark parser only parsed headings and block-level paragraphs/lists, treating entire tables as single unparsed text blocks or dropping tabular structure. Consequently, requirements defined within table rows could not be extracted as addressable candidate entities or assigned granular byte spans.
+* **Options Considered:**
+  * *Option A: Treat entire tables as monolithic text chunks.* Pros: simple parsing. Cons: individual table rows containing distinct requirements or constraints cannot be independently tracked, linked, or addressed by canonical keys; violates granular substrate addressability.
+  * *Option B: Custom line-by-line regex parsing of Markdown tables.* Pros: straightforward. Cons: fragile; fails on escaped pipes, multiline cells, or non-standard formatting; decouples table parsing from the pulldown-cmark AST event stream.
+  * *Option C: Native CommonMark AST table handling via `pulldown-cmark` with dual-level chunk emission.* Pros: seamlessly tracks `Tag::Table`, `Tag::TableHead`, `Tag::TableRow`, and `Tag::TableCell` events; extracts headers into a structured array and rows into key-value maps; emits the complete container table block with `TableData` while generating individual granular candidate chunks for rows containing canonical keys (`#table-row-<slug>`) with exact source byte offsets; preserves both holistic table structure and atomic row addressability. Cons: requires managing row buffer state within the AST parser loop.
+* **Decision Taken & Rationale:** Option C. Adding native CommonMark AST table parsing with dual-level chunk emission enables granular entity extraction for tabular requirements while preserving full table structure in structured metadata.
+* **Upstream Impact & Target Document:** `architecture.md` §5.2, `technical-backlog.md` TB-2.
+* **Status:** Implemented
+
+### DEC-1.21: Differentiated Architectural and Implementation Decision Taxonomy and Node Classification
+
+* **Work Package:** WP-1.3
+* **Category:** Technical Trade-off
+* **Context & Problem:** System specifications capture two fundamentally distinct types of decisions: high-level architectural decisions that govern invariant system properties across phases (`D-*`, e.g., `D-1` through `D-84` in `architecture.md`) and tactical implementation decisions that record work package execution trade-offs and specification resolutions (`DEC-*`, e.g., `DEC-1.1` in `phase1-decisions.md`). Previously, all non-requirement blocks defaulted to `UNCLASSIFIED` or `SPECIFICATION`. Furthermore, decision nodes carry critical governance weight and must not be modified autonomously without human review.
+* **Options Considered:**
+  * *Option A: Conflate decisions under `SPECIFICATION` or `REQUIREMENT` node types.* Pros: avoids introducing new node types. Cons: obscures the provenance of design choices; prevents targeted MCP queries filtering specifically for architectural rationale; fails to distinguish normative mandates from design trade-off context.
+  * *Option B: Introduce `"DECISION"` as an explicit first-class substrate node type with dedicated prefix detection and mandatory human governance.* Pros: adds `"DECISION"` to the canonical node type enum (alongside `REQUIREMENT`, `SPECIFICATION`, `TASK`); classifies both `D-*` and `DEC-*` entities as `DECISION` across fallback heuristics, regex scanners, and LLM classification schemas; automatically assigns `governance_policy = "HUMAN_REVIEW_REQUIRED"`; establishes clear taxonomy between global architecture (`D-*`) and phase implementation records (`DEC-*`). Cons: requires schema and prompt alignment.
+* **Decision Taken & Rationale:** Option B. Establishing `"DECISION"` as a first-class node type with prefix-based recognition for `D-*` and `DEC-*` ensures architectural and implementation decisions are cleanly categorized and guarded by human review.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 D-1, `technical-backlog.md` TB-7.
+* **Status:** Implemented
+
+### DEC-1.22: Table Metadata Cross-Referencing, Tag Ingestion and Heading Precedence Reconciliation
+
+* **Work Package:** WP-1.3
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** Decision ledgers and constraint tables in specification documents summarize metadata across columns (such as `Work Package`, `Category`, `Status`, `Target Upstream Document`, `Source`). When documents contain both a summary ledger row and a detailed markdown heading (`### DEC-1.1: ...`) for the same canonical key, naïve reconciliation either creates conflicting candidate nodes attempting to claim the same unique `node_key` (triggering unique constraint violations on `idx_graph_nodes_node_key_active`) or drops the tabular metadata from the heading entity.
+* **Options Considered:**
+  * *Option A: Discard table rows if a corresponding heading exists.* Pros: avoids duplicate keys. Cons: discards the structured category tags, work package mappings, and lifecycle status defined in the table.
+  * *Option B: Cross-reference table metadata globally across the document and prioritize headings during reconciliation.* Pros: During reconciliation, `key_to_table_metadata` indexes all tabular key-value attributes; heading chunks are prioritized (`priority 0`) to claim the active `node_key`, while table row chunks (`priority 1`) yield the key; candidate nodes claiming the key are enriched with normalized column attributes (`category`, `status`, etc.); table rows without dedicated headings (e.g. `C-1`) claim the key with synthesized titles (`C-1: Pure Rust package`). Cons: requires two-pass reconciliation analysis.
+* **Decision Taken & Rationale:** Option B. Cross-referencing table metadata with heading priority ensures 100% metadata enrichment for decision nodes while strictly upholding unique canonical key constraints.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 D-58, `technical-backlog.md` TB-7.
 * **Status:** Implemented

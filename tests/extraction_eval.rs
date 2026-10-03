@@ -323,7 +323,7 @@ async fn test_graceful_degradation() {
     );
 
     // Verify against PostgreSQL database check constraint (chk_node_type)
-    let db_url = db::resolve_database_url();
+    let db_url = db::resolve_test_database_url();
     if let Ok((mut client, _handle)) = db::connect(&db_url).await {
         println!("Connected to database; verifying D-62 check constraint chk_node_type...");
 

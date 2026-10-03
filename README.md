@@ -108,6 +108,48 @@ This makes it easy to run the CLI directly via Cargo:
 cargo run --bin protoproject
 ```
 
+## Substrate Storage & Database Management
+
+### Persistent Git Repository
+
+The development bare Git repository is stored inside the workspace at `.substrate/git/tks.git`. Because the workspace directory is bind-mounted directly from the host filesystem, the repository persists across container rebuilds and volume pruning (`docker compose down -v`).
+
+You can override the Git storage path via the `TKS_GIT_DIR` environment variable or `--git-dir` CLI flag:
+
+```bash
+cargo run --bin tks -- serve --git-dir .substrate/git/tks.git
+```
+
+### Database Backup and Restore
+
+Database snapshots can be created and restored using the utility scripts in `scripts/`:
+
+#### Back up the database
+
+Dumps the current PostgreSQL schema and state to `.substrate/backups/tks-db-<timestamp>.sql`:
+
+```bash
+./scripts/db-backup.sh
+```
+
+You can optionally pass a custom output path:
+
+```bash
+./scripts/db-backup.sh path/to/custom-backup.sql
+```
+
+#### Restore the database
+
+Restores from the latest backup in `.substrate/backups/` (or a specified dump file):
+
+```bash
+# Restore latest snapshot
+./scripts/db-restore.sh
+
+# Restore a specific snapshot
+./scripts/db-restore.sh .substrate/backups/tks-db-20261003-180448.sql
+```
+
 ## Devcontainer local LLM (Ollama)
 
 The devcontainer compose stack includes an isolated Ollama service for local inference.
@@ -123,7 +165,7 @@ The devcontainer compose stack includes an isolated Ollama service for local inf
 - Alternate model: `gemma4:e4b`
 - Context length: `8192`
 - Parallel requests: `1`
-- Keep-alive: `30m`
+- Keep-alive: `-1` (models stay loaded until replaced or the service restarts)
 - Max loaded models: `1`
 - Flash attention: enabled
 
@@ -150,6 +192,16 @@ Skip prompt and pull specific model(s):
 ```bash
 scripts/llm/pull-models.sh --yes qwen3:8b
 ```
+
+### Preload the default model
+
+On every container start, `postStartCommand` runs `scripts/llm/preload-model.sh` in the background, loading `TKS_LLM_MODEL` (default `qwen3:8b`) with `keep_alive=-1`. It is skipped silently if Ollama is unreachable or the model is not pulled. Logs go to `/tmp/ollama-preload.log`. Run manually (optionally with a model name):
+
+```bash
+scripts/llm/preload-model.sh
+```
+
+Because `OLLAMA_MAX_LOADED_MODELS=1`, requesting a different model unloads the preloaded one.
 
 ### Smoke test
 
