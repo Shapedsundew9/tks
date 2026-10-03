@@ -16,6 +16,13 @@ use crate::storage::governance::{GovernanceAction, GovernancePolicy, evaluate_go
 use crate::storage::mutation::{ElaboratedTaskResult, MutationError, insert_audit_event};
 use crate::storage::{GraphEdge, GraphNode, StorageError};
 
+pub use crate::storage::conflict::{
+    MergeConflict, MergePreview, PromotionResult, RebaseResult, analyze_workspace_merge,
+    analyze_workspace_merge_client, find_active_parent_replacement, merge_workspace,
+    merge_workspace_client, promote_workspace, promote_workspace_client, sync_workspace_rebase,
+    sync_workspace_rebase_client,
+};
+
 /// Relational representation of an isolated agent workspace container.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorkspaceRecord {

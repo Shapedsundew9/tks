@@ -105,6 +105,14 @@ pub fn mutation_error_to_response(err: MutationError) -> (StatusCode, Json<Value
                 "message": e.to_string()
             })),
         ),
+        MutationError::MergeConflict(conflicts) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "ERR_MERGE_CONFLICT",
+                "message": format!("Workspace merge conflict detected: {} conflict(s)", conflicts.len()),
+                "conflicts": conflicts,
+            })),
+        ),
         MutationError::Other(msg) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({

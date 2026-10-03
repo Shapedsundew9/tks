@@ -482,6 +482,44 @@ impl StorageRepo {
         let client = self.get_client().await?;
         crate::storage::workspace::get_workspace_edges(&client, workspace_id).await
     }
+
+    /// Analyzes divergence between a workspace branch and the live substrate (WP-3.3).
+    pub async fn analyze_workspace_merge(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<crate::storage::conflict::MergePreview, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::conflict::analyze_workspace_merge(&mut client, workspace_id).await
+    }
+
+    /// Promotes workspace candidate tasks into the live substrate (WP-3.3).
+    pub async fn promote_workspace(
+        &self,
+        workspace_id: Uuid,
+        auto_reparent: bool,
+        actor: &AuthenticatedAgent,
+    ) -> Result<crate::storage::conflict::PromotionResult, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::conflict::promote_workspace(&mut client, workspace_id, auto_reparent, actor)
+            .await
+    }
+
+    /// Synchronizes a workspace container branch with live substrate state (WP-3.3).
+    pub async fn sync_workspace_rebase(
+        &self,
+        workspace_id: Uuid,
+        auto_reparent: bool,
+        actor: &AuthenticatedAgent,
+    ) -> Result<crate::storage::conflict::RebaseResult, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::conflict::sync_workspace_rebase(
+            &mut client,
+            workspace_id,
+            auto_reparent,
+            actor,
+        )
+        .await
+    }
 }
 
 /// Acquires the global transaction advisory lock:

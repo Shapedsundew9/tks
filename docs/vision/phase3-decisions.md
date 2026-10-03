@@ -9,6 +9,9 @@
 | DEC-3.3 | WP-3.1 | Dedicated Asynchronous PostgreSQL LISTEN/NOTIFY Driver and Tokio Broadcast Event Bus | Technical Trade-off | architecture.md §6 | Implemented |
 | DEC-3.4 | WP-3.2 | Bypassing Structural Advisory Lock for Workspace Candidate Elaboration | Technical Trade-off | architecture.md §5.2, technical-backlog.md TB-1 | Implemented |
 | DEC-3.5 | WP-3.2 | Caller-Scoped Dynamic Draft Overlay in Context Envelopes and Requirement Searches (INV-7) | API/Contract Elaboration | architecture.md §5.2, §6.1, vision.md INV-7 | Implemented |
+| DEC-3.6 | WP-3.3 | Three-Way Topological Merge Analysis and Cycle Verification via Combined Subgraph CTE | Technical Trade-off | architecture.md §5.2, §5.3 | Implemented |
+| DEC-3.7 | WP-3.3 | Deterministic Auto-Reparenting Lineage Resolution via Replaces-Node-ID Chain and Canonical Key Fallback | Specification Gap | architecture.md §5.3, technical-backlog.md TB-1 | Implemented |
+| DEC-3.8 | WP-3.3 | Canonical Lock Serialization Order and Atomicity for Workspace Batch Promotion | Technical Trade-off | architecture.md §5.2, §5.3, vision.md INV-1, INV-2, INV-5 | Implemented |
 
 ---
 
@@ -73,3 +76,40 @@
 * **Decision Taken & Rationale:** Adopted Option B. Implemented `assemble_context_envelope_workspace` in `src/storage/envelope.rs` and `query_requirements_with_workspace` in `src/storage/search.rs` with strict caller verification. Default APIs delegate with `workspace_id = None`, preserving existing behavior.
 * **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.2 and §6.1; `docs/vision/vision.md` INV-7.
 * **Status:** Implemented
+
+### DEC-3.6: Three-Way Topological Merge Analysis and Cycle Verification via Combined Subgraph CTE
+
+* **Work Package:** WP-3.3
+* **Category:** Technical Trade-off
+* **Context & Problem:** Work Package WP-3.3 requires analyzing topological divergence between a workspace branch and the live substrate since `base_event_seq`, detecting cycles, key collisions, and parent requirement supersessions prior to or during promotion. Simulating whether proposed workspace edges would create a cycle in the live DAG cannot be done simply by checking workspace edges in isolation; workspace edges could connect existing disjoint branches of the live substrate into an illegal cycle. Constructing a complete in-memory graph of all live edges across the entire repository in Rust memory would be memory-prohibitive and vulnerable to race conditions against concurrent mutations.
+* **Options Considered:**
+  * *Option A:* In-memory cycle detection. Query all active edges from PostgreSQL, build a `petgraph::Graph` in Rust memory, inject workspace candidate edges, and run `petgraph::algo::is_cyclic_directed`. Pros: Uses established Rust graph library routines. Cons: Prohibitive memory consumption for large substrates; transfer of entire edge dataset over the wire; high latency violating fast preview requirements; potential inconsistency between memory snapshot and live database state.
+  * *Option B:* Single SQL query with recursive CTE on the union of active live edges and workspace candidate edges. In PostgreSQL, define a temporary combined edge set (`UNION ALL` between `graph_edges` where `deleted_at IS NULL` and candidate edges belonging to the workspace), then run a recursive CTE `cycle_walk` starting from candidate edges, accumulating visited node IDs in a `uuid[]` path array. A cycle is detected if `curr.target_node_id = ANY(path)`. Pros: Evaluated directly inside PostgreSQL without roundtrips or large payload memory transfers; leverages database indexes; scales efficiently to large graph substrates; returns exact cycle path and participating node IDs. Cons: Requires writing and maintaining recursive SQL query logic.
+* **Decision Taken & Rationale:** Adopted Option B. In `src/storage/conflict.rs`, `detect_cycle_conflicts` issues a single recursive CTE over the combined active and workspace edges, immediately detecting any transitive cycle that would be created upon promotion, returning structured `MergeConflict::CycleDetected` conflicts with the offending edge and cycle path node IDs.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.2 Multi-Agent Workspaces & Concurrency Model, §5.3 Conflict Taxonomy & Topological Resolution.
+* **Status:** Implemented
+
+### DEC-3.7: Deterministic Auto-Reparenting Lineage Resolution via Replaces-Node-ID Chain and Canonical Key Fallback
+
+* **Work Package:** WP-3.3
+* **Category:** Specification Gap
+* **Context & Problem:** When a workspace candidate task links to a parent requirement node that was subsequently superseded or rolled back on the live substrate (`replaces_node_id` chain or `lifecycle_state != 'ACTIVE'`), WP-3.3 requires deterministic auto-reparenting when parent requirements advanced cleanly under `AUTONOMOUS_ELABORATION` or explicit rebase. If a parent node was replaced multiple times in succession on the live branch, or if a parent node is superseded by an updated version that shares the canonical `node_key`, the auto-reparenting engine needs a reliable, unambiguous algorithm to discover the active leaf replacement without human intervention.
+* **Options Considered:**
+  * *Option A:* Shallow single-hop parent replacement lookup. Check only if another node has `replaces_node_id = parent_id`. If that replacement is itself superseded, abort and raise a conflict. Pros: Trivial query. Cons: Fails in multi-turn elaboration where live requirements undergo multiple revisions while an agent is working in a long-lived branch; forces unnecessary manual rebase.
+  * *Option B:* Multi-level recursive lineage traversal with canonical key fallback. Traverse the `replaces_node_id` forward lineage recursively up to a depth limit (100) to find the terminal `ACTIVE` replacement. If the forward chain ends or is ambiguous, fall back to matching the active node sharing the identical canonical `node_key` if exactly one such active node exists. If no valid active replacement exists or multiple conflicting candidates exist, emit `MergeConflict::ParentSuperseded` with `can_auto_reparent: false`. Pros: Fully autonomous and deterministic resolution across multi-version migrations; adheres to `AUTONOMOUS_ELABORATION` governance; transparently repairs parent pointers in both `attributes->'parent_node_id'` and parent-child edges (`CONSTRAINED_BY`, `FULFILLS`). Cons: Requires careful recursive query logic and validation of replacement active states.
+* **Decision Taken & Rationale:** Adopted Option B. In `src/storage/conflict.rs`, `find_active_parent_replacement` performs recursive forward lineage traversal and canonical key resolution. During promotion or rebase with `auto_reparent = true`, candidate node attributes and edge target pointers are deterministically updated to point to the resolved active parent, appending audit records documenting the auto-reparenting event.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.3 Conflict Taxonomy & Topological Resolution; `docs/vision/technical-backlog.md` TB-1.
+* **Status:** Implemented
+
+### DEC-3.8: Canonical Lock Serialization Order and Atomicity for Workspace Batch Promotion
+
+* **Work Package:** WP-3.3
+* **Category:** Technical Trade-off
+* **Context & Problem:** WP-3.3 requires atomic promotion (`promote_workspace`) transitioning candidate nodes and edges from `DRAFT` to `ACTIVE` under the canonical lock hierarchy (`pg_advisory_xact_lock` -> row locks in ascending key order), ensuring strict linearizability, monotonic `event_seq` assignment, shared transaction `batch_id`, and zero-downtime integration without race conditions or deadlocks (INV-1, INV-2, INV-5, C-18, C-19). Because candidate nodes and edges were created in workspaces without holding advisory locks (DEC-3.4), promoting them into the live substrate must enforce the exact same structural invariants and lock order as direct live mutations.
+* **Options Considered:**
+  * *Option A:* Independent single-row updates with optimistic concurrency checks without transaction-level advisory locks. Pros: Potentially higher concurrency if no conflicting workspaces exist. Cons: High vulnerability to race conditions: two concurrent promotions could simultaneously pass cycle checks against each other and commit mutually cyclic edges into the live substrate, violating Invariant INV-1.
+  * *Option B:* Canonical lock hierarchy in a single atomic transaction: acquire `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`, re-verify conflict freedom against the committed live state inside the lock scope, lock candidate rows in deterministic order, transition node states to `ACTIVE` with monotonic `event_seq` from `audit_ledger_event_seq_seq`, upsert embeddings into `node_embeddings`, promote edges with foreign key validation, archive workspace record (`lifecycle_state = 'MERGED'`), append audit ledger records with a shared `batch_id`, and dispatch `pg_notify` graph events. Pros: Fully satisfies INV-1 (zero cycles), INV-2 (audit integrity), INV-5 (linearizable history), and C-18/C-19 (strict lock hierarchy); prevents all race conditions during concurrent workspace promotions. Cons: Holds transaction-scoped structural advisory lock during the promotion transaction; requires fast batch execution to minimize lock duration.
+* **Decision Taken & Rationale:** Adopted Option B. In `src/storage/conflict.rs`, `promote_workspace_client` begins by acquiring the structural advisory lock, re-analyzes divergence to guarantee no intermediate live commits introduced conflicts, and executes all node/edge promotions and audit ledger appends within a single atomic transaction.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.2 Multi-Agent Workspaces & Concurrency Model, §5.3 Conflict Taxonomy & Topological Resolution; `docs/vision/vision.md` INV-1, INV-2, INV-5.
+* **Status:** Implemented
+

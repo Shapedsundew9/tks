@@ -155,6 +155,26 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/workspaces/{id}/elaborate",
             post(routes::workspaces::elaborate_workspace_task_route),
         )
+        .route(
+            "/api/v1/workspaces/{id}/promote",
+            post(routes::workspaces::promote_workspace_route),
+        )
+        .route(
+            "/api/v1/workspaces/{id}/merge",
+            post(routes::workspaces::promote_workspace_route),
+        )
+        .route(
+            "/api/v1/workspaces/{id}/rebase",
+            post(routes::workspaces::rebase_workspace_route),
+        )
+        .route(
+            "/api/v1/workspaces/{id}/analyze",
+            get(routes::workspaces::analyze_workspace_merge_route),
+        )
+        .route(
+            "/api/v1/workspaces/{id}/merge-preview",
+            get(routes::workspaces::analyze_workspace_merge_route),
+        )
         // Model Context Protocol (MCP) endpoints over HTTP/SSE and direct JSON-RPC (D-19, TB-4)
         .route("/mcp/sse", get(mcp::handle_mcp_sse))
         .route("/mcp/message", post(mcp::handle_mcp_message))

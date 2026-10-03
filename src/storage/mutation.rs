@@ -17,6 +17,7 @@ use tokio_postgres::Client;
 use uuid::Uuid;
 
 use crate::gateway::auth::AuthenticatedAgent;
+use crate::storage::conflict::MergeConflict;
 use crate::storage::governance::{
     GovernanceAction, GovernancePolicy, TaskStatus, evaluate_governance_action,
 };
@@ -52,6 +53,8 @@ pub enum MutationError {
     ConfirmationRequired(Box<RevertPreview>),
     /// Node reverification failed because direct upstream dependencies are not active.
     DependencyInactive(String),
+    /// Workspace merge conflict detected during merge analysis, rebase, or promotion.
+    MergeConflict(Vec<MergeConflict>),
     /// General storage mutation error.
     Other(String),
 }
@@ -72,6 +75,7 @@ impl MutationError {
             Self::Pool(_) => "ERR_POOL",
             Self::ConfirmationRequired(_) => "ERR_CONFIRMATION_REQUIRED",
             Self::DependencyInactive(_) => "ERR_DEPENDENCY_INACTIVE",
+            Self::MergeConflict(_) => "ERR_MERGE_CONFLICT",
             Self::Other(_) => "ERR_MUTATION_FAILED",
         }
     }
@@ -81,6 +85,15 @@ impl MutationError {
     pub fn preview(&self) -> Option<&RevertPreview> {
         match self {
             Self::ConfirmationRequired(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Returns the merge conflicts if this error is `MergeConflict`.
+    #[must_use]
+    pub fn merge_conflicts(&self) -> Option<&[MergeConflict]> {
+        match self {
+            Self::MergeConflict(c) => Some(c),
             _ => None,
         }
     }
@@ -112,6 +125,14 @@ impl std::fmt::Display for MutationError {
                 )
             }
             Self::DependencyInactive(msg) => write!(f, "ERR_DEPENDENCY_INACTIVE: {msg}"),
+            Self::MergeConflict(conflicts) => {
+                write!(
+                    f,
+                    "ERR_MERGE_CONFLICT: {} conflict(s) detected: {:?}",
+                    conflicts.len(),
+                    conflicts
+                )
+            }
             Self::Other(msg) => write!(f, "Mutation error: {msg}"),
         }
     }
@@ -182,6 +203,10 @@ impl From<MutationError> for StorageError {
             }
             MutationError::CycleDetected { from_id, to_id } => Self::InvalidState(format!(
                 "ERR_GRAPH_CYCLE_DETECTED: cycle between {from_id} and {to_id}"
+            )),
+            MutationError::MergeConflict(conflicts) => Self::InvalidState(format!(
+                "ERR_MERGE_CONFLICT: {} conflict(s) detected",
+                conflicts.len()
             )),
             other => Self::InvalidState(other.to_string()),
         }

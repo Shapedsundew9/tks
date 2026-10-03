@@ -12,8 +12,9 @@ use crate::gateway::AppState;
 use crate::gateway::auth::AuthenticatedAgent;
 use crate::gateway::routes::mutation::mutation_error_to_response;
 use crate::storage::workspace::{
-    create_workspace_with_attributes, discard_workspace, elaborate_in_workspace, get_workspace,
-    get_workspace_edges, get_workspace_nodes, list_workspaces,
+    analyze_workspace_merge, create_workspace_with_attributes, discard_workspace,
+    elaborate_in_workspace, get_workspace, get_workspace_edges, get_workspace_nodes,
+    list_workspaces, promote_workspace, sync_workspace_rebase,
 };
 
 /// Request payload for creating a workspace container.
@@ -294,6 +295,166 @@ pub async fn elaborate_workspace_task_route(
                 "governance_policy": res.governance_policy,
                 "node_key": res.node_key,
                 "node": res.node,
+            })),
+        ),
+        Err(err) => mutation_error_to_response(err),
+    }
+}
+
+/// Request payload for workspace promotion/merge (WP-3.3).
+#[derive(Debug, Deserialize, Default)]
+pub struct PromoteWorkspacePayload {
+    #[serde(default)]
+    pub auto_reparent: Option<bool>,
+}
+
+/// Request payload for workspace synchronization rebase (WP-3.3).
+#[derive(Debug, Deserialize, Default)]
+pub struct RebaseWorkspacePayload {
+    #[serde(default)]
+    pub auto_reparent: Option<bool>,
+}
+
+/// `POST /api/v1/workspaces/{id}/promote` (and alias `POST /api/v1/workspaces/{id}/merge`)
+///
+/// Promotes all candidate nodes and edges from `DRAFT` to `ACTIVE` under canonical lock
+/// serialization (`pg_advisory_xact_lock` -> row locks) with monotonic `event_seq` and `batch_id`.
+pub async fn promote_workspace_route(
+    State(state): State<AppState>,
+    actor: AuthenticatedAgent,
+    Path(id): Path<Uuid>,
+    payload: Option<Json<PromoteWorkspacePayload>>,
+) -> impl IntoResponse {
+    let mut client = match state.pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "ERR_POOL",
+                    "message": format!("Connection pool error: {e}")
+                })),
+            );
+        }
+    };
+
+    let auto_reparent = payload.and_then(|p| p.0.auto_reparent).unwrap_or(false);
+
+    match promote_workspace(&mut client, id, auto_reparent, &actor).await {
+        Ok(res) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": res.status,
+                "workspace_id": id,
+                "batch_id": res.batch_id,
+                "promoted_nodes": res.promoted_nodes,
+                "promoted_edges": res.promoted_edges,
+                "event_seq": res.event_seq,
+            })),
+        ),
+        Err(err) => mutation_error_to_response(err),
+    }
+}
+
+/// `POST /api/v1/workspaces/{id}/rebase`
+///
+/// Synchronizes a workspace container branch with live substrate state, advancing `base_event_seq`
+/// and optionally auto-reparenting clean parent revisions (WP-3.3).
+pub async fn rebase_workspace_route(
+    State(state): State<AppState>,
+    actor: AuthenticatedAgent,
+    Path(id): Path<Uuid>,
+    payload: Option<Json<RebaseWorkspacePayload>>,
+) -> impl IntoResponse {
+    let mut client = match state.pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "ERR_POOL",
+                    "message": format!("Connection pool error: {e}")
+                })),
+            );
+        }
+    };
+
+    let auto_reparent = payload.and_then(|p| p.0.auto_reparent).unwrap_or(false);
+
+    match sync_workspace_rebase(&mut client, id, auto_reparent, &actor).await {
+        Ok(res) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": res.status,
+                "workspace_id": id,
+                "old_base_event_seq": res.old_base_event_seq,
+                "new_base_event_seq": res.new_base_event_seq,
+                "reparented_tasks": res.reparented_tasks,
+            })),
+        ),
+        Err(err) => mutation_error_to_response(err),
+    }
+}
+
+/// `GET /api/v1/workspaces/{id}/analyze` (and alias `GET /api/v1/workspaces/{id}/merge-preview`)
+///
+/// Analyzes workspace divergence against the live substrate, detecting cycles, supersessions,
+/// and key collisions (WP-3.3).
+pub async fn analyze_workspace_merge_route(
+    State(state): State<AppState>,
+    actor: AuthenticatedAgent,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let mut client = match state.pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "ERR_POOL",
+                    "message": format!("Connection pool error: {e}")
+                })),
+            );
+        }
+    };
+
+    // Caller authorization check: only owner or admin can inspect workspace preview (INV-7)
+    match get_workspace(&mut client, id).await {
+        Ok(Some(ws)) => {
+            if ws.owner_agent != actor.agent_id
+                && actor.actor_type != "HUMAN"
+                && actor.agent_id != "system"
+            {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({
+                        "error": "ERR_NOT_FOUND",
+                        "message": format!("Workspace '{id}' not found")
+                    })),
+                );
+            }
+        }
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({
+                    "error": "ERR_NOT_FOUND",
+                    "message": format!("Workspace '{id}' not found")
+                })),
+            );
+        }
+        Err(err) => return mutation_error_to_response(err),
+    }
+
+    match analyze_workspace_merge(&mut client, id).await {
+        Ok(preview) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "workspace_id": id,
+                "can_fast_forward": preview.can_fast_forward,
+                "candidate_nodes": preview.candidate_nodes,
+                "candidate_edges": preview.candidate_edges,
+                "conflicts": preview.conflicts,
             })),
         ),
         Err(err) => mutation_error_to_response(err),

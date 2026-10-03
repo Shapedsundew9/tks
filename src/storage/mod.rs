@@ -3,6 +3,7 @@
 //! Provides bare Git document storage and relational graph persistence.
 
 pub mod cascade;
+pub mod conflict;
 pub mod envelope;
 pub mod event_bus;
 pub mod git;
@@ -20,6 +21,12 @@ use uuid::Uuid;
 pub use cascade::{
     CascadeInvalidationResult, calculate_staleness_score, trigger_downward_invalidation,
     trigger_downward_invalidation_client, trigger_downward_invalidation_with_bus,
+};
+pub use conflict::{
+    MergeConflict, MergePreview, PromotionResult, RebaseResult, analyze_workspace_merge,
+    analyze_workspace_merge_client, find_active_parent_replacement, merge_workspace,
+    merge_workspace_client, promote_workspace, promote_workspace_client, sync_workspace_rebase,
+    sync_workspace_rebase_client,
 };
 pub use envelope::{
     TopologicalEnvelope, assemble_context_envelope, assemble_context_envelope_workspace,
