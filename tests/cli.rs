@@ -82,6 +82,14 @@ fn test_cli_binary_help_flags() {
             .output()
             .expect("Failed to execute tks identity --help"),
         Command::new("cargo")
+            .args(["run", "--quiet", "--bin", "tks", "--", "task", "--help"])
+            .output()
+            .expect("Failed to execute tks task --help"),
+        Command::new("cargo")
+            .args(["run", "--quiet", "--bin", "tks", "--", "admin", "--help"])
+            .output()
+            .expect("Failed to execute tks admin --help"),
+        Command::new("cargo")
             .args(["run", "--quiet", "--bin", "mcp_stdio", "--", "--help"])
             .output()
             .expect("Failed to execute mcp_stdio --help"),

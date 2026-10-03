@@ -70,3 +70,7 @@ harness = false
 name = "vector_inference_bench"
 harness = false
 required-features = ["vector-spike"]
+
+[[bench]]
+name = "context_envelope_bench"
+harness = false

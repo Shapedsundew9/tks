@@ -116,6 +116,7 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/nodes/{id}/status",
             patch(routes::mutation::update_status_route),
         )
+        .route("/api/v1/tasks", get(routes::mutation::list_tasks_route))
         // Administrative rollback and node reverification routes (WP-2.4, D-73, D-76)
         .route(
             "/api/v1/admin/revert-mutations",

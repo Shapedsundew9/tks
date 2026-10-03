@@ -1204,13 +1204,39 @@ pub async fn propose_normative_draft_client(
     draft_attrs["proposed_by"] = serde_json::json!(actor.agent_id);
     draft_attrs["proposed_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
 
+    let proposal_job_id = Uuid::new_v4();
+    let doc_path = target
+        .doc_path
+        .clone()
+        .unwrap_or_else(|| "specs/proposals.md".to_string());
+    let doc_hash = target
+        .doc_hash
+        .clone()
+        .unwrap_or_else(|| "proposal".to_string());
+
+    tx.execute(
+        "INSERT INTO ingestion_jobs (job_id, doc_path, document_hash, status, attributes) \
+         VALUES ($1, $2, $3, 'STAGED', $4);",
+        &[
+            &proposal_job_id,
+            &doc_path,
+            &doc_hash,
+            &serde_json::json!({
+                "proposed_by": actor.agent_id,
+                "replaces_node_id": target.id,
+            }),
+        ],
+    )
+    .await?;
+
     // 5. Insert candidate DRAFT entity
     let row = tx
         .query_one(
             "INSERT INTO graph_nodes ( \
                  id, node_key, node_type, title, content, lifecycle_state, \
-                 governance_policy, created_by, attributes \
-             ) VALUES ($1, NULL, $2, $3, $4, 'DRAFT', 'HUMAN_REVIEW_REQUIRED', $5, $6) \
+                 governance_policy, created_by, job_id, doc_path, doc_hash, \
+                 byte_start, byte_end, attributes \
+             ) VALUES ($1, NULL, $2, $3, $4, 'DRAFT', 'HUMAN_REVIEW_REQUIRED', $5, $6, $7, $8, $9, $10, $11) \
              RETURNING id, node_key, node_type, title, content, lifecycle_state, \
                        governance_policy, created_by, job_id, doc_path, doc_hash, \
                        byte_start, byte_end, attributes;",
@@ -1220,6 +1246,11 @@ pub async fn propose_normative_draft_client(
                 &proposed_title,
                 &content,
                 &actor.agent_id,
+                &proposal_job_id,
+                &target.doc_path,
+                &target.doc_hash,
+                &target.byte_start,
+                &target.byte_end,
                 &draft_attrs,
             ],
         )
@@ -1270,7 +1301,7 @@ pub async fn propose_normative_draft_client(
         status: "PENDING_REVIEW".to_string(),
         lifecycle_state: "DRAFT".to_string(),
         governance_policy: "HUMAN_REVIEW_REQUIRED".to_string(),
-        batch_id: Some(Uuid::new_v4()),
+        batch_id: Some(proposal_job_id),
         node: draft_node,
     })
 }

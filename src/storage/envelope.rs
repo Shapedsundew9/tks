@@ -445,7 +445,7 @@ pub async fn validate_ancestor_path(
               AND (
                   e.lifecycle_state = 'ACTIVE'
                   OR $2 = true
-                  OR (e.from_node_id = ANY($1) AND e.to_node_id = ANY($1))
+                  OR (e.from_node_id = ANY($1) AND (e.to_node_id = ANY($1) OR e.to_node_id IN (SELECT id FROM graph_nodes WHERE lifecycle_state = 'ACTIVE')))
               )
             UNION ALL
             SELECT
@@ -463,7 +463,7 @@ pub async fn validate_ancestor_path(
               AND (
                   e.lifecycle_state = 'ACTIVE'
                   OR $2 = true
-                  OR (e.from_node_id = ANY($1) AND e.to_node_id = ANY($1))
+                  OR (e.from_node_id = ANY($1) AND (e.to_node_id = ANY($1) OR e.to_node_id IN (SELECT id FROM graph_nodes WHERE lifecycle_state = 'ACTIVE')))
               )
               AND (
                   curr.lifecycle_state = 'ACTIVE'

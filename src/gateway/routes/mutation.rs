@@ -2,7 +2,7 @@
 //! administrative rollbacks, and node reverification (WP-2.4, D-57, D-63, D-73, D-76).
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
@@ -11,7 +11,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::gateway::AppState;
-use crate::gateway::auth::AuthenticatedAgent;
+use crate::gateway::auth::{AuthenticatedAgent, MaybeAuthenticatedAgent};
 use crate::storage::governance::TaskStatus;
 use crate::storage::mutation::{
     MutationError, elaborate_task, propose_normative_draft, update_task_status,
@@ -491,4 +491,140 @@ pub async fn reverify_node_route(
         })),
     )
         .into_response())
+}
+
+/// Query parameters for listing execution tasks.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ListTasksQuery {
+    pub parent_id: Option<String>,
+    pub status: Option<String>,
+    pub limit: Option<u32>,
+}
+
+/// Handler for `GET /api/v1/tasks`.
+pub async fn list_tasks_route(
+    State(state): State<AppState>,
+    _caller: MaybeAuthenticatedAgent,
+    Query(params): Query<ListTasksQuery>,
+) -> Result<Response, (StatusCode, Json<Value>)> {
+    let client = state
+        .pool
+        .get()
+        .await
+        .map_err(|e| mutation_error_to_response(MutationError::Pool(e)))?;
+
+    let limit = params.limit.unwrap_or(50).clamp(1, 100) as i64;
+
+    let parent_uuid = if let Some(ref p) = params.parent_id {
+        if let Ok(u) = Uuid::parse_str(p) {
+            Some(u)
+        } else {
+            let row = client
+                .query_opt(
+                    "SELECT id FROM graph_nodes WHERE node_key = $1 LIMIT 1;",
+                    &[p],
+                )
+                .await
+                .map_err(|e| mutation_error_to_response(MutationError::Database(e)))?;
+            row.map(|r| r.get::<_, Uuid>("id"))
+        }
+    } else {
+        None
+    };
+
+    let rows = if let Some(pid) = parent_uuid {
+        if let Some(ref s) = params.status {
+            client
+                .query(
+                    "SELECT g.id, g.node_key, g.node_type, g.title, g.content, g.lifecycle_state, \
+                            g.governance_policy, g.created_by, g.attributes \
+                     FROM graph_nodes g \
+                     JOIN graph_edges e ON e.from_node_id = g.id \
+                     WHERE g.node_type = 'TASK' \
+                       AND e.to_node_id = $1 \
+                       AND (g.lifecycle_state = $2 OR g.attributes->>'execution_status' = $2) \
+                     ORDER BY g.id DESC \
+                     LIMIT $3;",
+                    &[&pid, s, &limit],
+                )
+                .await
+        } else {
+            client
+                .query(
+                    "SELECT g.id, g.node_key, g.node_type, g.title, g.content, g.lifecycle_state, \
+                            g.governance_policy, g.created_by, g.attributes \
+                     FROM graph_nodes g \
+                     JOIN graph_edges e ON e.from_node_id = g.id \
+                     WHERE g.node_type = 'TASK' \
+                       AND e.to_node_id = $1 \
+                     ORDER BY g.id DESC \
+                     LIMIT $2;",
+                    &[&pid, &limit],
+                )
+                .await
+        }
+    } else if let Some(ref s) = params.status {
+        client
+            .query(
+                "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                        governance_policy, created_by, attributes \
+                 FROM graph_nodes \
+                 WHERE node_type = 'TASK' \
+                   AND (lifecycle_state = $1 OR attributes->>'execution_status' = $1) \
+                 ORDER BY id DESC \
+                 LIMIT $2;",
+                &[s, &limit],
+            )
+            .await
+    } else {
+        client
+            .query(
+                "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                        governance_policy, created_by, attributes \
+                 FROM graph_nodes \
+                 WHERE node_type = 'TASK' \
+                 ORDER BY id DESC \
+                 LIMIT $1;",
+                &[&limit],
+            )
+            .await
+    }
+    .map_err(|e| mutation_error_to_response(MutationError::Database(e)))?;
+
+    let tasks: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            let id: Uuid = r.get("id");
+            let node_key: Option<String> = r.get("node_key");
+            let title: Option<String> = r.get("title");
+            let content: Option<String> = r.get("content");
+            let lifecycle_state: String = r.get("lifecycle_state");
+            let governance_policy: String = r.get("governance_policy");
+            let created_by: String = r.get("created_by");
+            let attrs: Value = r.get("attributes");
+            let exec_status = attrs
+                .get("execution_status")
+                .and_then(|v| v.as_str())
+                .unwrap_or(if lifecycle_state == "ACTIVE" {
+                    "OPEN"
+                } else {
+                    &lifecycle_state
+                });
+
+            serde_json::json!({
+                "id": id,
+                "node_key": node_key,
+                "node_type": "TASK",
+                "title": title,
+                "content": content,
+                "lifecycle_state": lifecycle_state,
+                "execution_status": exec_status,
+                "governance_policy": governance_policy,
+                "created_by": created_by,
+                "attributes": attrs,
+            })
+        })
+        .collect();
+
+    Ok((StatusCode::OK, Json(tasks)).into_response())
 }

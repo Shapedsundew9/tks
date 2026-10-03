@@ -15,6 +15,9 @@
 | DEC-2.9 | WP-2.4 | Polymorphic Mutation Pathway Dispatch and Unified Result Envelope in propose_node_mutation / POST /api/v1/nodes/mutate | API/Contract Elaboration | architecture.md §6 | Implemented |
 | DEC-2.10 | WP-2.4 | Dual Authentication Extraction with Dedicated -32000 / ERR_AUTH_FAILED Error Code for Mutation Tools | Specification Gap | architecture.md §6, technical-backlog.md TB-4 | Implemented |
 | DEC-2.11 | WP-2.4 | HTTP Status Code and Error Body Mapping for Storage Mutation Taxonomy | API/Contract Elaboration | architecture.md §6.2 | Implemented |
+| DEC-2.12 | WP-2.5 | Dedicated GET /api/v1/tasks Listing Endpoint and CLI Operational Subcommand Suite | API/Contract Elaboration | architecture.md §6.2, §6.3 | Implemented |
+| DEC-2.13 | WP-2.5 | Isolated Benchmark Schema with Hex UUIDs for SLA-2 Traversal Latency Verification at 10^5 Nodes | Technical Trade-off | architecture.md §7.1 | Implemented |
+| DEC-2.14 | WP-2.5 | Ingestion Job Linkage and Ancestor Path CTE Candidate Edge Traversal for Normative Proposals | Specification Gap | architecture.md §5.1, §6.2 | Implemented |
 
 ---
 
@@ -150,4 +153,40 @@
   * *Option B:* Implement comprehensive mapping: `NotFound` -> 404; `GovernanceLocked` and `GovernanceRejected` -> 403; `CycleDetected`, `AncestryValidationFailed`, and `DependencyInactive` -> 422; `ConfirmationRequired` -> 409 (with `preview` payload attached); others -> 400 or 500. Return consistent JSON body `{"code": "<ERR_CODE>", "message": "<msg>", "preview": ...}`. Pros: Provides REST clients with semantically accurate HTTP status codes (specifically 409 Conflict with blast-radius preview for rollback confirmation aborts, and 422 Unprocessable Entity for DAG invariant violations) while preserving full machine-readable error codes. Cons: Requires explicit match arm mapping in the REST gateway layer.
 * **Decision Taken & Rationale:** Adopted Option B. In `src/gateway/routes/mutation.rs::mutation_error_to_response`, each `MutationError` variant is mapped to its appropriate HTTP status code and standardized JSON error response.
 * **Upstream Impact & Target Document:** `docs/vision/architecture.md` §6.2 REST Endpoints should document the HTTP status code and error body mapping table for all `MutationError` variants.
+* **Status:** Implemented
+
+### DEC-2.12: Dedicated GET /api/v1/tasks Listing Endpoint and CLI Operational Subcommand Suite
+
+* **Work Package:** WP-2.5
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** WP-2.5 requires user-facing operational CLI commands in `src/cli/` (`tks task create`, `tks task update`, `tks task list`, `tks admin revert`, `tks admin reverify`) interacting with running server instances. The server previously provided subtask creation (`POST /api/v1/nodes/{id}/subtasks`), task status update (`PATCH /api/v1/nodes/{id}/status`), and mutation listing/filtering (`GET /api/v1/audit/ledger`), but lacked a dedicated, filtered task enumeration endpoint (`GET /api/v1/tasks`) supporting query parameters for `parent_id`, `status`, and `limit`. Without this endpoint, `tks task list` would have required querying raw audit logs or assembling context envelopes on parent nodes, which is inefficient and unergonomic.
+* **Options Considered:**
+  * *Option A:* Emulate task listing in the CLI by querying `GET /api/v1/audit/ledger` and reconstructing current active task states client-side. Pros: No new server route required. Cons: Inefficient; client-side reconstruction fails to accurately track in-place status mutations without replaying full audit history; violates thin client architecture.
+  * *Option B:* Implement a dedicated `GET /api/v1/tasks` route in `src/gateway/routes/mutation.rs` with `parent_id`, `status`, and `limit` query parameters, querying `graph_nodes` joined with `graph_edges` under `lifecycle_state = 'ACTIVE'`. Pair this with thin HTTP client implementations in `src/cli/task.rs` and `src/cli/admin.rs`. Pros: High performance, direct database indexing, clean REST separation of concerns, and ergonomic CLI experience. Cons: Adds one route to the REST gateway.
+* **Decision Taken & Rationale:** Adopted Option B. Added `GET /api/v1/tasks` handler `list_tasks_route` in `src/gateway/routes/mutation.rs` and registered it in `src/gateway/mod.rs`. Implemented `tks task create`, `update`, `list` in `src/cli/task.rs` and `tks admin revert`, `reverify` in `src/cli/admin.rs`, delegating directly to running `tks serve` instances.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §6.2 REST Endpoints and `docs/vision/architecture.md` §6.3 CLI Interface should record `GET /api/v1/tasks` and the `tks task` / `tks admin` CLI subcommand suite.
+* **Status:** Implemented
+
+### DEC-2.13: Isolated Benchmark Schema with Hex UUIDs for SLA-2 Traversal Latency Verification at 10^5 Nodes
+
+* **Work Package:** WP-2.5
+* **Category:** Technical Trade-off
+* **Context & Problem:** WP-2.5 mandates a scale traversal benchmark (`benches/context_envelope_bench.rs`) verifying SLA-2: Context Envelope Assembly Latency strictly $<100\text{ ms}$ at $10^5$ nodes in PostgreSQL. Generating 100,000 synthetic nodes and over 109,000 edges in the shared test database could contaminate functional test suites or leave massive residue if interrupted. Furthermore, PostgreSQL schema names cannot contain hyphens, requiring careful naming when using UUIDs.
+* **Options Considered:**
+  * *Option A:* Populate synthetic benchmark nodes directly into the `public` schema of the test database and rely on a `DELETE` cleanup statement. Pros: Simpler connection setup without dynamic `search_path`. Cons: Contaminates functional tests; bulk deletion of 100k rows produces significant WAL churn and table bloat; risk of test failures if benchmarks and tests run in parallel.
+  * *Option B:* Create an isolated temporary schema `bench_scale_<hex_uuid>` (stripping hyphens from UUID v4 to conform to PostgreSQL identifier rules) within the existing test database, apply standard schema DDL (`V1__initial_schema.sql`), populate 100k nodes and 109.8k edges across hierarchical depths 1 to 6, execute the SLA-2 benchmark iterations, and tear down the entire isolated schema via `DROP SCHEMA ... CASCADE`. Pros: Total data isolation, zero risk of contaminating functional test runs, instantaneous cleanup via schema drop without table bloat, fully reproducible. Cons: Requires setting `search_path` during benchmark execution.
+* **Decision Taken & Rationale:** Adopted Option B. In `benches/context_envelope_bench.rs`, an isolated schema with hex-encoded UUID is provisioned and dropped upon benchmark completion. The benchmark verified mean latency of ~1.6 ms and p95 latency of ~1.8 ms across 100 targets, beating the 100 ms SLA-2 requirement by a factor of 50x.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §7.1 Performance Requirements & SLAs should record the SLA-2 benchmark methodology and isolated schema strategy.
+* **Status:** Implemented
+
+### DEC-2.14: Ingestion Job Linkage and Ancestor Path CTE Candidate Edge Traversal for Normative Proposals
+
+* **Work Package:** WP-2.5
+* **Category:** Specification Gap
+* **Context & Problem:** Gate 2 dogfooding requires automated execution of MVD Steps 6–9: proposing a normative draft targeting `REQ-006` (`HUMAN_REVIEW_REQUIRED`), verifying draft isolation, and approving the staged draft via administrative approval (`approve_staging_alias` / `execute_approve`). In Phase 1, staging approval was designed around ingestion jobs (`ingestion_jobs` table). However, normative drafts proposed via MCP `propose_node_mutation` or `propose_normative_draft` initially did not create a corresponding `ingestion_jobs` row, preventing staging approval from resolving the batch for squashing. Additionally, `validate_ancestor_path` recursive CTE required that ancestor paths trace back to active roots; candidate draft edges pointing to active parent requirements needed to be recognized as valid candidate edges.
+* **Options Considered:**
+  * *Option A:* Duplicate draft squashing logic in a separate administrative endpoint exclusively for normative proposals without using `ingestion_jobs`. Pros: Leaves ingestion job table untouched. Cons: Creates two divergent approval code paths; violates MVD Step 9 requirement that administrative staging approval squashes draft revisions into `audit_ledger`; doubles maintenance burden.
+  * *Option B:* Update `propose_normative_draft_client` to create a staged `ingestion_jobs` row (`job_type = 'NORMATIVE_PROPOSAL'`, `status = 'STAGED'`) linking the draft node via `job_id`, and update `approve_staging_alias` to automatically resolve `job_id` from `approved_node_ids` if `job_id` is omitted. Update `validate_ancestor_path` to allow candidate edges from candidate nodes (`from_node_id = ANY($1)`) pointing to active parent nodes. Pros: Unifies batch approval and draft revision squashing across both bulk document ingestion and individual normative proposals; ensures clean execution of Gate 2 Step 9; eliminates duplicate approval logic. Cons: Adds an `ingestion_jobs` insert during normative proposal creation.
+* **Decision Taken & Rationale:** Adopted Option B. `propose_normative_draft_client` creates a staged ingestion job, linking candidate draft nodes and returning `batch_id: Some(proposal_job_id)`. `approve_staging_alias` resolves the job from the approved nodes if not explicitly supplied, enabling unified administrative approval and atomic squash into `audit_ledger` with `draft_evolution_summary`.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.1 Staging Draft Mechanics and §6.2 REST Endpoints should document the unified ingestion job linkage for normative proposals and staging approval.
 * **Status:** Implemented

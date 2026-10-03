@@ -72,12 +72,50 @@ pub async fn approve_staging_alias(
     caller: AuthenticatedAgent,
     Json(payload): Json<StagingApproveRequest>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let job_id = payload.job_id.ok_or_else(|| {
-        (
+    let job_id = if let Some(jid) = payload.job_id {
+        jid
+    } else if let Some(ref ids) = payload.approved_node_ids {
+        if let Some(first_id) = ids.first() {
+            let client = state.pool.get().await.map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Pool error: {e}") })),
+                )
+            })?;
+            let row = client
+                .query_opt("SELECT job_id FROM graph_nodes WHERE id = $1;", &[first_id])
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": format!("Query error: {e}") })),
+                    )
+                })?;
+            match row.and_then(|r| r.get::<_, Option<Uuid>>("job_id")) {
+                Some(jid) => jid,
+                None => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(
+                            serde_json::json!({ "error": "Candidate draft has no associated job_id" }),
+                        ),
+                    ));
+                }
+            }
+        } else {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(
+                    serde_json::json!({ "error": "Missing 'job_id' or 'approved_node_ids' in approve payload" }),
+                ),
+            ));
+        }
+    } else {
+        return Err((
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "Missing 'job_id' in approve payload" })),
-        )
-    })?;
+        ));
+    };
 
     execute_approve(state, job_id, payload.approved_node_ids, caller).await
 }
