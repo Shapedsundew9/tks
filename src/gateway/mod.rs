@@ -1,6 +1,7 @@
 //! Unified Axum HTTP, REST, and Model Context Protocol (MCP) server gateway (WP-1.5, D-19, D-53).
 
 pub mod auth;
+pub mod explorer;
 pub mod mcp;
 pub mod routes;
 pub mod server;
@@ -179,6 +180,27 @@ pub fn create_router(state: AppState) -> Router {
         .route("/mcp/sse", get(mcp::handle_mcp_sse))
         .route("/mcp/message", post(mcp::handle_mcp_message))
         .route("/mcp", post(mcp::handle_mcp_rpc))
+        // Real-Time Substrate Web Explorer routes (WP-3.4, PHASE3-001)
+        .route("/explorer", get(explorer::serve_explorer_index))
+        .route("/explorer/", get(explorer::serve_explorer_index))
+        .route("/explorer/index.html", get(explorer::serve_explorer_index))
+        .route("/explorer/app.js", get(explorer::serve_explorer_js))
+        .route("/explorer/style.css", get(explorer::serve_explorer_css))
+        .route("/explorer/cytoscape.min.js", get(explorer::serve_cytoscape))
+        .route("/explorer/dagre.min.js", get(explorer::serve_dagre))
+        .route(
+            "/explorer/cytoscape-dagre.min.js",
+            get(explorer::serve_cytoscape_dagre),
+        )
+        // Web Explorer REST and SSE routes (WP-3.4)
+        .route(
+            "/api/v1/explorer/graph",
+            get(routes::explorer::get_explorer_graph),
+        )
+        .route(
+            "/api/v1/explorer/events",
+            get(routes::explorer::stream_explorer_events),
+        )
         // Layer configurations: tracing, CORS, per-request timeout (Architecture §6.2)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())

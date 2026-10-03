@@ -12,6 +12,9 @@
 | DEC-3.6 | WP-3.3 | Three-Way Topological Merge Analysis and Cycle Verification via Combined Subgraph CTE | Technical Trade-off | architecture.md §5.2, §5.3 | Implemented |
 | DEC-3.7 | WP-3.3 | Deterministic Auto-Reparenting Lineage Resolution via Replaces-Node-ID Chain and Canonical Key Fallback | Specification Gap | architecture.md §5.3, technical-backlog.md TB-1 | Implemented |
 | DEC-3.8 | WP-3.3 | Canonical Lock Serialization Order and Atomicity for Workspace Batch Promotion | Technical Trade-off | architecture.md §5.2, §5.3, vision.md INV-1, INV-2, INV-5 | Implemented |
+| DEC-3.9 | WP-3.4 | Bidirectional Subgraph Traversal via Single Recursive CTE Term for Explorer Graph Rendering | Technical Trade-off | architecture.md §6.1 | Implemented |
+| DEC-3.10 | WP-3.4 | Offline Zero-CDN Asset Bundling and Embedded Static Route Delivery for Web Explorer | Technical Trade-off | architecture.md §6.1 | Implemented |
+| DEC-3.11 | WP-3.4 | Dual-Channel SSE Dispatch and Non-Blocking Broadcast Streaming for Web Explorer Pulse Animations | API/Contract Elaboration | architecture.md §6.2 | Implemented |
 
 ---
 
@@ -111,5 +114,44 @@
   * *Option B:* Canonical lock hierarchy in a single atomic transaction: acquire `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`, re-verify conflict freedom against the committed live state inside the lock scope, lock candidate rows in deterministic order, transition node states to `ACTIVE` with monotonic `event_seq` from `audit_ledger_event_seq_seq`, upsert embeddings into `node_embeddings`, promote edges with foreign key validation, archive workspace record (`lifecycle_state = 'MERGED'`), append audit ledger records with a shared `batch_id`, and dispatch `pg_notify` graph events. Pros: Fully satisfies INV-1 (zero cycles), INV-2 (audit integrity), INV-5 (linearizable history), and C-18/C-19 (strict lock hierarchy); prevents all race conditions during concurrent workspace promotions. Cons: Holds transaction-scoped structural advisory lock during the promotion transaction; requires fast batch execution to minimize lock duration.
 * **Decision Taken & Rationale:** Adopted Option B. In `src/storage/conflict.rs`, `promote_workspace_client` begins by acquiring the structural advisory lock, re-analyzes divergence to guarantee no intermediate live commits introduced conflicts, and executes all node/edge promotions and audit ledger appends within a single atomic transaction.
 * **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.2 Multi-Agent Workspaces & Concurrency Model, §5.3 Conflict Taxonomy & Topological Resolution; `docs/vision/vision.md` INV-1, INV-2, INV-5.
+* **Status:** Implemented
+
+### DEC-3.9: Bidirectional Subgraph Traversal via Single Recursive CTE Term for Explorer Graph Rendering
+
+* **Work Package:** WP-3.4
+* **Category:** Technical Trade-off
+* **Context & Problem:** When visualizing multi-depth requirement trees starting from a polymorphic root node (`GET /api/v1/explorer/graph?root=<id>&depth=<1..5>`), a user or external coding agent querying a root requirement needs downward descendant tasks and specifications, whereas querying an execution task needs upward ancestor requirements and sibling tasks to understand requirement context and constraints. Performing separate queries or constructing multiple subquery branches inside a recursive CTE violates PostgreSQL recursive CTE constraints (`42P19: recursive reference to query must not appear within its non-recursive term` or within subqueries) and adds database roundtrip latency, threatening the $< 20\text{ ms}$ SLA.
+* **Options Considered:**
+  * *Option A:* Downward-only traversal CTE. Pros: Simple single direction. Cons: Querying starting from a child task or intermediate requirement returns zero nodes or an incomplete disconnected graph, failing Invariant INV-1 visual ancestry tracing.
+  * *Option B:* Multiple database roundtrips. Separate queries for downward descendants and upward ancestors, combined in Rust application memory. Pros: Avoids complex SQL expressions. Cons: Multiple network roundtrips between application and PostgreSQL; risks exceeding $< 20\text{ ms}$ SLA on large graph trees.
+  * *Option C:* Single recursive CTE with bidirectional edge traversal using conditional node resolution (`CASE WHEN e.to_node_id = t.node_id THEN e.from_node_id ELSE e.to_node_id END`) and array-based cycle detection. Pros: Executes in a single database roundtrip; strictly conforms to PostgreSQL recursive CTE constraints; bounds depth via `t.depth < $3::int`; completes in $< 2\text{ ms}$ (comfortably satisfying the sub-20ms SLA); captures both causal impact and parent ancestry. Cons: Requires careful index utilization and deduplication.
+* **Decision Taken & Rationale:** Adopted Option C. In `src/gateway/routes/explorer.rs`, the recursive traversal uses a single recursive term with conditional parent/child node extraction, bounded by depth, and deduplicates discovered nodes.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §6.1 REST Inspection Endpoints & Web Explorer.
+* **Status:** Implemented
+
+### DEC-3.10: Offline Zero-CDN Asset Bundling and Embedded Static Route Delivery for Web Explorer
+
+* **Work Package:** WP-3.4
+* **Category:** Technical Trade-off
+* **Context & Problem:** WP-3.4 requires delivering a responsive Cytoscape.js and WebGL-powered interactive visualization interface served directly by the `tks serve` daemon. Proof criteria specifically mandate UI accessibility without external CDN dependencies, functioning completely in offline/devcontainer environments. Adding heavy runtime web asset packaging frameworks or pulling assets from third-party CDNs (cdnjs, jsdelivr, unpkg) violates offline reliability, introduces supply-chain risks, and breaks in air-gapped environments.
+* **Options Considered:**
+  * *Option A:* External CDN script tags in `index.html`. Pros: Small repository file size. Cons: Fails offline/air-gapped requirement; fails WP-3.4 proof criteria; vulnerable to external network latency or downtime.
+  * *Option B:* Add `rust-embed` crate to bundle assets. Pros: Standard Rust embedding macro. Cons: Adds an extra crate dependency and procedural macro overhead to `Cargo.toml`, contradicting repository guidelines to avoid introducing dependencies for functionality clear with standard tools.
+  * *Option C:* Compile-time asset inclusion via standard library `include_str!` and dedicated Axum content-type route handlers. Minified Cytoscape.js, Dagre, and Cytoscape-Dagre scripts are tracked directly in `src/gateway/explorer/` and served via dedicated Axum routes (`/explorer/app.js`, `/explorer/cytoscape.min.js`, `/explorer/dagre.min.js`, etc.) with proper MIME headers. Pros: Zero additional crate dependencies; 100% offline and devcontainer self-contained; zero network calls to external CDNs; instant loading; satisfies WP-3.4 proof criteria. Cons: Adds minified JavaScript assets to repository tree.
+* **Decision Taken & Rationale:** Adopted Option C. Embedded assets via `include_str!` in `src/gateway/explorer/mod.rs` and routed through Axum without external CDN dependencies.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §6.1 Web Explorer & Static Asset Delivery.
+* **Status:** Implemented
+
+### DEC-3.11: Dual-Channel SSE Dispatch and Non-Blocking Broadcast Streaming for Web Explorer Pulse Animations
+
+* **Work Package:** WP-3.4
+* **Category:** API/Contract Elaboration
+* **Context & Problem:** WP-3.4 specifies connecting the Web Explorer to the asynchronous event notification bus (`GraphEventBus`) via Server-Sent Events (SSE) at `GET /api/v1/explorer/events`, streaming real-time JSON frames when mutations, invalidations, or promotions occur within 10ms. Standard browser `EventSource` dispatches to `onmessage` exclusively when the event type is default (`message` or omitted), while custom named events (e.g. `event: graph_event`) require explicit event listener registration (`addEventListener('graph_event')`). If an external client or test suite expects either format, emitting only one could cause dropped events or parsing errors.
+* **Options Considered:**
+  * *Option A:* Emit only standard unnamed SSE frames (`data: <json>\n\n`). Pros: Works with default `onmessage`. Cons: Loses discrete event typing metadata on the wire.
+  * *Option B:* Emit only named SSE frames (`event: graph_event\ndata: <json>\n\n`). Pros: Explicit event contract. Cons: Breaks default `eventSource.onmessage` handlers in simple web or Node clients.
+  * *Option C:* Emit `Event::default().event("graph_event").data(json)` over HTTP/SSE with `keep-alive` pings, while `app.js` attaches handlers to both `eventSource.addEventListener('graph_event', ...)` and `eventSource.onmessage`. Serialized `GraphChangeEvent` JSON payload encapsulates `event_type`, `entity_id`, `event_seq`, and `batch_id`. Pros: Universally compatible with named event listeners, raw line chunk stream inspectors, and browser `EventSource`; delivers live events in $< 10\text{ ms}$; handles channel lagging gracefully without crashing SSE streams. Cons: None.
+* **Decision Taken & Rationale:** Adopted Option C. In `src/gateway/routes/explorer.rs`, `stream_explorer_events` adapts `tokio::sync::broadcast::Receiver` into an Axum SSE stream with 15s keep-alive pings.
+* **Upstream Impact & Target Document:** `docs/vision/architecture.md` §6.2 Real-Time Event Streaming & SSE.
 * **Status:** Implemented
 

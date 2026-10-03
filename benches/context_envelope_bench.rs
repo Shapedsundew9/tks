@@ -49,7 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                  to_node_id UUID NOT NULL,
                  edge_type VARCHAR(32) NOT NULL,
                  created_by VARCHAR(64) NOT NULL DEFAULT 'bench',
-                 lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
+                 lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+                 attributes JSONB NOT NULL DEFAULT '{{}}'
              );
 
              CREATE UNIQUE INDEX idx_{schema_name}_nodes_key ON {schema_name}.graph_nodes(node_key) WHERE lifecycle_state = 'ACTIVE';

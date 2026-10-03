@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TKS Explorer - Real-Time Substrate DAG Canvas</title>
+  <link rel="stylesheet" href="/explorer/style.css">
+  <script src="/explorer/cytoscape.min.js"></script>
+  <script src="/explorer/dagre.min.js"></script>
+  <script src="/explorer/cytoscape-dagre.min.js"></script>
+</head>
+<body>
+  <!-- Header / Controls Navigation -->
+  <header class="navbar">
+    <div class="navbar-brand">
+      <span class="logo-icon">⚡</span>
+      <span>TKS Explorer</span>
+      <span class="subtitle">Substrate DAG Canvas</span>
+    </div>
+
+    <div class="controls-group">
+      <input type="search" id="search-box" class="input-field" placeholder="Search key or title...">
+      
+      <input type="text" id="root-filter" class="input-field" placeholder="Root (UUID or key)">
+      
+      <select id="depth-select" class="select-field" title="Traversal Depth">
+        <option value="1">Depth 1</option>
+        <option value="2">Depth 2</option>
+        <option value="3" selected>Depth 3</option>
+        <option value="4">Depth 4</option>
+        <option value="5">Depth 5</option>
+      </select>
+
+      <label class="toggle-label" title="Include candidate DRAFT tasks and edges">
+        <input type="checkbox" id="drafts-toggle">
+        Drafts
+      </label>
+
+      <select id="layout-select" class="select-field" title="Graph Layout Engine">
+        <option value="dagre" selected>Hierarchical (Dagre)</option>
+        <option value="breadthfirst">Breadthfirst (DAG)</option>
+        <option value="cose">Force-Directed (COSE)</option>
+        <option value="concentric">Concentric</option>
+        <option value="circle">Circle</option>
+        <option value="grid">Grid</option>
+      </select>
+
+      <button id="fit-btn" class="btn" title="Fit view to all nodes">⛶ Fit</button>
+      <button id="reset-btn" class="btn" title="Reset all filters">↺ Reset</button>
+      
+      <span id="status-pill" class="status-pill disconnected">○ CONNECTING</span>
+    </div>
+  </header>
+
+  <!-- Interactive Cytoscape Canvas Container -->
+  <main id="cy-container">
+    <div id="cy"></div>
+
+    <!-- Floating Statistics Badge (Top Left) -->
+    <div class="floating-stats">
+      <span>Nodes: <strong id="node-count">0</strong></span>
+      <span>Edges: <strong id="edge-count">0</strong></span>
+      <span>Layout: <strong id="layout-name">Hierarchical (Dagre)</strong></span>
+    </div>
+
+    <!-- Floating Legend Panel (Bottom Left) -->
+    <div class="legend-panel">
+      <div class="legend-title">Substrate Topology Legend</div>
+      
+      <div class="legend-section">
+        <div class="legend-subtitle">Lifecycle States</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="legend-dot active"></span> Active</div>
+          <div class="legend-item"><span class="legend-dot draft"></span> Draft</div>
+          <div class="legend-item"><span class="legend-dot reverify"></span> Invalidation</div>
+          <div class="legend-item"><span class="legend-dot superseded"></span> Superseded</div>
+        </div>
+      </div>
+
+      <div class="legend-section">
+        <div class="legend-subtitle">Governance Policies</div>
+        <div class="legend-items">
+          <div class="legend-item">⚡ Autonomous</div>
+          <div class="legend-item">👤 Human Review</div>
+          <div class="legend-item">🔒 Locked Root</div>
+        </div>
+      </div>
+
+      <div class="legend-section">
+        <div class="legend-subtitle">Edge Relationships</div>
+        <div class="legend-items">
+          <div class="legend-item" style="color: #10b981;">──▶ Fulfills</div>
+          <div class="legend-item" style="color: #0284c7;">──▶ Derived From</div>
+          <div class="legend-item" style="color: #ef4444;">- -▶ Constrained By</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Event Stream Feed (Bottom Right) -->
+    <div id="event-feed" class="event-feed"></div>
+  </main>
+
+  <!-- Slide-out State Inspector Drawer (Right Side) -->
+  <aside id="drawer" class="drawer">
+    <div class="drawer-header">
+      <div class="drawer-header-left">
+        <div id="drawer-node-key" class="drawer-node-key">REQ-000</div>
+        <h2 id="drawer-title" class="drawer-title">Node Title</h2>
+      </div>
+      <button id="drawer-close-btn" class="drawer-close-btn" title="Close Drawer">✕</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- Badges -->
+      <div class="meta-badges">
+        <span id="drawer-state-badge" class="badge active">ACTIVE</span>
+        <span id="drawer-policy-badge" class="badge policy">⚡ AUTONOMOUS ELABORATION</span>
+      </div>
+
+      <!-- Staleness Warning Alert -->
+      <div id="drawer-staleness-alert" class="alert-banner" style="display: none;">
+        <span>⚠️</span>
+        <span id="drawer-staleness-score">Node degraded. Descendants require reverification.</span>
+      </div>
+
+      <!-- Content / Description -->
+      <div id="drawer-content-section" style="display: none;">
+        <div class="section-title">Description & Specification</div>
+        <div id="drawer-content-text" class="text-block"></div>
+      </div>
+
+      <!-- Verbatim Git Document Span -->
+      <div id="drawer-span-section" style="display: none;">
+        <div class="section-title">Verbatim Git Document Span</div>
+        <div class="span-header">
+          <span id="drawer-span-path">specs/core.md</span>
+          <span id="drawer-span-offsets">[bytes 0..0]</span>
+        </div>
+        <pre id="drawer-span-text" class="code-block"></pre>
+      </div>
+
+      <!-- JSON Attributes Viewer -->
+      <div>
+        <div class="section-title">Raw JSONB Attributes</div>
+        <pre id="drawer-attributes-json" class="code-block"></pre>
+      </div>
+    </div>
+  </aside>
+
+  <script src="/explorer/app.js"></script>
+</body>
+</html>
