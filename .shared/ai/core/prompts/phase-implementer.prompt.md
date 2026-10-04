@@ -30,6 +30,13 @@ You may read repository files as needed to implement the work package. You may c
   - Execute all deterministic commands defined in the Work Package's "Verification & Proof Criteria" (e.g., test suites, benchmarks, CLI invocations).
   - Run and ensure clean lint and test passes for repository quality gates with zero warnings.
   - All tests and verification commands must pass cleanly before reporting completion.
+- **Codebase Navigation & Token Economy:**
+  - Use the CodeGraph MCP server when available for symbol lookups (`get_definition`, `find_references`, `get_callees`) rather than reading large raw source files into context with `view_file`.
+  - Read only the targeted line ranges required to implement changes to preserve context window capacity.
+- **Rust Storage & Concurrency Guidelines:**
+  - *Integration Test Isolation:* In integration tests, always use `db::ensure_test_database_ready()` or `tks::db::TestContext::new().await`. The test harness automatically provisions an isolated database per test binary (`tks_test_<suite>`) cloned from `tks_template`, ensuring safe, collision-free parallel test execution. Never hardcode connections to the shared `public` schema in tests.
+  - *Client Trait Bounds (`GenericClient`):* Core storage queries accept `&(impl tokio_postgres::GenericClient + ?Sized)` to accept raw clients, mutable client references, and transactions uniformly. When calling with a pooled client (`deadpool_postgres::Client`), dereference it with `client.as_ref()` or `&**client`.
+  - *PostgreSQL LISTEN/NOTIFY Streaming:* When connecting with `tokio_postgres::connect` for notification streaming, immediately spawn the connection driver (`tokio::spawn(async move { connection.await })`) before executing statements on `client`, or use `run_pg_listener`. Never issue `client.execute` without an active connection driver.
 - **Autonomy & Decision Record Protocol (`docs/vision/phase<N>-decisions.md`):**
   - *Implementer Freedom to Decide:* You are explicitly empowered and expected to make tactical engineering decisions in order to achieve the work package goal without stalling when encountering specification gaps, multiple viable technical paths, or tactical trade-offs.
   - *Mandatory Decision Capture:* It is CRITICAL that every such decision is explicitly recorded in `docs/vision/phase<N>-decisions.md`. Silent assumptions or unrecorded choices are strictly forbidden.

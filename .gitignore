@@ -35,3 +35,7 @@ scratchpad/*
 
 # Substrate local storage, bare git repo, and backups
 .substrate/
+
+# Tooling and local assistant storage
+.codegraph/
+.gemini/

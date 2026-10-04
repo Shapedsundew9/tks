@@ -32,6 +32,7 @@ Read `.shared/ai/core/common-instructions.md`.
 ## Validation
 
 - Run Rust tests with `cargo test`.
+- Integration tests in `tests/` must obtain database connections via `db::ensure_test_database_ready()` or `tks::db::TestContext::new().await`. The test harness automatically provisions isolated test databases per test binary (`tks_test_<suite>`) cloned from `tks_template`, guaranteeing safe, collision-free parallel test execution.
 - Run linter checks with `cargo clippy --all-targets --all-features -- -D warnings`.
 - Check formatting with `cargo fmt --check`.
 - When changing packaging metadata or preparing for release, package the crate with:
