@@ -5,6 +5,7 @@ pub mod fallback;
 pub mod matcher;
 pub mod parser;
 pub mod reconcile;
+pub mod scaffolding;
 pub mod span;
 
 pub use classify::*;
@@ -12,7 +13,10 @@ pub use fallback::*;
 pub use matcher::*;
 pub use parser::*;
 pub use reconcile::*;
+pub use scaffolding::*;
 pub use span::*;
+
+pub type IngestionError = IngestError;
 
 use std::fmt;
 
@@ -27,6 +31,8 @@ pub enum IngestError {
     Classification(classify::ClassificationError),
     /// Document reconciliation error.
     Reconciliation(String),
+    /// Brownfield scaffolding adapter or format error.
+    Scaffolding(String),
 }
 
 impl fmt::Display for IngestError {
@@ -36,6 +42,7 @@ impl fmt::Display for IngestError {
             Self::Span(err) => write!(f, "ingestion span error: {err}"),
             Self::Classification(err) => write!(f, "ingestion classification error: {err}"),
             Self::Reconciliation(msg) => write!(f, "ingestion reconciliation error: {msg}"),
+            Self::Scaffolding(msg) => write!(f, "ingestion scaffolding error: {msg}"),
         }
     }
 }
@@ -46,7 +53,7 @@ impl std::error::Error for IngestError {
             Self::Parse(err) => Some(err),
             Self::Span(err) => Some(err),
             Self::Classification(err) => Some(err),
-            Self::Reconciliation(_) => None,
+            Self::Reconciliation(_) | Self::Scaffolding(_) => None,
         }
     }
 }
@@ -66,5 +73,17 @@ impl From<span::SpanError> for IngestError {
 impl From<classify::ClassificationError> for IngestError {
     fn from(err: classify::ClassificationError) -> Self {
         Self::Classification(err)
+    }
+}
+
+impl From<serde_json::Error> for IngestError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Scaffolding(err.to_string())
+    }
+}
+
+impl From<serde_yaml::Error> for IngestError {
+    fn from(err: serde_yaml::Error) -> Self {
+        Self::Scaffolding(err.to_string())
     }
 }

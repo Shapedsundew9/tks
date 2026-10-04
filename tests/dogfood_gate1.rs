@@ -231,10 +231,10 @@ async fn test_phase1_dogfooding_gate1_mvd_acceptance() {
         .post(&ingest_url)
         .header(AUTHORIZATION, format!("Bearer {dev_token}"))
         .header(CONTENT_TYPE, "application/json")
-        .json(&IngestDocumentRequest {
-            doc_path: "specs/vision.md".to_string(),
-            content: vision_content.clone(),
-        })
+        .json(&IngestDocumentRequest::new(
+            "specs/vision.md",
+            vision_content.clone(),
+        ))
         .send()
         .await
         .expect("Failed to send vision.md ingestion request");
@@ -254,10 +254,10 @@ async fn test_phase1_dogfooding_gate1_mvd_acceptance() {
         .post(&ingest_url)
         .header(AUTHORIZATION, format!("Bearer {dev_token}"))
         .header(CONTENT_TYPE, "application/json")
-        .json(&IngestDocumentRequest {
-            doc_path: "specs/strategic-planning-backlog.md".to_string(),
-            content: backlog_content.clone(),
-        })
+        .json(&IngestDocumentRequest::new(
+            "specs/strategic-planning-backlog.md",
+            backlog_content.clone(),
+        ))
         .send()
         .await
         .expect("Failed to send backlog ingestion request");

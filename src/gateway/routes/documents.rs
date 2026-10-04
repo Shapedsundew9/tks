@@ -19,6 +19,28 @@ pub struct IngestDocumentRequest {
     pub doc_path: String,
     /// Raw Markdown document content.
     pub content: String,
+    /// Optional authority source for pre-governed imports (e.g. `BRANCH_PROTECTED_CODEOWNERS`, `COMMITTED_SPEC_MAIN`).
+    #[serde(default)]
+    pub authority_source: Option<String>,
+}
+
+impl IngestDocumentRequest {
+    /// Creates a new `IngestDocumentRequest` without an authority source.
+    #[must_use]
+    pub fn new(doc_path: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            doc_path: doc_path.into(),
+            content: content.into(),
+            authority_source: None,
+        }
+    }
+
+    /// Sets the optional authority source.
+    #[must_use]
+    pub fn with_authority_source(mut self, authority_source: impl Into<String>) -> Self {
+        self.authority_source = Some(authority_source.into());
+        self
+    }
 }
 
 /// Response returned when a document is accepted for ingestion.
@@ -145,12 +167,34 @@ pub async fn ingest_document(
             )
         })?;
 
-    // Step 3: Insert new QUEUED job record.
+    // Step 3: Authenticate authority source and insert new QUEUED job record.
+    let is_authorized_authority = caller.actor_type == "HUMAN"
+        || caller.actor_type == "WEBHOOK"
+        || caller.actor_type == "SYSTEM"
+        || caller.agent_id.contains("webhook")
+        || caller.agent_id.contains("branch")
+        || caller.agent_id.contains("ci");
+
+    let verified_authority = if is_authorized_authority {
+        payload.authority_source.as_deref()
+    } else {
+        None
+    };
+
+    let token_fingerprint = caller.token_fingerprint();
+
     let job_id = Uuid::new_v4();
     tx.execute(
-        "INSERT INTO ingestion_jobs (job_id, doc_path, document_hash, status) \
-         VALUES ($1, $2, $3, 'QUEUED');",
-        &[&job_id, &doc_path, &commit_res.blob_hash],
+        "INSERT INTO ingestion_jobs (job_id, doc_path, document_hash, status, created_by, token_fingerprint, authority_source) \
+         VALUES ($1, $2, $3, 'QUEUED', $4, $5, $6);",
+        &[
+            &job_id,
+            &doc_path,
+            &commit_res.blob_hash,
+            &caller.agent_id,
+            &token_fingerprint,
+            &verified_authority,
+        ],
     )
     .await
     .map_err(|e| {

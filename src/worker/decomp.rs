@@ -6,7 +6,8 @@
 //! and executes conditional status transition to `STAGED` with atomic draft purge.
 
 use deadpool_postgres::Pool;
-use std::collections::HashMap;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -133,6 +134,18 @@ pub async fn run_decomposition_worker(
     }
 }
 
+/// Returns true if the authority source matches a recognized pre-governed source (TB-11, D-117).
+#[must_use]
+pub fn is_recognized_authority_source(source: &str) -> bool {
+    matches!(
+        source,
+        "BRANCH_PROTECTED_CODEOWNERS"
+            | "COMMITTED_SPEC_MAIN"
+            | "SYSTEM_AUTHORITY_IMPORT"
+            | "PRE_GOVERNED"
+    )
+}
+
 /// Attempts to claim and process a single `QUEUED` or timed-out `PROCESSING` job.
 ///
 /// Returns:
@@ -146,7 +159,7 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
     // Prioritize timed-out PROCESSING jobs (> 180s) over QUEUED jobs.
     let tx = client.transaction().await?;
 
-    let claim_query = "SELECT job_id, doc_path, document_hash, status \
+    let claim_query = "SELECT job_id, doc_path, document_hash, status, created_by, token_fingerprint, authority_source \
          FROM ingestion_jobs \
          WHERE status = 'QUEUED' \
             OR (status = 'PROCESSING' AND updated_at < clock_timestamp() - (INTERVAL '1 second' * $1)) \
@@ -160,12 +173,23 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
         .query_opt(claim_query, &[&(JOB_TIMEOUT_SECONDS as f64)])
         .await?;
 
-    let (job_id, doc_path, document_hash, is_timeout_reclaim) = match row_opt {
+    let (
+        job_id,
+        doc_path,
+        document_hash,
+        is_timeout_reclaim,
+        created_by,
+        token_fingerprint,
+        authority_source,
+    ) = match row_opt {
         Some(row) => {
             let job_id: Uuid = row.get("job_id");
             let doc_path: String = row.get("doc_path");
             let document_hash: String = row.get("document_hash");
             let status: String = row.get("status");
+            let created_by: String = row.get("created_by");
+            let token_fingerprint: Option<String> = row.get("token_fingerprint");
+            let authority_source: Option<String> = row.get("authority_source");
             let is_timeout = status == "PROCESSING";
 
             if is_timeout {
@@ -194,7 +218,15 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
                 .await?;
             }
 
-            (job_id, doc_path, document_hash, is_timeout)
+            (
+                job_id,
+                doc_path,
+                document_hash,
+                is_timeout,
+                created_by,
+                token_fingerprint,
+                authority_source,
+            )
         }
         None => {
             tx.rollback().await?;
@@ -228,23 +260,233 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
         }
     };
 
-    // Step 3: Execute Stage 1 mechanical AST decomposition.
-    let decomp = match parse_markdown(&doc_path, &content) {
-        Ok(res) => res,
-        Err(e) => {
-            tracing::error!("AST decomposition failed for job {job_id}: {e}");
-            let client = pool.get().await?;
-            client
-                .execute(
-                    "UPDATE ingestion_jobs \
-                     SET status = 'FAILED', error_message = $2, updated_at = clock_timestamp() \
-                     WHERE job_id = $1;",
-                    &[&job_id, &e.to_string()],
-                )
-                .await?;
-            return Ok(true);
+    // Step 3: Execute Stage 1 mechanical decomposition via scaffolding adapters or CommonMark parser.
+    let decomp = if let Some(scaffold_res) =
+        crate::ingest::scaffolding::parse_scaffolding(&doc_path, &content)
+    {
+        match scaffold_res {
+            Ok(scaffolding) => crate::ingest::parser::DecompositionResult::from(scaffolding),
+            Err(e) => {
+                tracing::error!("Scaffolding adapter failed for job {job_id}: {e}");
+                let client = pool.get().await?;
+                client
+                    .execute(
+                        "UPDATE ingestion_jobs \
+                         SET status = 'FAILED', error_message = $2, updated_at = clock_timestamp() \
+                         WHERE job_id = $1;",
+                        &[&job_id, &e.to_string()],
+                    )
+                    .await?;
+                return Ok(true);
+            }
+        }
+    } else {
+        match parse_markdown(&doc_path, &content) {
+            Ok(res) => res,
+            Err(e) => {
+                tracing::error!("AST decomposition failed for job {job_id}: {e}");
+                let client = pool.get().await?;
+                client
+                    .execute(
+                        "UPDATE ingestion_jobs \
+                         SET status = 'FAILED', error_message = $2, updated_at = clock_timestamp() \
+                         WHERE job_id = $1;",
+                        &[&job_id, &e.to_string()],
+                    )
+                    .await?;
+                return Ok(true);
+            }
         }
     };
+
+    // Step 3.5: Authority Inheritance Pipeline Auto-Promotion (WP-4.2, TB-11, D-117)
+    // If authority_source matches recognized pre-governed sources, bypass DRAFT staging
+    // and insert nodes directly as ACTIVE, committing SYSTEM_AUTHORITY_IMPORT audit event.
+    if let Some(ref auth_src) = authority_source
+        && is_recognized_authority_source(auth_src)
+    {
+        tracing::info!(
+            "Authority inheritance active for job {job_id} from source '{auth_src}'; executing auto-promotion to ACTIVE"
+        );
+
+        let tx = client.transaction().await?;
+
+        // Query active keys to deduplicate and prevent unique index collisions
+        let active_key_rows = tx
+            .query(
+                "SELECT node_key FROM graph_nodes WHERE lifecycle_state = 'ACTIVE' AND node_key IS NOT NULL;",
+                &[],
+            )
+            .await?;
+        let mut active_keys: HashSet<String> =
+            active_key_rows.iter().map(|r| r.get("node_key")).collect();
+
+        let mut anchor_to_id: HashMap<String, Uuid> = HashMap::new();
+        let mut active_node_ids: Vec<Uuid> = Vec::new();
+
+        // Insert nodes directly as ACTIVE
+        for chunk in &decomp.chunks {
+            let node_id = Uuid::new_v4();
+            anchor_to_id.insert(chunk.ast_anchor.clone(), node_id);
+            active_node_ids.push(node_id);
+
+            let node_key = if let Some(key) = chunk.primary_node_key() {
+                if active_keys.contains(key) {
+                    None
+                } else {
+                    active_keys.insert(key.to_string());
+                    Some(key.to_string())
+                }
+            } else {
+                None
+            };
+
+            let node_type = match chunk.node_type.as_deref() {
+                Some("UNCLASSIFIED") | None => "SPECIFICATION",
+                Some(t) => t,
+            };
+
+            let title = chunk
+                .heading
+                .clone()
+                .unwrap_or_else(|| "Untitled".to_string());
+            let content_str = chunk.content.clone().unwrap_or_default();
+
+            let mut attrs = serde_json::json!({
+                "ast_anchor": chunk.ast_anchor,
+                "authority_source": auth_src,
+            });
+            if let Some(ref alias) = chunk.atom_alias {
+                attrs["atom_alias"] = serde_json::json!(alias);
+            }
+            if let Some(ref modality) = chunk.modality {
+                attrs["modality"] = serde_json::json!(modality);
+            }
+            if let Some(conf) = chunk.confidence {
+                attrs["confidence"] = serde_json::json!(conf);
+            }
+
+            tx.execute(
+                "INSERT INTO graph_nodes ( \
+                    id, node_key, node_type, title, content, lifecycle_state, \
+                    governance_policy, created_by, job_id, doc_path, doc_hash, \
+                    byte_start, byte_end, attributes, trust_tier \
+                 ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', 'HUMAN_REVIEW_REQUIRED', $6, $7, $8, $9, $10, $11, $12, $13);",
+                &[
+                    &node_id,
+                    &node_key,
+                    &node_type,
+                    &title,
+                    &content_str,
+                    &created_by,
+                    &job_id,
+                    &doc_path,
+                    &document_hash,
+                    &(chunk.byte_start as i32),
+                    &(chunk.byte_end as i32),
+                    &attrs,
+                    &chunk.trust_tier,
+                ],
+            )
+            .await?;
+        }
+
+        // Insert hierarchy edges directly as ACTIVE
+        for edge in &decomp.edges {
+            if let (Some(&from_id), Some(&to_id)) = (
+                anchor_to_id.get(&edge.from_anchor),
+                anchor_to_id.get(&edge.to_anchor),
+            ) {
+                let edge_id = Uuid::new_v4();
+                tx.execute(
+                    "INSERT INTO graph_edges ( \
+                        edge_id, from_node_id, to_node_id, edge_type, created_by, lifecycle_state \
+                     ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE') \
+                     ON CONFLICT DO NOTHING;",
+                    &[&edge_id, &from_id, &to_id, &edge.edge_type, &created_by],
+                )
+                .await?;
+            }
+        }
+
+        // Enqueue vector embeddings for promoted ACTIVE nodes
+        for (i, &node_id) in active_node_ids.iter().enumerate() {
+            let chunk = &decomp.chunks[i];
+            let combined_text = format!(
+                "{} {}",
+                chunk.heading.as_deref().unwrap_or(""),
+                chunk.content.as_deref().unwrap_or("")
+            );
+            let mut hasher = Sha256::new();
+            hasher.update(combined_text.as_bytes());
+            let content_hash = format!("{:x}", hasher.finalize());
+
+            tx.execute(
+                "INSERT INTO node_embeddings (node_id, content_hash, status, scheduled_at) \
+                 VALUES ($1, $2, 'PENDING', clock_timestamp()) \
+                 ON CONFLICT (node_id) DO UPDATE SET \
+                    content_hash = EXCLUDED.content_hash, \
+                    status = 'PENDING', \
+                    scheduled_at = clock_timestamp();",
+                &[&node_id, &content_hash],
+            )
+            .await?;
+        }
+
+        // Commit SYSTEM_AUTHORITY_IMPORT audit event with persisted caller credentials
+        let batch_id = Uuid::new_v4();
+        let delta = serde_json::json!({
+            "authority_source": auth_src,
+            "node_count": active_node_ids.len(),
+            "active_node_ids": active_node_ids,
+        });
+        let snapshot = serde_json::json!({
+            "job_id": job_id,
+            "doc_path": doc_path,
+            "authority_source": auth_src,
+        });
+        let token_fp = token_fingerprint.as_deref().unwrap_or(&created_by);
+
+        tx.execute(
+            "INSERT INTO audit_ledger ( \
+                batch_id, event_type, entity_id, entity_type, \
+                actor_id, actor_type, token_fingerprint, delta, snapshot \
+             ) VALUES ($1, 'SYSTEM_AUTHORITY_IMPORT', $2, 'INGESTION_JOB', $3, 'SYSTEM_AUTHORITY_IMPORT', $4, $5, $6);",
+            &[
+                &batch_id,
+                &job_id,
+                &created_by,
+                &token_fp,
+                &delta,
+                &snapshot,
+            ],
+        )
+        .await?;
+
+        // Transition job status to APPROVED
+        let job_attrs = serde_json::json!({
+            "authority_promoted": true,
+            "authority_source": auth_src,
+            "promoted_nodes_count": active_node_ids.len(),
+        });
+
+        tx.execute(
+            "UPDATE ingestion_jobs \
+             SET status = 'APPROVED', attributes = $2, updated_at = clock_timestamp() \
+             WHERE job_id = $1;",
+            &[&job_id, &job_attrs],
+        )
+        .await?;
+
+        tx.commit().await?;
+
+        tracing::info!(
+            "Authority inheritance complete for job {job_id}: {} nodes directly inserted as ACTIVE",
+            active_node_ids.len()
+        );
+
+        return Ok(true);
+    }
 
     // Step 4: Query existing active nodes for doc_path to perform 3-tier document reconciliation.
     let active_rows = client
@@ -292,7 +534,7 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
                 id, node_key, node_type, title, content, lifecycle_state, \
                 governance_policy, created_by, job_id, doc_path, doc_hash, \
                 byte_start, byte_end, attributes, trust_tier \
-             ) VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, 'system', $7, $8, $9, $10, $11, $12, $13);",
+             ) VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, $7, $8, $9, $10, $11, $12, $13, $14);",
             &[
                 &node_id,
                 &draft.node_key,
@@ -300,6 +542,7 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
                 &draft.title,
                 &draft.content,
                 &draft.governance_policy,
+                &created_by,
                 &job_id,
                 &draft.doc_path,
                 &draft.doc_hash,
@@ -322,9 +565,9 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
             tx.execute(
                 "INSERT INTO graph_edges ( \
                     edge_id, from_node_id, to_node_id, edge_type, created_by, lifecycle_state \
-                 ) VALUES ($1, $2, $3, $4, 'system', 'DRAFT') \
+                 ) VALUES ($1, $2, $3, $4, $5, 'DRAFT') \
                  ON CONFLICT DO NOTHING;",
-                &[&edge_id, &from_id, &to_id, &edge.edge_type],
+                &[&edge_id, &from_id, &to_id, &edge.edge_type, &created_by],
             )
             .await?;
         }

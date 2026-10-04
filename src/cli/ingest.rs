@@ -22,6 +22,10 @@ pub struct IngestArgs {
     #[arg(long)]
     pub doc_path: Option<String>,
 
+    /// Optional authority source for pre-governed imports (e.g. `BRANCH_PROTECTED_CODEOWNERS`, `COMMITTED_SPEC_MAIN`).
+    #[arg(long)]
+    pub authority_source: Option<String>,
+
     /// Automatically wait for AST decomposition and approve candidate drafts into ACTIVE state.
     #[arg(long, default_value_t = false)]
     pub approve: bool,
@@ -61,6 +65,7 @@ pub async fn run_ingest(
     let payload = IngestDocumentRequest {
         doc_path: doc_path.clone(),
         content,
+        authority_source: args.authority_source,
     };
 
     let resp = client
