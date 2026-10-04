@@ -289,7 +289,7 @@ flowchart TD
 3. **Topological Coherence & Gap Auditing Loop:**
    Traverses the property graph via explicit edge traversals and semantic vector neighborhoods to identify systemic omissions and discontinuities. For example, during workflow evaluations, the system inspects whether presentation-layer UI actions maintain valid topological linkages to corresponding backend functions and contracts. Graph algorithms and external LLM agents (consulted as third-party analytical auditors) evaluate structural completeness, flag missing cross-layer bindings, and verify that all prerequisite procedural checklists were satisfied before execution proceeds.
 
-*(Note: Detailed step-by-step API message protocols and interaction sequences are cataloged in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
+*(Note: Detailed step-by-step API message protocols and interaction sequences are cataloged in the [Strategic Planning Backlog](docs/vision/strategic-planning-backlog.md).)*
 
 ---
 
@@ -318,7 +318,7 @@ flowchart TD
 * **Hypothesis H-5 (Topological Gap Detection & Procedural Scaffolding):**
   *We hypothesize that* structuring institutional procedures (such as dependency onboarding, licensing verification, and CVE audits) and cross-layer architectural contracts as a navigable property graph allows structural traversals combined with external LLM-in-the-loop auditing to detect systemic gaps (such as unlinked UI-to-backend workflows or unvetted third-party libraries) significantly earlier than conventional PR reviews, while reducing agent procedural non-compliance.
 
-*(Note: Quantitative calibration targets and metric benchmarks for each hypothesis are cataloged in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
+*(Note: Quantitative calibration targets and metric benchmarks for each hypothesis are cataloged in the [Strategic Planning Backlog](docs/vision/strategic-planning-backlog.md).)*
 
 ### Inside-Out Mechanics to Outside-In Strategic Leverage
 
@@ -396,7 +396,7 @@ To honor the principle to "start small" under a constrained resource model, deve
 * **Phase 1 Self-Hosting Gate (Read-Only Context Retrieval):** Upon completing the core ingestion and read-only MCP gateway, the project's own documentation (`vision.md`, backlogs) is ingested into the substrate. Developers and external agents query bounded context envelopes via MCP to implement Phase 2 development tasks.
 * **Phase 2+ Evolution Gate (Autonomous Self-Evolution):** With mutation tools, draft lifecycle handling, and per-node governance operational, all subsequent requirements, specifications, and tasks are authored, reviewed, and tracked directly within the substrate itself, using autonomous agents operating via MCP to advance the codebase. Phases 3 and 4 remain aspirational targets contingent on the demonstrated operational viability of earlier phases.
 
-*(Note: Specific phase deliverables, engineering schedules, and operational dependencies are detailed in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
+*(Note: Specific phase deliverables, engineering schedules, and operational dependencies are detailed in the [Strategic Planning Backlog](docs/vision/strategic-planning-backlog.md).)*
 
 ---
 
@@ -423,7 +423,7 @@ The path to the North Star is gated by four Minimum Viable Demonstrations:
 * **Milestone 3 (Automated Invalidation Cascading & Gap Auditing):** Modification of an upstream requirement automatically cascades downstream, marking dependent specifications and tasks as requiring reverification, while topological traversal and external LLM auditing identify missing cross-layer links (e.g., presentation-to-backend gaps) and unfulfilled procedural checklists, blocking unauthorized agent execution.
 * **Milestone 4 (Closed-Loop Traceability):** Bidirectional synchronization mapping Git commits and automated test results to leaf requirement nodes, providing continuous proof of requirement satisfaction.
 
-*(Note: Detailed execution scripts and verification procedures for each demonstration are documented in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).)*
+*(Note: Detailed execution scripts and verification procedures for each demonstration are documented in the [Strategic Planning Backlog](docs/vision/strategic-planning-backlog.md).)*
 
 ### Falsification & Termination Criteria (Kill Conditions)
 
@@ -444,4 +444,4 @@ If empirical results partially validate a strategic hypothesis—delivering meas
 
 ### Strategic Planning Handoff
 
-Detailed database table definitions, API route contracts, specific embedding model selections, architectural evaluation spikes, and phased implementation roadmaps are maintained in the [Strategic Planning Backlog](file:///workspaces/tks/docs/vision/strategic-planning-backlog.md).
+Detailed database table definitions, API route contracts, specific embedding model selections, architectural evaluation spikes, and phased implementation roadmaps are maintained in the [Strategic Planning Backlog](docs/vision/strategic-planning-backlog.md).

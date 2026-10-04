@@ -36,9 +36,9 @@ Every node in the substrate has a distinct type and lifecycle state:
 
 | Node Type | Description | Example from TKS Governing Assets |
 | :--- | :--- | :--- |
-| `REQUIREMENT` | High-level architectural mandate or constraint. | `INV-1` (Ancestry Verification) from [`docs/vision/vision.md`](file:///workspaces/tks/docs/vision/vision.md) |
-| `SPECIFICATION` | Technical design, protocol definition, or RFC detail. | `D-8` (Cycle Prevention via CTEs) from [`docs/vision/architecture.md`](file:///workspaces/tks/docs/vision/architecture.md) |
-| `TASK` | Concrete unit of execution authored by human or agent. | Implement `downward_invalidation_sql` from [`docs/vision/technical-backlog.md`](file:///workspaces/tks/docs/vision/technical-backlog.md) (TB-6) |
+| `REQUIREMENT` | High-level architectural mandate or constraint. | `INV-1` (Ancestry Verification) from [`docs/vision/vision.md`](docs/vision/vision.md) |
+| `SPECIFICATION` | Technical design, protocol definition, or RFC detail. | `D-8` (Cycle Prevention via CTEs) from [`docs/vision/architecture.md`](docs/vision/architecture.md) |
+| `TASK` | Concrete unit of execution authored by human or agent. | Implement `downward_invalidation_sql` from [`docs/vision/technical-backlog.md`](docs/vision/technical-backlog.md) (TB-6) |
 
 ### Lifecycle States
 

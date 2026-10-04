@@ -14,7 +14,7 @@ When a requirement changes in traditional documentation, engineers and coding ag
 
 ## Step 1: Re-Ingesting an Evolved Document
 
-Suppose we update [`docs/vision/vision.md`](file:///workspaces/tks/docs/vision/vision.md) to modify Invariant I-6, adding multi-agent co-evolution milestones. We submit the revised document:
+Suppose we update [`docs/vision/vision.md`](docs/vision/vision.md) to modify Invariant I-6, adding multi-agent co-evolution milestones. We submit the revised document:
 
 ```bash
 curl -s -X POST "$TKS_SERVER_URL/api/v1/documents/ingest" \

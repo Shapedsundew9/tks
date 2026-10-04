@@ -326,7 +326,7 @@ pub fn generate_markdown_report(summary: &Spike8EvaluationSummary) -> String {
          - **Peak Runtime Memory (RSS):** **{:.1} MB** (Threshold: $\\le 256.0\\text{{ MB}}$)\n\
          - **Added Binary Footprint:** **{:.2} MB** (Threshold: $\\le 50.0\\text{{ MB}}$)\n\
          - **Model Evaluated:** `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional ONNX embeddings via `fastembed-rs`)\n\
-         - **Grounds Decision:** [D-77](file:///workspaces/tks/docs/vision/architecture.md#L1299) (`vector(384)` with partial HNSW index), [D-82](file:///workspaces/tks/docs/vision/architecture.md#L1355) (`node_embeddings` queue consolidation), and resolves Open Question [Q-4](file:///workspaces/tks/docs/vision/architecture.md#L1395).\n\n",
+         - **Grounds Decision:** [D-77](docs/vision/architecture.md#L1299) (`vector(384)` with partial HNSW index), [D-82](docs/vision/architecture.md#L1355) (`node_embeddings` queue consolidation), and resolves Open Question [Q-4](docs/vision/architecture.md#L1395).\n\n",
         summary.recommendation,
         summary.mean_parity * 100.0,
         summary.latency.mean_ms,

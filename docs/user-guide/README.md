@@ -2,67 +2,67 @@
 
 Welcome to the **Knowledge Substrate (TKS)** User's Guide. This guide provides an end-to-end operational walkthrough of TKS, demonstrating how to transform passive software architecture documents into an active, verified, causal property graph.
 
-Throughout this guide, we use the real governing assets of the TKS repository—specifically [`docs/vision/vision.md`](file:///workspaces/tks/docs/vision/vision.md), [`docs/vision/architecture.md`](file:///workspaces/tks/docs/vision/architecture.md), and [`docs/vision/technical-backlog.md`](file:///workspaces/tks/docs/vision/technical-backlog.md)—as our continuous running example.
+Throughout this guide, we use the real governing assets of the TKS repository—specifically [`docs/vision/vision.md`](docs/vision/vision.md), [`docs/vision/architecture.md`](docs/vision/technical-backlog.md)—as our continuous running example.
 
 ---
 
 ## Table of Contents
 
-1. [Mental Model & Core Architecture](file:///workspaces/tks/docs/user-guide/01-mental-model-and-architecture.md)
+1. [Mental Model & Core Architecture](docs/user-guide/01-mental-model-and-architecture.md)
    * The problem with static Markdown documentation
    * The causal property graph: Nodes, typed upward edges, and source spans
    * Core invariants (`INV-1` through `INV-7`)
    * Dual mutation pathways: Autonomous task elaboration vs. normative proposals
 
-2. [Daemon & Identity Provisioning](file:///workspaces/tks/docs/user-guide/02-daemon-and-identities.md)
+2. [Daemon & Identity Provisioning](docs/user-guide/02-daemon-and-identities.md)
    * Starting the unified daemon: `tks serve`
    * Bare Git repository storage and PostgreSQL `pgvector` configuration
    * Provisioning and revoking agent identities: `tks identity`
    * Authentication and cache eviction mechanics
 
-3. [Ingesting Governing Assets](file:///workspaces/tks/docs/user-guide/03-ingesting-governing-documents.md)
+3. [Ingesting Governing Assets](docs/user-guide/03-ingesting-governing-documents.md)
    * Submitting `docs/vision/vision.md` via `POST /api/v1/documents/ingest`
    * Deterministic CommonMark AST parsing (`pulldown-cmark`) and heading anchor extraction
    * Candidate draft staging review: `tks staging list` and `tks staging inspect`
    * Staging approval, atomic draft promotion, and local vector generation
 
-4. [Context Envelopes & Requirement Retrieval](file:///workspaces/tks/docs/user-guide/04-context-envelopes-and-querying.md)
+4. [Context Envelopes & Requirement Retrieval](docs/user-guide/04-context-envelopes-and-querying.md)
    * Fast full-text search: `query_requirements` / `POST /api/v1/requirements/query`
    * Bounded context envelope assembly: $k \le 3$ hop recursive CTE traversal
    * Quota partitioning: 30-node topological budget + 10-node vector neighbor allocation
    * Verbatim source span extraction from Git ODB without database bloat
 
-5. [Task Elaboration & Autonomous Execution](file:///workspaces/tks/docs/user-guide/05-task-elaboration-and-execution.md)
+5. [Task Elaboration & Autonomous Execution](docs/user-guide/05-task-elaboration-and-execution.md)
    * Decomposing requirements into tasks: `tks task create`
    * Governance policy inheritance (`AUTONOMOUS_ELABORATION`)
    * Safe leaf node updates under native row locks (`FOR UPDATE`): `tks task update`
    * Audit ledger event sequence tracking (`event_seq`, `batch_id`)
 
-6. [Multi-Agent Workspaces & Collaborative Co-Evolution](file:///workspaces/tks/docs/user-guide/06-workspaces-and-multi-agent-coevolution.md)
+6. [Multi-Agent Workspaces & Collaborative Co-Evolution](docs/user-guide/06-workspaces-and-multi-agent-coevolution.md)
    * Ephemeral branch workspace containers: `tks workspace create`
    * Advisory-lock-free task elaboration and caller draft confidentiality (`INV-7`)
    * Dynamic draft query overlays combining live active state with workspace drafts
    * Three-way topological merges (`tks workspace merge`) and auto-reparenting lineage resolution
 
-7. [Document Evolution, Invalidation Storms & Reverification](file:///workspaces/tks/docs/user-guide/07-document-evolution-and-invalidation.md)
+7. [Document Evolution, Invalidation Storms & Reverification](docs/user-guide/07-document-evolution-and-invalidation.md)
    * Updating governing documents in Git and re-ingesting revisions
    * In-place span re-anchoring across Git commit boundaries
    * Downward invalidation cascade engine: Shortest-path staleness propagation (`MIN(depth)`)
    * Operational unblocking: `tks admin reverify` and administrative rollback (`tks admin revert`)
 
-8. [Web Explorer & Real-Time Observability](file:///workspaces/tks/docs/user-guide/08-web-explorer-and-observability.md)
+8. [Web Explorer & Real-Time Observability](docs/user-guide/08-web-explorer-and-observability.md)
    * Serving the zero-CDN embedded Cytoscape.js/Dagre visualizer: `tks explorer serve`
    * Live Server-Sent Events (SSE) telemetry stream: `GET /api/v1/explorer/events`
    * Sub-millisecond event demultiplexing via in-process `GraphEventBus`
    * Interactive branch exploration and live invalidation storm visualization
 
-9. [Model Context Protocol (MCP) Integration for AI Agents](file:///workspaces/tks/docs/user-guide/09-mcp-agent-integration.md)
+9. [Model Context Protocol (MCP) Integration for AI Agents](docs/user-guide/09-mcp-agent-integration.md)
    * Connecting Claude Code, Cursor, Windsurf, and autonomous agent harnesses
    * Local stdio proxy mode: `tks mcp-stdio`
    * Remote HTTP/SSE endpoint: `POST /mcp` and `GET /mcp/sse`
    * Complete reference of exposed MCP tools and argument schemas
 
-10. [CLI Reference & Quick Cheat Sheet](file:///workspaces/tks/docs/user-guide/10-cli-reference.md)
+10. [CLI Reference & Quick Cheat Sheet](docs/user-guide/10-cli-reference.md)
     * Comprehensive syntax and flag reference for all `tks` subcommands
     * Common administrative recipes and troubleshooting patterns
 

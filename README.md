@@ -16,18 +16,18 @@ TKS replaces passive Markdown documents with a living property graph stored in P
 
 ## User Documentation
 
-Comprehensive documentation and step-by-step operational walkthroughs are available in the **[User's Guide](file:///workspaces/tks/docs/user-guide/README.md)**:
+Comprehensive documentation and step-by-step operational walkthroughs are available in the **[User's Guide](docs/user-guide/README.md)**:
 
-* [Chapter 1: Mental Model & Core Architecture](file:///workspaces/tks/docs/user-guide/01-mental-model-and-architecture.md)
-* [Chapter 2: Daemon & Identity Provisioning](file:///workspaces/tks/docs/user-guide/02-daemon-and-identities.md)
-* [Chapter 3: Ingesting Governing Documents](file:///workspaces/tks/docs/user-guide/03-ingesting-governing-documents.md)
-* [Chapter 4: Context Envelopes & Requirement Retrieval](file:///workspaces/tks/docs/user-guide/04-context-envelopes-and-querying.md)
-* [Chapter 5: Task Elaboration & Autonomous Execution](file:///workspaces/tks/docs/user-guide/05-task-elaboration-and-execution.md)
-* [Chapter 6: Multi-Agent Workspaces & Collaborative Co-Evolution](file:///workspaces/tks/docs/user-guide/06-workspaces-and-multi-agent-coevolution.md)
-* [Chapter 7: Document Evolution, Invalidation Storms & Reverification](file:///workspaces/tks/docs/user-guide/07-document-evolution-and-invalidation.md)
-* [Chapter 8: Web Explorer & Real-Time Observability](file:///workspaces/tks/docs/user-guide/08-web-explorer-and-observability.md)
-* [Chapter 9: Model Context Protocol (MCP) Integration](file:///workspaces/tks/docs/user-guide/09-mcp-agent-integration.md)
-* [Chapter 10: CLI Reference & Command Cheat Sheet](file:///workspaces/tks/docs/user-guide/10-cli-reference.md)
+* [Chapter 1: Mental Model & Core Architecture](docs/user-guide/01-mental-model-and-architecture.md)
+* [Chapter 2: Daemon & Identity Provisioning](docs/user-guide/02-daemon-and-identities.md)
+* [Chapter 3: Ingesting Governing Documents](docs/user-guide/03-ingesting-governing-documents.md)
+* [Chapter 4: Context Envelopes & Requirement Retrieval](docs/user-guide/04-context-envelopes-and-querying.md)
+* [Chapter 5: Task Elaboration & Autonomous Execution](docs/user-guide/05-task-elaboration-and-execution.md)
+* [Chapter 6: Multi-Agent Workspaces & Collaborative Co-Evolution](docs/user-guide/06-workspaces-and-multi-agent-coevolution.md)
+* [Chapter 7: Document Evolution, Invalidation Storms & Reverification](docs/user-guide/07-document-evolution-and-invalidation.md)
+* [Chapter 8: Web Explorer & Real-Time Observability](docs/user-guide/08-web-explorer-and-observability.md)
+* [Chapter 9: Model Context Protocol (MCP) Integration](docs/user-guide/09-mcp-agent-integration.md)
+* [Chapter 10: CLI Reference & Command Cheat Sheet](docs/user-guide/10-cli-reference.md)
 
 ## Getting Started
 

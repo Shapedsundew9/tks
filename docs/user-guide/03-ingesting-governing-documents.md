@@ -1,6 +1,6 @@
 # Chapter 3: Ingesting Governing Documents
 
-This chapter demonstrates how to ingest governing documents into the Knowledge Substrate using [`docs/vision/vision.md`](file:///workspaces/tks/docs/vision/vision.md) and [`docs/vision/architecture.md`](file:///workspaces/tks/docs/vision/architecture.md) as concrete examples.
+This chapter demonstrates how to ingest governing documents into the Knowledge Substrate using [`docs/vision/vision.md`](docs/vision/vision.md) and [`docs/vision/architecture.md`](docs/vision/architecture.md) as concrete examples.
 
 ---
 

@@ -9,7 +9,7 @@
 - **Peak Runtime Memory (RSS):** **193.6 MB** (Threshold: $\le 256.0\text{ MB}$)
 - **Added Binary Footprint:** **48.07 MB** (Threshold: $\le 50.0\text{ MB}$)
 - **Model Evaluated:** `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional ONNX embeddings via `fastembed-rs`)
-- **Grounds Decision:** [D-77](file:///workspaces/tks/docs/vision/architecture.md#L1299) (`vector(384)` with partial HNSW index), [D-82](file:///workspaces/tks/docs/vision/architecture.md#L1355) (`node_embeddings` queue consolidation), and resolves Open Question [Q-4](file:///workspaces/tks/docs/vision/architecture.md#L1395).
+- **Grounds Decision:** [D-77](docs/vision/architecture.md#L1299) (`vector(384)` with partial HNSW index), [D-82](docs/vision/architecture.md#L1355) (`node_embeddings` queue consolidation), and resolves Open Question [Q-4](docs/vision/architecture.md#L1395).
 
 ## 2. Quantitative Proof Criteria Scorecard
 
