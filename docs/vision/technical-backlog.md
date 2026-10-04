@@ -150,7 +150,7 @@ This document captures vital component-level designs, library evaluation tasks, 
      * *Atomic Approval Execution:* The physical in-place update of `doc_hash`, `byte_start`, and `byte_end` on active nodes executes strictly inside the atomic staging approval transaction (`POST /api/v1/staging/approve` or `POST /api/v1/documents/ingest/{job_id}/approve`) under `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`.
      * *Audit Attribution:* The atomic update generates a discrete `SPAN_REANCHORED` audit event in `audit_ledger` with monotonic `event_seq` and transaction correlation `batch_id`.
      * *Zero Residue on Rejection:* If the supervisor rejects or cancels the ingestion job, the candidate coordinates are discarded, leaving active production nodes completely unmutated.
-     * *Modified & Deleted Content:* For modified content, stage candidate `DRAFT` nodes referencing `replaces_node_id`. Upon staging approval, supersede previous active nodes and mark downstream child tasks `NEEDS_REVERIFICATION`. For deleted sections, transition active nodes anchored to `doc_path` missing from the approved revision to `SUPERSEDED`.
+     * *Modified & Omitted Content:* For modified content, stage candidate `DRAFT` nodes referencing `replaces_node_id`. Upon staging approval, supersede previous active nodes and mark downstream child tasks `NEEDS_REVERIFICATION`. For omitted sections, active nodes anchored to `doc_path` missing from the revised candidate set must not be automatically superseded (which would trigger premature downward invalidation cascades on child tasks); instead, the staging approval engine flags them as `PENDING_DEPRECATION` in staging metadata and presents them to the supervisor for explicit confirmation. Hard supersession and downward invalidation cascades execute only if the supervisor explicitly approves deprecation (addressing LD-10, iteration 9).
   6. **Worker Concurrency Hardening & Timeout Reclaim Draft Purging:** To prevent race conditions and duplicate draft accumulation during background decomposition (addressing LD-6, iteration 8):
      * *Conditional Terminal Transition:* When the background worker finishes Stage 2 decomposition, it executes a conditional status update:
        `UPDATE ingestion_jobs SET status = 'STAGED', updated_at = NOW() WHERE job_id = $1 AND status = 'PROCESSING';`
@@ -201,3 +201,55 @@ This document captures vital component-level designs, library evaluation tasks, 
   1. **Per-Binary Database Derivation:** In `src/db.rs`, implement `ensure_test_database_ready_for` and `resolve_test_database_name`, dynamically deriving isolated test database names from `std::env::current_exe()` (e.g. `tks_test_cascade_engine`, `tks_test_dogfood_gate3`).
   2. **Advisory-Locked Template Initialization:** Bootstrap `tks_template` under PostgreSQL advisory lock `pg_advisory_xact_lock(hashtext('tks_template_init'))`, applying all embedded refinery migrations (V1 through V4) exactly once.
   3. **Instantaneous Database Cloning:** Each test suite provisions its isolated database via `CREATE DATABASE tks_test_<suite> TEMPLATE tks_template` in $<200\text{ ms}$, eliminating table lock contention and race conditions during parallel `cargo test --all-targets --all-features`.
+
+---
+
+## TB-11
+
+* **ID:** TB-11
+* **Title:** Brownfield Intent Scaffolding Adapters, Authority Inheritance Pipeline, and Spec-Driven Development Parsers
+* **Origin:** LD-6, iteration 9
+* **Status:** Active
+* **Description/Tactical Details:**
+  1. **Pluggable ScaffoldingAdapter Trait:** In `src/ingest/scaffolding.rs`, define a pluggable `ScaffoldingAdapter` trait supporting format-specific mechanical parsing:
+     ```rust
+     pub trait ScaffoldingAdapter: Send + Sync {
+         fn can_handle(&self, path: &str, content: &str) -> bool;
+         fn parse(&self, path: &str, content: &str) -> Result<Vec<ExtractedChunk>, IngestionError>;
+     }
+     ```
+  2. **Zero-Token OpenAPI and AsyncAPI Schema Parser:** Implement `OpenApiAdapter` using `serde_yaml` / `serde_json` to parse OpenAPI 3.0/3.1 specifications. Extract path operations (`paths.<path>.<method>`) and component schemas (`components.schemas.<name>`) directly into normalized `SPECIFICATION` nodes. Generate `operationId` as canonical `node_key` (e.g. `API-GET-USERS`) and map summary/description to node content.
+  3. **Architecture Decision Record (ADR) Parser:** Implement `AdrAdapter` matching standard MADR and Nygard ADR templates (`docs/adr/*.md`). Mechanically extract Status, Context, Decision, and Consequences sections, mapping accepted records to `DECISION` nodes with canonical keys (e.g. `ADR-0012`).
+  4. **Spec-Driven Development (SDD) & Agent Steering Parsers:** Implement zero-token mechanical parsers for GitHub Spec Kit (`.github/specs/`), AWS Kiro (`.kiro/`), and repository instruction files (`AGENTS.md`, `CLAUDE.md`). Decompose hierarchy into `REQUIREMENT` and `SPECIFICATION` nodes with upward `DERIVED_FROM` edges.
+  5. **Authority Inheritance Pipeline & Source Trust Binding:** In `src/ingest/job.rs`, evaluate the `authority_source` attribute of the ingestion request (e.g. `BRANCH_PROTECTED_CODEOWNERS`, `COMMITTED_SPEC_MAIN`). When verified against pre-governed sources, candidate nodes inherit baseline authority: the ingestion pipeline bypasses manual staging approval, atomically inserts records directly into `graph_nodes` in `ACTIVE` state, enqueues embedding tasks, and records canonical provenance in `audit_ledger` with `actor_type = 'SYSTEM_AUTHORITY_IMPORT'`.
+
+---
+
+## TB-12
+
+* **ID:** TB-12
+* **Title:** Pre-Merge CI Test-Run Reporting, Merge Commit Materialization, and Release Readiness Endpoints
+* **Origin:** LD-1, LD-12, iteration 9
+* **Status:** Active
+* **Description/Tactical Details:**
+  1. **Pre-Merge Test Run Ingestion (`POST /api/v1/verification/test-run`):** In `src/gateway/routes/verification.rs`, implement `POST /api/v1/verification/test-run` accepting test suite execution payloads (`test_suite: String`, `passed: bool`, `pr_commit_sha: String`, `target_task_ids: Vec<Uuid>`, `duration_ms: u64`, `manifest_hash: String`). For each verified task, create or update a `VERIFIED_BY` edge from a `VERIFICATION` node to the active `TASK` node, embedding the candidate PR commit SHA and test metadata directly in edge attributes (`attributes->'pr_commit_sha' = pr_commit_sha`). Standardizes pre-merge verification without polluting the property graph with provisional `CODE_COMMIT` nodes.
+  2. **Canonical Merge Commit Materialization (`POST /api/v1/vcs/commits`):** In `src/gateway/routes/vcs.rs`, implement the VCS commit webhook handler. When a pull request merges into `main` (or when a release tag is pushed), the endpoint creates a permanent `CODE_COMMIT` node in `graph_nodes` (`node_type = 'CODE_COMMIT'`, `lifecycle_state = 'ACTIVE'`) with commit SHA, author, and timestamp. It queries task execution attributes (`attributes->'vcs_commits'`) or correlates PR commit history, atomically generating directed `IMPLEMENTED_BY` edges pointing from resolved `TASK` or `SPECIFICATION` entities to the canonical `CODE_COMMIT` node under `pg_advisory_xact_lock`.
+  3. **Release Readiness Inspection (`GET /api/v1/release/readiness`):** In `src/gateway/routes/release.rs`, implement `GET /api/v1/release/readiness` accepting an optional `requirement_root_id: Option<Uuid>` or target release milestone. The endpoint executes a recursive CTE evaluating active `REQUIREMENT` nodes: verifying that every leaf requirement maintains an active path through `SPECIFICATION` and `TASK` nodes terminating at verified test runs (`VERIFIED_BY`) and canonical commits (`IMPLEMENTED_BY`). Returns a structured compliance readiness summary (e.g. `satisfied_requirements`, `unverified_tasks`, `uncommitted_tasks`, `readiness_percentage`).
+
+---
+
+## TB-13
+
+* **ID:** TB-13
+* **Title:** MCP camelCase Wire Protocol Conformance, Multi-Axis Planning Context Handler (`get_elaboration_context`), Edge Target Pre-Validation, and Actionable Remediation Envelope Builder
+* **Origin:** LD-3, LD-4, LD-5, iteration 9
+* **Status:** Active
+* **Description/Tactical Details:**
+  1. **MCP Wire Protocol camelCase Serialization:** In `src/gateway/mcp/mod.rs` and `src/bin/mcp_stdio.rs`, audit all JSON-RPC serialization structs. Ensure tool definition schemas serialize parameter schemas strictly under `inputSchema` (camelCase) rather than `input_schema` (snake_case), adhering to the official MCP 2024-11-05 specification.
+  2. **Multi-Axis Planning Dossier Endpoint (`get_elaboration_context`):** In `src/storage/envelope.rs` and `src/gateway/mcp/tools.rs`, implement `get_elaboration_context(node_id: String)`. When an agent requests elaboration context for a parent requirement or deliverable:
+     * *Axis 1 (Normative Boundaries):* Queries and formats active system invariants (`INV-1` through `INV-9`) and governance policies.
+     * *Axis 2 (Architectural Precedents):* Retrieves historical `D-*` decision records and tags matching the component domain.
+     * *Axis 3 (Physical Schema Contracts):* Synthesizes active PostgreSQL enum constraints (`chk_node_type`, `chk_lifecycle_state`), edge type rules, and required attribute keys.
+     * *Axis 4 (Codebase Blueprints):* Surfaces canonical repository implementation patterns (e.g. Axum route handler templates, CTE query conventions, test templates).
+  3. **Pre-Transaction Relational Edge Target Validation:** In `src/storage/mutation.rs`, before initiating any edge creation transaction (`propose_node_mutation`, `create_subtask`), execute an endpoint pre-validation check: verify that both `from_node_id` and `to_node_id` parse as valid UUIDs and exist in `graph_nodes`. If a caller supplies an invalid format or non-existent ID (such as an external Git commit SHA string), reject immediately with HTTP 422 / JSON-RPC error code `ERR_INVALID_EDGE_TARGET`, returning `{ "code": "ERR_INVALID_EDGE_TARGET", "message": "Edge endpoint is not a registered node UUID", "invalid_field": "to_node_id", "invalid_value": "<value>" }`.
+  4. **Actionable Remediation Envelope Builder:** In `src/gateway/error.rs`, implement structured remediation payload generation for Invariant INV-1 ancestry failures (`ERR_INVALID_ANCESTOR_PATH`). Include the target node ID, terminal node ID, terminal node type (`SPECIFICATION`), and deterministic repair options (`PROMOTE_ANCESTOR` action with `node_id`, `target_type = 'REQUIREMENT'`, and `authorized = true/false` based on caller claims).
