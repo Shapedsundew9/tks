@@ -180,4 +180,3 @@
 * **Decision Taken & Rationale:** Adopted Option B. Updated `DOWNWARD_INVALIDATION_SQL` in `src/storage/cascade.rs`.
 * **Upstream Impact & Target Document:** `docs/vision/architecture.md` §5.1 & technical-backlog.md TB-6.
 * **Status:** Implemented
-

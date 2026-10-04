@@ -1,82 +1,72 @@
-# Rust Template
+# The Knowledge Substrate (TKS)
 
-A lightweight Rust project template for building small CLI-based applications and package-friendly code.
+The Knowledge Substrate (TKS) is an active, verified causal property graph and Model Context Protocol (MCP) gateway designed for continuous architectural governance, autonomous agent task elaboration, and multi-agent software co-evolution.
 
-## Overview
+TKS replaces passive Markdown documents with a living property graph stored in PostgreSQL with `pgvector`, backed by an immutable bare Git document repository and an append-only audit ledger.
 
-This repository provides a minimal starting point with:
+## Key Capabilities
 
-- a Rust package layout under `src/`
-- a simple CLI entry point in `src/main.rs`
-- reusable crate library code in `src/lib.rs`
-- project configuration and dependencies in `Cargo.toml`
-- toolchain specifications in `rust-toolchain.toml`
-- a docs folder for project notes and style guidance
+* **Deterministic Markdown Decomposition:** Ingests specifications mechanically via CommonMark AST parsing (`pulldown-cmark`), establishing upward hierarchy edges (`DERIVED_FROM`) and exact 0-based byte spans anchored to the bare Git ODB (`INV-4`).
+* **Graph-Bounded Context Envelopes:** Queries architectural context in $<50\text{ ms}$ (SLA-1) with depth clamped $\le 3$ and node budget capped at 40 (partitioned 30-node topological quota + 10 vector neighbors).
+* **Autonomous Task Elaboration:** Verified agents elaborate tasks directly into `ACTIVE` state under parent nodes with `AUTONOMOUS_ELABORATION` policy, updating leaf execution statuses under native row locks (`FOR UPDATE`) with zero advisory lock contention.
+* **Ephemeral Branch Workspaces:** Multi-agent co-evolution within isolated branch containers (`workspaces` table) with caller draft confidentiality (`INV-7`), advisory-lock-free task elaboration, and three-way topological merge CTEs.
+* **Automated Invalidation Cascades:** When requirements change, a single-roundtrip multi-statement recursive CTE sweeps downstream dependencies to `NEEDS_REVERIFICATION` with shortest-path staleness propagation (`MIN(depth)`) and single-pass audit aggregation.
+* **Zero-CDN Embedded Web Explorer:** Self-contained Cytoscape.js & Dagre interactive visualization served directly from the single binary (`GET /explorer`) with live real-time Server-Sent Events (SSE) telemetry.
+* **Native Model Context Protocol (MCP):** Connects external AI agents (Claude Code, Cursor, Windsurf) via stdio proxy (`tks mcp-stdio`) or HTTP/SSE (`/mcp`, `/mcp/sse`).
 
-## Project Structure
+## User Documentation
 
-```text
-.
-├── .devcontainer/
-├── .github/
-├── docs/
-├── src/
-│   ├── lib.rs
-│   └── main.rs
-├── tests/
-│   └── cli.rs
-├── Cargo.toml
-├── GEMINI.md
-├── LICENSE
-├── .gitignore
-├── .markdownlint-cli2.jsonc
-├── README.md
-└── rust-toolchain.toml
-```
+Comprehensive documentation and step-by-step operational walkthroughs are available in the **[User's Guide](file:///workspaces/tks/docs/user-guide/README.md)**:
+
+* [Chapter 1: Mental Model & Core Architecture](file:///workspaces/tks/docs/user-guide/01-mental-model-and-architecture.md)
+* [Chapter 2: Daemon & Identity Provisioning](file:///workspaces/tks/docs/user-guide/02-daemon-and-identities.md)
+* [Chapter 3: Ingesting Governing Documents](file:///workspaces/tks/docs/user-guide/03-ingesting-governing-documents.md)
+* [Chapter 4: Context Envelopes & Requirement Retrieval](file:///workspaces/tks/docs/user-guide/04-context-envelopes-and-querying.md)
+* [Chapter 5: Task Elaboration & Autonomous Execution](file:///workspaces/tks/docs/user-guide/05-task-elaboration-and-execution.md)
+* [Chapter 6: Multi-Agent Workspaces & Collaborative Co-Evolution](file:///workspaces/tks/docs/user-guide/06-workspaces-and-multi-agent-coevolution.md)
+* [Chapter 7: Document Evolution, Invalidation Storms & Reverification](file:///workspaces/tks/docs/user-guide/07-document-evolution-and-invalidation.md)
+* [Chapter 8: Web Explorer & Real-Time Observability](file:///workspaces/tks/docs/user-guide/08-web-explorer-and-observability.md)
+* [Chapter 9: Model Context Protocol (MCP) Integration](file:///workspaces/tks/docs/user-guide/09-mcp-agent-integration.md)
+* [Chapter 10: CLI Reference & Command Cheat Sheet](file:///workspaces/tks/docs/user-guide/10-cli-reference.md)
 
 ## Getting Started
 
-1. Ensure the Rust toolchain (via [rustup](https://rustup.rs/)) is installed and up to date.
-2. Build the project:
+### 1. Build the Binary
 
 ```bash
-cargo build
+cargo build --release
 ```
 
-1. Run the CLI:
+### 2. Start the Daemon
+
+Ensure PostgreSQL with `pgvector` is running (managed automatically via `.devcontainer/docker-compose.yml`), then start the server:
 
 ```bash
-cargo run
+cargo run --bin tks -- serve
 ```
 
-This currently prints:
+### 3. Provision an Identity
+
+```bash
+cargo run --bin tks -- identity create --name "developer" --role "HUMAN"
+```
+
+Export the generated bearer token:
+
+```bash
+export TKS_AUTH_TOKEN="tks_sec_..."
+export TKS_SERVER_URL="http://127.0.0.1:8080"
+```
+
+### 4. Run the Web Explorer
+
+Open your browser to:
 
 ```text
-Hello World!
+http://localhost:8080/explorer
 ```
 
-Alternatively, install the binary locally to invoke it directly:
-
-```bash
-cargo install --path .
-protoproject
-```
-
-## Development
-
-You can extend the template by adding modules under `src/` and updating dependencies in `Cargo.toml`.
-
-### Example
-
-```rust
-use rust_base::run;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    run()
-}
-```
-
-## Testing and Verification
+## Testing & Verification
 
 Run tests:
 
@@ -84,28 +74,16 @@ Run tests:
 cargo test
 ```
 
-Run the linter:
+Run linter checks:
 
 ```bash
-cargo clippy
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 Check code formatting:
 
 ```bash
 cargo fmt --check
-```
-
-## Scripts and Tools
-
-The project is configured with a binary entry point:
-
-- `protoproject` -> `src/main.rs`
-
-This makes it easy to run the CLI directly via Cargo:
-
-```bash
-cargo run --bin protoproject
 ```
 
 ## Substrate Storage & Database Management
@@ -154,20 +132,20 @@ Restores from the latest backup in `.substrate/backups/` (or a specified dump fi
 
 The devcontainer compose stack includes an isolated Ollama service for local inference.
 
-- Service name: `ollama`
-- Network endpoint (compose-internal): `http://ollama:11434`
-- OpenAI-compatible endpoint: `http://ollama:11434/v1`
-- No host port is published by default.
+* Service name: `ollama`
+* Network endpoint (compose-internal): `http://ollama:11434`
+* OpenAI-compatible endpoint: `http://ollama:11434/v1`
+* No host port is published by default.
 
 ### Defaults
 
-- Primary model: `qwen3:8b`
-- Alternate model: `gemma4:e4b`
-- Context length: `8192`
-- Parallel requests: `1`
-- Keep-alive: `-1` (models stay loaded until replaced or the service restarts)
-- Max loaded models: `1`
-- Flash attention: enabled
+* Primary model: `qwen3:8b`
+* Alternate model: `gemma4:e4b`
+* Context length: `8192`
+* Parallel requests: `1`
+* Keep-alive: `-1` (models stay loaded until replaced or the service restarts)
+* Max loaded models: `1`
+* Flash attention: enabled
 
 All values are overridable via environment variables in [devcontainer.json](.devcontainer/devcontainer.json) and [.devcontainer/docker-compose.yml](.devcontainer/docker-compose.yml).
 
@@ -213,10 +191,10 @@ scripts/llm/smoke-test.sh
 
 This checks:
 
-- API reachability
-- model presence
-- OpenAI-compatible `/v1/chat/completions`
-- VRAM residency signal from `/api/ps`
+* API reachability
+* model presence
+* OpenAI-compatible `/v1/chat/completions`
+* VRAM residency signal from `/api/ps`
 
 ## License
 
