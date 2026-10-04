@@ -5,9 +5,9 @@
 - **Evaluation Status:** Complete (Phase 0 WP-0.5 / Spike 8)
 - **Final Recommendation:** **Local Embedded Provider: CONFIRMED**
 - **Top-10 Retrieval Parity:** **70.0%** (Threshold: $\ge 70.0\%$)
-- **Single-Chunk CPU Latency:** **9.45 ms** (p50: 7.61 ms, p95: 20.68 ms | Threshold: $\le 50.0\text{ ms}$)
-- **Peak Runtime Memory (RSS):** **192.8 MB** (Threshold: $\le 256.0\text{ MB}$)
-- **Added Binary Footprint:** **5.70 MB** (Threshold: $\le 50.0\text{ MB}$)
+- **Single-Chunk CPU Latency:** **9.21 ms** (p50: 7.49 ms, p95: 19.10 ms | Threshold: $\le 50.0\text{ ms}$)
+- **Peak Runtime Memory (RSS):** **193.6 MB** (Threshold: $\le 256.0\text{ MB}$)
+- **Added Binary Footprint:** **48.07 MB** (Threshold: $\le 50.0\text{ MB}$)
 - **Model Evaluated:** `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional ONNX embeddings via `fastembed-rs`)
 - **Grounds Decision:** [D-77](file:///workspaces/tks/docs/vision/architecture.md#L1299) (`vector(384)` with partial HNSW index), [D-82](file:///workspaces/tks/docs/vision/architecture.md#L1355) (`node_embeddings` queue consolidation), and resolves Open Question [Q-4](file:///workspaces/tks/docs/vision/architecture.md#L1395).
 
@@ -15,10 +15,10 @@
 
 | Metric / Hypothesis Dimension | Observed Value | Gate Threshold | Status |
 | :--- | :--- | :--- | :--- |
-| **Mean CPU Latency per Chunk** | 9.45 ms | $\le 50\text{ ms}$ | PASS (Greenlight) |
-| **p95 CPU Latency per Chunk** | 20.68 ms | $\le 50\text{ ms}$ | PASS (Greenlight) |
-| **Peak Resident Memory (RSS)** | 192.8 MB | $\le 256\text{ MB}$ | PASS (Greenlight) |
-| **Binary Footprint Overhead** | 5.70 MB | $\le 50\text{ MB}$ | PASS (Greenlight) |
+| **Mean CPU Latency per Chunk** | 9.21 ms | $\le 50\text{ ms}$ | PASS (Greenlight) |
+| **p95 CPU Latency per Chunk** | 19.10 ms | $\le 50\text{ ms}$ | PASS (Greenlight) |
+| **Peak Resident Memory (RSS)** | 193.6 MB | $\le 256\text{ MB}$ | PASS (Greenlight) |
+| **Binary Footprint Overhead** | 48.07 MB | $\le 50\text{ MB}$ | PASS (Greenlight) |
 | **Top-10 Retrieval Parity** | 70.0% | $\ge 70\%$ | PASS (Greenlight) |
 
 ## 3. Retrieval Parity by Query
@@ -37,11 +37,11 @@
 ## 4. Latency Distribution Across Corpus
 
 - **Evaluated Chunks:** 25
-- **Minimum Latency:** 5.98 ms
-- **Median (p50) Latency:** 7.61 ms
-- **95th Percentile (p95) Latency:** 20.68 ms
-- **Maximum Latency:** 23.07 ms
-- **Total Corpus Inference Time:** 236.16 ms
+- **Minimum Latency:** 5.99 ms
+- **Median (p50) Latency:** 7.49 ms
+- **95th Percentile (p95) Latency:** 19.10 ms
+- **Maximum Latency:** 24.43 ms
+- **Total Corpus Inference Time:** 230.37 ms
 
 ## 5. Architectural Implications & Next Steps
 
