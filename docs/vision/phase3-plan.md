@@ -268,15 +268,15 @@ flowchart TD
 
 ### 4.1 Verification Checklist
 
-- [ ] All work package test suites passing cleanly across WP-3.1 through WP-3.5 (`cargo test --all-targets`).
-- [ ] Project linting, type-checking, and format checks pass cleanly with zero warnings/errors (`cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`).
-- [ ] Asynchronous event notification bus verified: PostgreSQL `LISTEN`/`NOTIFY` and Tokio broadcast channels deliver live mutation events to subscribers within 5ms.
-- [ ] Recursive downward invalidation cascade engine verified: modifying or reverting an active specification automatically cascades all descendant tasks to `NEEDS_REVERIFICATION` with progressive `staleness_score` metrics ([PHASE3-002](#wp-31-high-throughput-event-notification-bus--asynchronous-invalidation-cascade-engine)).
-- [ ] Multi-agent workspace isolation verified: concurrent external agents elaborate candidate subtasks in isolated workspaces with zero advisory lock contention or uncommitted row interference ([PHASE3-003](#wp-32-multi-agent-workspace-isolation--ephemeral-branch-containers)).
-- [ ] Topological conflict resolution and atomic promotion verified: fast-forward merges succeed; structural cycles and collisions are safely rejected; parent updates trigger clean auto-reparenting under the canonical lock hierarchy ([PHASE3-003](#wp-33-workspace-synchronization-topological-conflict-resolution--atomic-batch-promotion)).
-- [ ] Real-Time Web Explorer verified: interactive Cytoscape/WebGL graph canvas serves multi-depth requirement trees, governance states, and live invalidation wave animations via SSE stream ([PHASE3-001](#wp-34-real-time-substrate-web-explorer-cytoscapewebgl-dag-canvas--state-inspector)).
-- [ ] Performance target verified: Invalidation cascade sweep across $10^4$ dependent nodes executes in $<10\text{ ms}$ (`benches/invalidation_cascade_bench.rs`).
-- [ ] Dogfooding Milestone (Gate 3 - Multi-Agent Concurrent Co-Evolution & Invalidation Storm) successfully executed: Multiple external agents co-evolve specifications concurrently, resolve conflicts, and recover from invalidation cascades directly inside the substrate ([INV-6](file:///workspaces/tks/tests/dogfood_gate2.rs#L898)).
+- [x] All work package test suites passing cleanly across WP-3.1 through WP-3.5 (`cargo test --all-targets`).
+- [x] Project linting, type-checking, and format checks pass cleanly with zero warnings/errors (`cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`).
+- [x] Asynchronous event notification bus verified: PostgreSQL `LISTEN`/`NOTIFY` and Tokio broadcast channels deliver live mutation events to subscribers within 5ms.
+- [x] Recursive downward invalidation cascade engine verified: modifying or reverting an active specification automatically cascades all descendant tasks to `NEEDS_REVERIFICATION` with progressive `staleness_score` metrics ([PHASE3-002](#wp-31-high-throughput-event-notification-bus--asynchronous-invalidation-cascade-engine)).
+- [x] Multi-agent workspace isolation verified: concurrent external agents elaborate candidate subtasks in isolated workspaces with zero advisory lock contention or uncommitted row interference ([PHASE3-003](#wp-32-multi-agent-workspace-isolation--ephemeral-branch-containers)).
+- [x] Topological conflict resolution and atomic promotion verified: fast-forward merges succeed; structural cycles and collisions are safely rejected; parent updates trigger clean auto-reparenting under the canonical lock hierarchy ([PHASE3-003](#wp-33-workspace-synchronization-topological-conflict-resolution--atomic-batch-promotion)).
+- [x] Real-Time Web Explorer verified: interactive Cytoscape/WebGL graph canvas serves multi-depth requirement trees, governance states, and live invalidation wave animations via SSE stream ([PHASE3-001](#wp-34-real-time-substrate-web-explorer-cytoscapewebgl-dag-canvas--state-inspector)).
+- [x] Performance target verified: Invalidation cascade sweep across $10^4$ dependent nodes executes in $<10\text{ ms}$ (`benches/invalidation_cascade_bench.rs`).
+- [x] Dogfooding Milestone (Gate 3 - Multi-Agent Concurrent Co-Evolution & Invalidation Storm) successfully executed: Multiple external agents co-evolve specifications concurrently, resolve conflicts, and recover from invalidation cascades directly inside the substrate ([INV-6](file:///workspaces/tks/tests/dogfood_gate2.rs#L898)).
 
 ### 4.2 Gate / Milestone Demonstration
 
