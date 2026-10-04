@@ -78,6 +78,14 @@ git shared-push   # git subtree push --prefix=.shared shared-dev main
 
 Commit changes before pushing; only committed history under `.shared/` is sent. In a fresh clone (for example a container volume), run `.shared/tools/scripts/configure-subtree.sh` (or call it from the dev container `postCreateCommand`) to restore the `shared-dev` remote, the aliases and `git subtree`.
 
+### Shared dev container post-create
+
+`devcontainer/post-create.sh` holds post-create steps common to all repositories: it installs [CodeGraph](https://github.com/colbymchenry/codegraph) and the Antigravity CLI (`agy`) if missing, seeds `~/.gemini/antigravity-cli/settings.json` if absent, registers the `codegraph` MCP server (`codegraph serve --mcp`) with `agy` if it is not already configured, wires CodeGraph into other auto-detected agents (`codegraph install --yes`, which may write files such as `~/.copilot/mcp-config.json` or `~/.claude.json`), and indexes the repository (`codegraph init --yes`, a no-op if `.codegraph/` already exists). Call it from the repository's own `.devcontainer/post-create.sh`:
+
+```bash
+bash .shared/devcontainer/post-create.sh
+```
+
 ### Host environment variables in container volumes
 
 When a repository is cloned into a container volume, Docker Compose cannot read the host environment, so `${VAR:-}` entries in `docker-compose.shared.yml` resolve to their defaults. To opt in to host values, run the following from the repository and then rebuild the dev container:
