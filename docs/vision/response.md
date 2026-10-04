@@ -1,215 +1,101 @@
-# Stakeholder Critique & Strategic Alignment Response
+# Stakeholder Review & Strategic Critique: The Knowledge Substrate (TKS)
 
-**To:** Technical Vision Lead & Architecture Team  
-**From:** Stakeholder Sub-Agent  
-**Subject:** Strategic Vision & Planning Backlog Alignment Critique  
-**Date:** 2026-10-04  
-**Designated Context:** `docs/vision/vision.md` & `docs/vision/strategic-planning-backlog.md`
+**Role:** Stakeholder Sub-Agent  
+**Focus:** Alignment, Foundational Principles, Assumption Pressure-Testing, Scope Defense  
+**Target Documents Evaluated:** `docs/vision/vision.md`, `docs/vision/strategic-planning-backlog.md`
 
 ---
 
-## 1. Executive Stakeholder Appraisal
+## 1. Executive Position & Core Alignment
 
-As a committed ally invested in the ultimate operational success of The Knowledge Substrate (TKS), I strongly endorse the North Star vision: anchoring external agent reasoning to an authoritative, version-governed property graph of requirements, procedures, and architectural invariants. The core insight—that code-level AST traversal is blind to intent, and that commodity LLMs require strict cognitive rails to prevent architectural hallucination—is fundamentally sound and validated by the empirical findings of the Phase 4 dogfooding experiment.
+As a committed ally and pragmatic partner in this initiative, I want to be unequivocal: **the core direction and architectural foundations of The Knowledge Substrate are sound, compelling, and urgently needed.**
 
-The project demonstrates exceptional discipline in its foundational tenets:
+The problem space is diagnosed with exceptional clarity. The "Specification Drift Trap", the "Monolithic Diff Dilemma", and the "Context Window Collapse" are real structural bottlenecks crippling autonomous agent deployments at enterprise scale. The project's guiding philosophy—**Minimal LLM Reliance & Maximum Mechanical Reliance**, anchoring intent to a unified PostgreSQL property graph with native vector support, and treating the substrate as the durable "Organization" and the agent as the flexible "Employee"—is an exemplary, disciplined design stance.
 
-- **Minimal LLM reliance and maximum mechanical execution** (e.g., streaming CommonMark AST decomposition at zero token cost).
-- **A single-engine storage footprint** (PostgreSQL uniting relational adjacency, dense vectors, and immutable audit ledgers without distributed database sprawl).
-- **The organizational knowledge metaphor**, cleanly separating durable institutional memory (the substrate) from creative synthesis (the agent).
+Furthermore, the recent strategic pivot to **pull closed-loop traceability forward into Phase 4** (connecting requirements to Git commits and CI test executions) while establishing **cognitive planning rails in Phase 5** is an astute course correction. Proving that approved requirements govern executable code early is essential to establishing foundational product viability.
 
-However, a pragmatic review of `docs/vision/vision.md` and `docs/vision/strategic-planning-backlog.md` reveals critical strategic tensions, unstated operational dependencies, risks of scope creep, and an over-correction following the Phase 4 experiment failure. This critique delivers actionable challenges, mitigations, and reprioritization directives to ensure TKS maintains an efficient, disciplined, and realizable route to enterprise value.
+However, to guarantee the enterprise's ultimate operational and economic success, we must ruthlessly pressure-test several underlying assumptions, resolve structural tensions between system invariants and real-world developer workflows, and prevent subtle scope creep.
 
 ---
 
-## 2. Foundational Vision & Scope Defense Challenges
+## 2. Scope Defense & Process Steering
 
-### 2.1 The Autonomous Planning Paradox vs. Minimal LLM Reliance
+The boundary between **Vision** (destination, foundational principles, problem definition, success criteria) and **Strategy** (tactics, timelines, resource allocation, architectural edge cases) must be strictly maintained.
 
-In `vision.md` §2, the foundational philosophy establishes:
-> *"minimal LLM reliance and maximum reliance on mechanical processes... LLM inference is invoked only when mechanical rules encounter semantic ambiguity, and then solely to emit compact relational tuples rather than echoing large text blocks."*
-
-Yet, in `vision.md` §5 (Invariant I-6) and `strategic-planning-backlog.md` §3 (Gate 4), the strategic objective pivots toward equipping autonomous agents to perform end-to-end strategic planning and epic decomposition with zero access to source documentation (`docs/vision/`).
-
-**The Challenge:**
-There is a fundamental philosophical contradiction between asserting "minimal LLM reliance" and attempting to make autonomous LLMs independently plan complex engineering phases. Strategic phase elaboration and epic decomposition are quintessentially human-led, deliberative architectural tasks requiring organizational trade-offs, budget awareness, and product empathy.
-
-When TKS sets Gate 4 as *"Autonomous Agent Plans Phase 7 via TKS MCP Only (Zero docs/vision/ Access)"*, it risks transforming TKS from an authoritative intent substrate into an experimental autonomous software architect. The substrate’s role is not to turn an LLM into an independent engineering executive; its role is to provide the **normative rails, schema contracts, and invariant checks that bound human and agent collaborative planning**.
-
-**Mitigation:**
-
-- Reframe Gate 4 from *autonomous unguided epic planning* to *bounded, interactive task elaboration*.
-- The success criterion should not be that an agent creates an entire phase roadmap single-handedly from an empty prompt, but that an agent, given a specific deliverable directive by a human lead, formulates schema-compliant child tasks without violating architectural invariants (`INV-1` through `INV-9`).
+- **Vision Grounding:** The Vision document (`docs/vision/vision.md`) must remain focused on the *enduring architectural invariants, environmental boundary contracts, organizational metaphors, and falsification criteria*. It should resist absorbing transient implementation mechanisms (such as specific Git actor channel designs or JSON-RPC serialization fixes).
+- **Strategy Backlog Role:** The Backlog (`docs/vision/strategic-planning-backlog.md`) serves as an incidental capture of phased tactics and spikes. Tactical planning is the *next* phase of the governance cycle; we must avoid premature over-specification of implementation minutiae until the core vision contracts are watertight.
 
 ---
 
-### 2.2 The Cold-Start Adoption Barrier & The Brownfield Reality
+## 3. Substantive Critiques & Pressure-Tested Assumptions
 
-In `vision.md` §1 ("The Specification Void & The Cold-Start Adoption Barrier") and §3 ("Environmental & Boundary Contracts"), TKS explicitly bounds its scope:
-> *"TKS is fundamentally an intent provenance substrate, not an autonomous mind-reader... it presupposes that engineering teams possess—or are willing to articulate—text-based specifications... TKS is not an autonomous requirements generator or reverse-engineering scanner."*
+### Critique 1: The Post-Ingestion Specification Lifecycle & Re-Ingestion Reconciliation Gap
 
-While this boundary is conceptually clean and prevents TKS from getting bogged down in brittle code-to-spec reverse-engineering, it exposes the enterprise to an existential adoption barrier:
-
-**The Challenge:**
-The vast majority of real-world software engineering teams operate in brownfield repositories with minimal, outdated, or fragmented PRDs. If TKS offers zero utility until an organization authors pristine, multi-tiered CommonMark specification documents adhering to specific heading conventions, the Time-to-First-Value (`CAL-TTFV`) will be prohibitive for all but greenfield projects. If adopting TKS requires weeks of upfront manual document authoring, teams will abandon it before experiencing the downstream leverage of topological context envelopes.
-
-Furthermore, real-world repositories *do* contain structured intent, but not in formal PRDs. Intent exists in:
-
-1. Architecture Decision Records (ADRs).
-2. OpenAPI / AsyncAPI / Protobuf contracts.
-3. Behavior-Driven Development (BDD) feature files and structured test suite titles.
-4. Git release notes and issue milestone trackers.
-
-**Directive / Backlog Addition:**
-
-- **Add to Backlog:** Define a deterministic, mechanical **"Brownfield Intent Scaffolding"** ingestion adapter (Phase 4 or 5).
-- Enable mechanical extraction of baseline requirement and specification nodes from existing structured artifacts (e.g., parsing OpenAPI endpoints into functional requirement stubs, converting ADR files into architectural decision nodes). This adheres strictly to the mechanical, zero-token philosophy while eliminating the cold-start adoption impasse.
+* **The Vision Stance:** Section 3 states that the PostgreSQL Property Graph is the "sole authoritative living substrate" for active project intent, while text specifications in Git serve as an "immutable historical intake ledger and baseline reference archive," with human-readable Markdown dynamically synthesized *from* the graph via reverse projection.
+* **The Reality Gap:** In real engineering organizations, developers, architects, and product managers will not abandon their IDEs, Git workflows, and Markdown PRs to edit requirements exclusively through graph mutation APIs or Cytoscape web views. Human teams will continue to modify existing Markdown documentation on disk and in Git branches.
+* **The Vulnerability:** The backlog (lines 20–21) notes that document re-ingestion triggers "automated ingestion job supersession sweeps... to guarantee zero orphaned draft residue." But what happens to **active nodes, child tasks, and tactical decisions** that were elaborated in the graph under an earlier document revision? If re-ingestion treats the new document as a wholesale replacement, it risks clobbering active graph topology and severing downstream verification links. If it does not replace active nodes, how are textual diffs in Git reconciled with living graph mutations?
+* **Recommendation (Challenge & Add):**
+  1. *In the Vision:* Clarify the **Document Re-Ingestion Reconciliation Contract**. Explicitly define whether re-ingestion acts as an additive delta proposal requiring supervisory three-way merge against active graph state, or whether documents are strictly treated as seed packages after which Git branches must be generated via reverse projection.
+  2. *In the Backlog:* Add a formal spike/backlog item in Phase 4 for **Living Graph Re-Ingestion & Delta Reconciliation**, ensuring existing active nodes and downstream verification edges are preserved when an updated specification file is ingested.
 
 ---
 
-### 2.3 Scope Creep: Dilution of the Vision Document with Transient Tactics
+### Critique 2: Fragility of AST Regex Heading Promotion vs. Non-Negotiable Invariant I-1
 
-`vision.md` currently contains extensive low-level tactical decisions, concrete table schemas, specific library names, and transient bug fixes:
-
-- Foreign key column references (`graph_edges.to_node_id REFERENCES graph_nodes(id)`).
-- JSON attribute keys (`attributes->'workspace_id'`, `attributes->'vcs_commits'`).
-- MCP JSON-RPC protocol wire bugs (camelCase `inputSchema` vs snake_case `input_schema`).
-- Concrete local LLM model weights (`qwen3:8b`, `gemma4:e4b`).
-
-**The Challenge:**
-A vision document must define the enduring North Star, core principles, problem definitions, environmental boundaries, and falsification criteria. When specific wire-format serialization bug fixes or database column names are codified directly into the Vision Document, the document loses its strategic altitude and blurs the boundary between *Vision* and *Strategy/Backlog*.
-
-**Directive:**
-
-- Prune low-level schema implementations, wire-level protocol fixes, and specific model parameter references from `vision.md`, maintaining them strictly within `strategic-planning-backlog.md` and architectural ADRs.
+* **The Stance:** Following the dogfooding experiment failure where section headings defaulted to `SPECIFICATION` (leaving zero `REQUIREMENT` nodes and causing `ERR_INVALID_ANCESTOR_PATH` failures under Invariant I-1), Phase 4 introduces mechanical heading promotion in `src/worker/decomp.rs`. Specifically, headings matching regex patterns like `Phase \d+`, `Objective`, `Core Requirements`, or `Capability \d+` are promoted to `REQUIREMENT`.
+* **The Reality Gap:** This is an ad-hoc heuristic attempting to satisfy a core architectural invariant. Real-world engineering documents rarely conform to these specific English keywords; teams author headings such as `# User Authentication Subsystem`, `# Payment Processing Gateway`, or `## Core Domain Invariants`.
+* **The Vulnerability:** Any document lacking those exact pattern matches will have its headings parsed as `SPECIFICATION`. Consequently, when an agent or developer attempts task elaboration under those sections, Invariant I-1 validation will immediately fail again with an ancestor path violation, resurrecting the exact failure mode that forced the agent to bypass the gateway in the Phase 4 experiment.
+* **Recommendation (Challenge & Mitigate):**
+  1. *Replace Regex Heuristics with Principled Structural Rules:* Define in the Vision and Backlog that Tier 1 mechanical AST decomposition adopts a **structural hierarchy convention**: top-level document sections (e.g., Level-1 `#` or Level-2 `##` headings, or root section containers) are automatically classified as `REQUIREMENT` anchors by structural position, or via explicit frontmatter metadata (`type: REQUIREMENT`), rather than arbitrary title regexes.
+  2. *Actionable Remediation Envelope Alignment:* Ensure that if a node is classified as `SPECIFICATION` but an agent requires an ancestor `REQUIREMENT`, the remediation envelope can deterministically suggest or automatically execute a promotion of that ancestor if the caller has appropriate governance authority.
 
 ---
 
-## 3. Strategic Roadmap & Dependency Pressure-Testing
+### Critique 3: Model Downgrading Over-Optimism & Practical Tiering (Hypothesis H-6 & CAL-DOWN)
 
-### 3.1 The Phase 7 Deferral: Premature Optimization over Core Value Delivery
-
-Following the Phase 4 dogfooding experiment failure, the roadmap deferred Phase 7 (Closed-Loop Lifecycle Verification: mapping tasks to Git commits and CI test results) and inserted:
-
-- **Phase 4:** High-Fidelity Ingestion & Quality Ranking (Multi-Tier LLM, Rubric Scoring, Heading Promotion).
-- **Phase 5:** Modular Governance Profiles & Relationship Maintenance (Policy Packs, Continuous Local Worker).
-- **Phase 6:** Cognitive Planning Rails & Autonomous Dogfooding (Gate 4).
-
-**The Challenge:**
-Why must closed-loop code traceability—the ultimate validation that agent-generated code fulfills specified requirements—be deferred behind three complex semantic phases?
-
-Consider what caused the Phase 4 experiment failure:
-
-1. MCP serialized `input_schema` instead of `inputSchema` (a 1-line serialization fix).
-2. The AST parser classified headings as `SPECIFICATION` instead of `REQUIREMENT`, causing INV-1 ancestor check failures (a deterministic regex/heading rule fix).
-3. The context envelope provided insufficient architectural invariants and blueprints (a prompt template synthesis fix).
-4. Edge mutations accepted raw Git SHA strings instead of requiring valid node UUIDs (a schema pre-validation check).
-
-None of these four failure modes required building **continuous local LLM background relationship workers** (Phase 5) or **multi-tier commercial LLM escalation pipelines** (Phase 4). Inserting these expansive capabilities ahead of basic closed-loop traceability creates a severe risk of roadmap delay. The core problem developers face today is not a lack of background graph pruning; it is the inability to prove that code commits and test runs satisfy functional requirements.
-
-**Reprioritization Directive:**
-
-- **Split Phase 7 (Closed-Loop Verification) and pull core traceability forward:**
-  - Introduce **Phase 4-Lite / Immediate:** Implement the direct mechanical fixes: Heading Promotion (`src/worker/decomp.rs`), camelCase MCP serialization, and edge pre-validation.
-  - Implement **Basic Closed-Loop Traceability (VCS Commit & Test Run Mapping)** directly after heading promotion. Linking an approved task to a Git commit SHA and recording CI test execution results does *not* depend on modular governance profiles or autonomous planning rails.
-  - Re-sequence Modular Governance Profiles (Phase 5) and Continuous Background Workers as secondary refinements once the closed loop between Requirement $\to$ Task $\to$ Commit $\to$ Test is proven.
+* **The Hypothesis:** Hypothesis H-6 and target `CAL-DOWN` postulate that providing an autonomous agent with a multi-axis planning dossier (`get_elaboration_context`) narrows the degrees of freedom such that a smaller, cheaper local model (specifically an 8B model like `qwen3:8b` in the Ollama container) will match an unguided frontier model in task elaboration and schema compliance on the Real-World Feature Extension Benchmark.
+* **The Reality Gap:** A complete multi-axis planning dossier—synthesizing binding invariants (`INV-1`..`INV-9`), historical decisions (`D-*`), relational schema contracts, and canonical repository blueprint paths—is inherently information-dense (spanning 4,000 to 8,000 tokens).
+* **The Vulnerability:** Real-world 8B parameter models running within an 8,192 context window with single-threaded local inference struggle severely with multi-constraint JSON tool calling, UUID foreign-key referencing, and strict edge pre-validation over long context envelopes. Expecting an 8B model to execute flawless multi-tool graph mutations without foreign key breakages sets an unrealistic bar. If the benchmark fails, the team risks triggering **Kill Condition 5 (Cognitive Rail Inefficacy Falsification)** when the actual failure point was model capacity on complex structured tool protocols, not the validity of cognitive rails.
+* **Recommendation (Mitigate & Reprioritize):**
+  1. *Stratify Model Downgrading into Economic Tiers:*
+     - **Tier 1 (Frontier-to-Utility Commercial Arbitrage):** Downgrading from expensive frontier reasoning models (e.g., Claude 3.7 Sonnet, GPT-4o) to high-speed, cost-effective commercial models (e.g., Claude 3.5 Haiku, GPT-4o-mini, Gemini 2.5 Flash). This delivers a 10x–20x cost reduction and massive latency improvements while maintaining impeccable JSON schema and tool-calling fidelity. This should be the primary validation target for Phase 5 Gate 4.
+     - **Tier 2 (Edge / Local Commodity 8B Models):** Testing local 8B models (e.g., Qwen 8B) in the devcontainer should be positioned as an aspirational research evaluation in Phase N+, not an immediate gating falsification metric for Phase 5.
 
 ---
 
-### 3.2 Resource Contention & Drift from Continuous Background Local LLM Workers
+### Critique 4: Scope Creep in Modular Governance Profiles vs. Off-the-Shelf Tooling
 
-Phase 5 introduces a continuous, low-priority background worker running inside `tks serve` that leverages a local LLM (Ollama running `qwen3:8b`) to continuously audit graph relationships, detect indirect contradictions, and prune stale links.
-
-**The Challenge:**
-
-1. **Host Resource Starvation:** The development environment is containerized (`.devcontainer/`). When developers or agents are running heavy Rust compilation (`cargo check`, `cargo test`), language servers (`rust-analyzer`), and test suites, running continuous local LLM inference on the same machine will trigger severe CPU/GPU saturation, thermal throttling, and context switching latency.
-2. **Non-Deterministic Graph Drift:** An asynchronous background worker executing LLM-guided link pruning introduces unpredictable, non-deterministic graph mutations while external agents and human leads are actively working. If an agent is executing a task and a background worker concurrently alters or flags an ancestor relationship, the agent’s execution context is destabilized.
-3. **Off-the-Shelf vs. Bespoke Utility:** Graph relationship pruning and contradiction detection can be handled 90% deterministically through relational integrity checks (e.g., detecting orphaned tasks, unlinked specifications, broken transitive closures) without invoking an 8-billion parameter neural network.
-
-**Directive / Mitigation:**
-
-- **Transition from Continuous Daemon to Scheduled/On-Demand Audit:** The relationship maintenance worker must not run as an unconstrained background daemon. It should run as an explicit, on-demand or periodic audit command (`tks graph audit`).
-- **Enforce Read-Only Advisory Status:** The relationship worker must **never directly mutate, prune, or delete graph edges**. It must strictly emit candidate recommendations into `relationship_review_backlog` for human or authorized agent sign-off.
-- **Deterministic First Pass:** Implement deterministic graph topology linting (reachability, orphan detection, cycle detection) before invoking local LLM inference for semantic contradiction evaluation.
+* **The Vision Stance:** Section 2 (Key Capability 8) and Phase 6 describe Modular Governance Profiles that model engineering processes, SOPs, and compliance workflows as strongly typed graph clusters, specifically citing "documentation policies mandating Markdown/Mermaid linting" and "repository hygiene rules" that trigger invalidation cascades across linked projects.
+* **The Reality Gap:** Markdown syntax formatting and Mermaid diagram linting are solved off-the-shelf problems handled flawlessly by standard, zero-overhead tools (`markdownlint`, `prettier`, pre-commit hooks, GitHub Actions).
+* **The Vulnerability:** Ingesting file formatting rules into a PostgreSQL property graph, linking them via `GOVERNED_BY_PROCEDURE` edges, and running automated invalidation cascades when a linting rule changes is severe over-engineering. Furthermore, cascading policy invalidations across large multi-project repositories risks triggering an **invalidation storm**, marking thousands of requirements as `NEEDS_REVERIFICATION` and completely overwhelming human supervisors, directly violating the core principle of **Tractable Supervisory Granularity**.
+* **Recommendation (Drop & Mitigate):**
+  1. *Drop Syntax/Format Linting from Graph Governance:* Narrow Modular Governance Profiles strictly to high-leverage institutional and architectural policies that static linters cannot evaluate: third-party dependency onboarding checklists, licensing compatibility policies, CVE supply-chain auditing, EU Cyber Resilience Act compliance, and architectural boundary invariants.
+  2. *Add Blast-Radius Throttling to Policy Cascades:* Update Phase 6 requirements to enforce severity tiers (Advisory vs. Breaking) and rate-limiting/batching on policy invalidation cascades to prevent supervisory notification floods.
 
 ---
 
-### 3.3 The Self-Reimplementation Benchmark: Scientific Bet vs. Over-Fitting Vanity Metric
+### Critique 5: The Pre-Merge Verification Paradox in VCS Commit Duality
 
-Hypothesis H-6 and Benchmark 4 mandate the **Self-Reimplementation Benchmark**:
-> *"Demonstrating that an earlier version of TKS paired with a smaller, cheaper, less capable LLM can successfully reimplement TKS, proving that high-precision cognitive rails reduce the degrees of freedom required for complex software construction."*
-
-**The Challenge:**
-While conceptually intriguing, treating "Self-Reimplementation" as a primary gating milestone is hazardous:
-
-1. **Susceptibility to Benchmark Gaming:** An agent reimplementing TKS from TKS specs can succeed simply because the team tailors the implementation blueprints in `get_elaboration_context` to mirror the existing Rust codebase verbatim, proving only that the agent can follow a detailed recipe, not that the cognitive rails generalize.
-2. **Model Boundary Interference:** If a smaller model (e.g. Qwen 8B) fails to compile complex Rust code involving `tokio`, `libgit2` C bindings, and async lifetime constraints, the failure reflects the base model's Rust syntax capability, not a failure of the substrate’s topological intent.
-3. **Misalignment with Enterprise Reality:** Enterprise customers do not adopt a knowledge substrate because it can reproduce itself; they adopt it because it prevents external agents from violating business invariants in *their* applications.
-
-**Directive:**
-
-- Demote the Self-Reimplementation Benchmark from a core milestone gate to an **aspirational, post-v1.0 research experiment (Phase N+)**.
-- Replace it with a **Real-World Feature Extension Benchmark**: Demonstrate that an external agent, guided by TKS context envelopes, can successfully implement a substantial, new, un-prompted feature module within an existing third-party or realistic codebase without architectural violations.
+* **The Architecture:** In Section 3 and Backlog line 24, VCS Commit Dual-Representation states: ongoing branch-level commits are recorded only in task execution attributes (`attributes->'vcs_commits'`), while canonical merge commits to `main` or signed release tags are materialized as typed `CODE_COMMIT` graph nodes linked via explicit `IMPLEMENTED_BY` edges.
+* **The Reality Gap:** Modern continuous integration (CI) and automated verification do not wait until code is merged into `main`. The critical quality gate occurs on the **Pull Request / feature branch *prior* to merging**.
+* **The Vulnerability:** If automated test runs submitted via `POST /api/v1/verification/test-run` require a materialized `CODE_COMMIT` node to establish a `VERIFIED_BY` edge and evaluate release readiness (`GET /api/v1/release/readiness`), TKS cannot represent or certify pull request test verification. Merging to `main` before verification violates standard engineering hygiene, while verifying after merge renders the gate purely retrospective.
+* **Recommendation (Add & Refine):**
+  1. *Refine Commit Materialization Contract:* Clarify in the Backlog that staging/candidate pull request head commits can be materialized as provisional `CODE_COMMIT` nodes (or that `VERIFIED_BY` edges can bind directly to active `TASK` nodes accompanied by the branch commit SHA), allowing CI verification pipelines to certify PR branch readiness *before* the merge to `main`.
 
 ---
 
-## 4. Tractable Supervisory Granularity vs. Quality Rubric Conflict
+## 4. Summary of Recommended Actions
 
-Capability 7 in `vision.md` defines **Tractable Supervisory Granularity**:
-> *"Structuring human verification gates around cohesive functional modules, document sections, and hierarchical batches rather than isolated relational micro-nodes, presenting candidate entities in the context of their source document spans to ensure supervisory review remains cognitively tractable."*
-
-In direct contrast, Phase 4 Deliverable 3 in `strategic-planning-backlog.md` mandates **Contradiction-First Quality Ranking**:
-> *"Candidate requirements are ranked by a Quality Index that places Contradiction Risk against existing approved nodes first, followed by ambiguity and testability scores... surfaced in `tks staging list`, ordering candidate requirements from highest risk/contradiction to lowest."*
-
-**The Conflict:**
-Sorting candidate requirements across an entire document strictly by contradiction and risk score **completely shatters the narrative document structure**.
-
-If an engineer reviews a 500-line specification, sorting candidates by risk score causes the review interface to display an isolated paragraph from Section 7, followed by a bullet from Section 2, followed by a table from Section 9. This destroys the reader's mental model and context. An apparent "contradiction" flagged in isolation is often completely logical when read within the surrounding explanatory prose of its section. Forcing reviewers to evaluate out-of-order relational fragments re-introduces the very human cognitive fatigue that TKS was designed to eliminate!
-
-**Directive / UX Resolution:**
-
-- The staging review presentation (`tks staging list` and Cytoscape/Web Explorer) must **preserve the document's hierarchical narrative order as the primary display view**.
-- Quality Rubric scores and Contradiction Flags must be rendered as **inline visual heatmaps, severity badges, and section callouts** within the source document context.
-- Provide a dedicated, secondary *Triage View* (`tks staging list --triage-anomalies`) for rapid exception scanning, but never make a flattened, risk-sorted list the default verification workflow.
+| Category | Item Description | Impact on Vision / Backlog |
+| :--- | :--- | :--- |
+| **Add** | **Re-Ingestion Reconciliation Contract:** Formally specify how document updates in Git reconcile against active living graph nodes and agent-elaborated tasks without data loss or clobbering. | Resolves Vision Section 3 boundary tension; adds Phase 4 backlog item. |
+| **Mitigate** | **Principled Structural Heading Taxonomy:** Replace fragile regex heading promotion (`Phase \d+`) with structural hierarchy rules or explicit metadata to guarantee Invariant I-1 compliance. | Hardens Phase 4 mechanical AST parser against real-world doc formatting. |
+| **Mitigate** | **Stratified Model Downgrading Tiers:** Focus Phase 5 / Gate 4 benchmark on commercial utility models (Haiku/Flash/mini, 10x-20x cost reduction); move local 8B evaluation to Phase N+ research horizon. | Protects against false-positive falsification of Hypothesis H-6 (Kill Condition 5). |
+| **Drop** | **Syntax & File-Format Linting in Governance Profiles:** Eliminate markdown/mermaid syntax linting from property graph modeling; rely on off-the-shelf CI linters. | Eliminates scope creep; focuses TKS on high-value architectural & procedural governance. |
+| **Add** | **Pre-Merge Pull Request Verification Gating:** Allow CI test results to link to provisional commit/task entities on feature branches before merge to `main`. | Solves pre-merge CI verification paradox in the Phase 4 traceability pipeline. |
 
 ---
 
-## 5. Architectural Edge Contracts: Resolving the VCS Commit Duality
+## 5. Conclusion
 
-In `vision.md` §3 and `strategic-planning-backlog.md` §2 (Phase 7), Invariant I-9 prohibits treating edge targets as raw external strings (such as Git commit SHAs). The documents propose two alternatives:
-
-1. Materializing commits as typed graph nodes (`CODE_COMMIT`).
-2. Storing commit SHAs in structured attributes (`attributes->'vcs_commits'`).
-
-**The Challenge:**
-This ambiguity creates an unaddressed architectural dilemma:
-
-- If every Git commit is materialized as a typed node in `graph_nodes`, ordinary developer workflows (pushing dozens of WIP or branch commits) will cause catastrophic node proliferation, polluting the property graph with ephemeral, low-value commit nodes and degrading recursive CTE traversal performance.
-- If commits are merely stored as JSON strings in `attributes->'vcs_commits'`, they cease to be first-class graph entities, making topological queries (e.g., "find all requirements touched by commit X") awkward and inefficient JSONB searches.
-
-**Directive / Backlog Resolution:**
-Resolve this architectural duality explicitly in the backlog prior to Phase 7:
-
-1. **Ephemeral Commits as Attributes:** Ongoing, branch-level Git commit SHAs must be appended to the task's `attributes->'vcs_commits'` array.
-2. **Milestone Commits as Typed Nodes:** Only **canonical merge commits to `main` or signed release tags** shall be materialized as typed `CODE_COMMIT` graph nodes with formal `IMPLEMENTED_BY` edges. This keeps the living topology clean, performant, and focused on durable architectural milestones.
-
----
-
-## 6. Summary of Actionable Directives
-
-| Category | Item / Directive | Action | Rationale |
-| :--- | :--- | :--- | :--- |
-| **Roadmap** | **Pull Closed-Loop Traceability Forward** | **Reprioritize** | Decouple basic VCS commit and CI test linking from advanced planning rails; deliver core verification value earlier. |
-| **Architecture** | **Continuous Local LLM Worker** | **Mitigate & Re-scope** | Convert continuous daemon to scheduled/on-demand audit (`tks graph audit`); enforce read-only advisory backlog generation. |
-| **Philosophy** | **Gate 4 Autonomous Planning Scope** | **Clarify & Bound** | Reframe from unguided autonomous epic generation to bounded, interactive task elaboration guided by human intent. |
-| **Adoption** | **Brownfield Intent Scaffolding** | **Add to Backlog** | Ingest structured artifacts (OpenAPI, ADRs, test suites) mechanically to conquer the cold-start barrier. |
-| **Supervision** | **Staging Review Ordering** | **UX Correction** | Preserve narrative document hierarchy as the default review view; embed contradiction scores as inline badges rather than scrambling order. |
-| **Evaluation** | **Self-Reimplementation Benchmark** | **Challenge & Demote** | Move to aspirational Phase N+ research; prioritize real-world third-party feature implementation benchmarks. |
-| **Schema** | **VCS Commit Node vs Attribute Duality** | **Resolve** | Store intermediate commits in JSON attributes; materialize only canonical merge/tag commits as typed `CODE_COMMIT` nodes. |
-| **Documentation**| **Vision Document Hygiene** | **Scope Defense** | Prune low-level tactical SQL foreign keys, JSON keys, and transient wire bug fixes from `vision.md` into the backlog. |
-
----
-
-### Conclusion
-
-The Knowledge Substrate possesses a compelling thesis and a robust foundational architecture. By resisting the temptation to pursue autonomous general software planning, preventing background resource bloat, respecting human narrative context during review, and accelerating the delivery of closed-loop commit and test traceability, the enterprise will secure a practical, disciplined, and decisively competitive path to execution.
+The Knowledge Substrate possesses an exceptionally coherent foundational vision. Addressing the five pragmatic issues outlined above will preserve the enterprise's disciplined resource model, eliminate friction in real-world developer adoption, and guarantee that the system's empirical benchmarks reflect genuine architectural efficacy rather than brittle operational artifacts.
