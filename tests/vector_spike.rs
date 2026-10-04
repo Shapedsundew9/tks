@@ -204,10 +204,21 @@ fn test_full_vector_spike_evaluation() {
 #[test]
 fn test_cli_binary_execution() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let output_path = Path::new(manifest_dir).join("docs/vision/spike8-results.md");
+    let output_path = Path::new(manifest_dir).join("target/tmp_spike8_results.md");
+    if output_path.exists() {
+        let _ = fs::remove_file(&output_path);
+    }
 
     let status = Command::new("cargo")
-        .args(["run", "--bin", "vector_spike_eval", "--", "--quiet"])
+        .args([
+            "run",
+            "--bin",
+            "vector_spike_eval",
+            "--",
+            "--quiet",
+            "--output",
+            output_path.to_str().expect("valid utf-8 path"),
+        ])
         .current_dir(manifest_dir)
         .status()
         .expect("cargo run --bin vector_spike_eval must execute");
@@ -216,6 +227,7 @@ fn test_cli_binary_execution() {
     assert!(output_path.exists(), "spike8-results.md must be generated");
 
     let report = fs::read_to_string(&output_path).expect("read report");
+    let _ = fs::remove_file(&output_path);
     assert!(
         report.contains("Local Embedded Provider: CONFIRMED"),
         "Report must confirm local embedded provider"
