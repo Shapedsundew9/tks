@@ -35,7 +35,10 @@ if [[ ! -f "$ANTIGRAVITY_SETTINGS" ]]; then
     "permissions": {
         "allow": [
             "write_file(*)",
-            "command(*)"
+            "command(*)",
+            "read_url(*)",
+            "read_browser_page(*)",
+            "search_web(*)"            
         ],
         "deny": [
             "command(rm -rf)",
