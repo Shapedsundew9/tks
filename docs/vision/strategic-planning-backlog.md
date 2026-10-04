@@ -42,10 +42,10 @@ The experiment revealed that while the underlying PostgreSQL storage, Git ODB ac
 
 **Reprioritized Strategic Action:**
 
-1. **Pull Closed-Loop Traceability Forward into Phase 4:** Directly couple foundational mechanical fixes (structural heading taxonomy in `src/worker/decomp.rs`, camelCase MCP serialization, relational edge pre-validation, living graph delta reconciliation) with pre-merge PR commit linking and CI test execution mapping. Proving that approved requirements govern executable code is foundational viability.
-2. **Cognitive Planning Rails in Phase 5:** Equip TKS with `get_elaboration_context`, actionable remediation envelopes (with ancestor promotion options), and bounded interactive task elaboration templates, achieving Gate 4 dogfooding under human lead directives.
+1. **Pull Closed-Loop Traceability & Gate Re-Verification into Phase 4:** Directly couple foundational mechanical fixes (structural heading taxonomy in `src/worker/decomp.rs`, camelCase MCP serialization, relational edge pre-validation, living graph delta reconciliation) with pre-merge PR commit linking, CI test execution mapping, and a rigorous re-verification pass for Gates 1 and 2 against written criteria. Proving that approved requirements govern executable code is foundational viability.
+2. **Cognitive Planning Rails in Phase 5:** Equip TKS with `get_elaboration_context`, actionable remediation envelopes (with ancestor promotion options), and bounded interactive task elaboration templates, achieving Gate 4 dogfooding under human lead directives across both TKS and external specification corpora.
 3. **Modular Governance & Scheduled Maintenance in Phase 6:** Encapsulate high-value institutional and architectural policy profiles with blast-radius throttling, and deploy scheduled/on-demand graph audits (`tks graph audit`) emitting advisory proposals to `relationship_review_backlog`.
-4. **Benchmark Realignment & Stratified Downgrading:** Adopt the **Real-World Feature Extension Benchmark** using commercial utility models (Haiku/Flash/mini, 10x–20x cost reduction) as the primary empirical standard for model downgrading efficiency in Phase 5 Gate 4, while reserving local commodity 8B edge models and complete self-reconstruction as aspirational post-v1.0 research horizons (Phase N+).
+4. **Benchmark Realignment & Stratified Downgrading:** Adopt the **Real-World Feature Extension Benchmark** using commercial utility-tier models (operating at an order-of-magnitude lower inference cost than contemporaneous flagship models) as the primary empirical standard for model downgrading efficiency in Phase 5 Gate 4 (including external codebase evaluation), while reserving local commodity 8B edge models and complete self-reconstruction as aspirational post-v1.0 research horizons (Phase N+).
 
 ---
 
@@ -87,11 +87,11 @@ flowchart LR
     classDef completed fill:#1c2d27,stroke:#529b71,stroke-width:1.5px,color:#c2ebd4;
 
     P0["Phase 0: Pre-Construction Spikes<br/><i>[COMPLETED]</i>"]:::completed
-    P1["Phase 1: Substrate Core & Read Context<br/><i>[COMPLETED]</i>"]:::completed
-    P2["Phase 2: Bounded Agent Mutation<br/><i>[COMPLETED]</i>"]:::completed
+    P1["Phase 1: Substrate Core & Read Context<br/><i>[PROVISIONAL / REMEDIATING]</i>"]:::completed
+    P2["Phase 2: Bounded Agent Mutation<br/><i>[PROVISIONAL / REMEDIATING]</i>"]:::completed
     P3["Phase 3: Impact Analysis & Observability<br/><i>[COMPLETED]</i>"]:::completed
 
-    P4["Phase 4: Foundational Ingestion & Closed-Loop Traceability<br/><i>(Heading Promotion + MCP camelCase + Edge Pre-Val + VCS/CI Traceability)</i>"]:::secondary
+    P4["Phase 4: Foundational Ingestion & Closed-Loop Traceability<br/><i>(Heading Promotion + MCP camelCase + Edge Pre-Val + VCS/CI Traceability + Gates 1-2 Re-Verification)</i>"]:::secondary
     P5["Phase 5: Cognitive Planning Rails & Governed Dogfooding<br/><i>(Multi-Axis Context + Remediation Envelopes + Bounded Gate 4)</i>"]:::secondary
     P6["Phase 6: Modular Governance Profiles & Scheduled Maintenance<br/><i>(Policy Packs + On-Demand Audit + Invalidation Cascades)</i>"]:::secondary
     PN["Phase N+: Advanced Strategic Horizons<br/><i>(Real-World Feature Extension + Self-Reimplementation POC)</i>"]:::tertiary
@@ -101,37 +101,38 @@ flowchart LR
 
 ### Completed Phases Summary (Phases 0–3)
 
-The foundational substrate, storage architecture, mutation engines, and supervisory observability portals were implemented and validated across Phases 0 through 3:
+The foundational substrate, storage architecture, mutation engines, and supervisory observability portals were implemented across Phases 0 through 3, with empirical defect remediation and formal gate re-verification scheduled in Phase 4:
 
 | Phase | Core Milestone & Capabilities Delivered | Verification Status & Artifacts |
 | :--- | :--- | :--- |
 | **Phase 0: Hypothesis De-risking & Spikes** | Validated Hypothesis H-1 via Spike 0 (83.8% constraint violation reduction). Validated local embedded vector inference via Spike 8 (`fastembed-rs`, 15.9ms latency). Scaffolding for PostgreSQL + `pgvector` containerization. | **COMPLETED & VERIFIED:** `spike0-results.md`; `spike8-results.md`; `phase0-decisions.md` (DEC-0.1..0.12) |
-| **Phase 1: Substrate Core & Read Context** | Bare Git document repository (`refs/heads/specs`) with dedicated background write actor. PostgreSQL schema (`graph_nodes`, `graph_edges`, `node_embeddings`, `audit_ledger`, `ingestion_jobs`). Two-stage CommonMark AST decomposition (`pulldown-cmark`) with embedded source spans. Axum REST gateway, stdio MCP server proxy, and embedded refinery migrations. | **COMPLETED & VERIFIED (Gate 1):** `phase1-plan.md`; `phase1-decisions.md` (D-1..D-50); Successful self-hosting of `vision.md` and backlogs |
-| **Phase 2: Bounded Agent Mutation & Governance** | Mutation MCP tools (`propose_node_mutation`, `create_subtask`, `update_node_status`). Strict lock acquisition hierarchy (global advisory lock before row locks). Autonomous task elaboration under `AUTONOMOUS_ELABORATION` nodes. Draft lifecycle event compaction squashing intermediate edits upon approval. Unified administrative rollback (`revert_mutations`). | **COMPLETED & VERIFIED (Gate 2):** `phase2-plan.md`; `phase2-decisions.md` (D-51..D-82); Tests: `tests/dogfood_gate2.rs`, `tests/mutation_api.rs` |
+| **Phase 1: Substrate Core & Read Context** | Bare Git document repository (`refs/heads/specs`) with dedicated background write actor. PostgreSQL schema (`graph_nodes`, `graph_edges`, `node_embeddings`, `audit_ledger`, `ingestion_jobs`). Two-stage CommonMark AST decomposition (`pulldown-cmark`) with embedded source spans. Axum REST gateway, stdio MCP server proxy, and embedded refinery migrations. | **PROVISIONALLY COMPLETED (Gate 1):** `phase1-plan.md`; `phase1-decisions.md` (D-1..D-50); Ingested `vision.md` and backlogs. Known defect: AST heading classification heuristics produced 0 `REQUIREMENT` nodes; formal re-verification against written criteria scheduled in Phase 4 Deliverable 4.1. |
+| **Phase 2: Bounded Agent Mutation & Governance** | Mutation MCP tools (`propose_node_mutation`, `create_subtask`, `update_node_status`). Strict lock acquisition hierarchy (global advisory lock before row locks). Autonomous task elaboration under `AUTONOMOUS_ELABORATION` nodes. Draft lifecycle event compaction squashing intermediate edits upon approval. Unified administrative rollback (`revert_mutations`). | **PROVISIONALLY COMPLETED (Gate 2):** `phase2-plan.md`; `phase2-decisions.md` (D-51..D-82); Tests: `tests/dogfood_gate2.rs`, `tests/mutation_api.rs`. Known defects: MCP tool schema snake_case serialization and relational edge target pre-validation; formal re-verification against written criteria scheduled in Phase 4 Deliverable 4.2. |
 | **Phase 3: Impact Analysis & Supervisory Portal** | Automated invalidation cascading marking downstream nodes as `NEEDS_REVERIFICATION`. Reverification endpoints (`POST /api/v1/nodes/{id}/reverify`) and MCP tools. Single-page Cytoscape Web Explorer (`/explorer`) with live SSE event streaming. Multi-agent branch workspace container isolation (DEC-3.5) with atomic promotion serialization. | **COMPLETED & VERIFIED (Gate 3):** `phase3-plan.md`; `phase3-decisions.md` (D-83..D-90); Tests: `tests/cascade_integration.rs`, `tests/branch_workspace.rs` |
 
 ---
 
 ### Phase 4: Foundational Ingestion & Closed-Loop Traceability
 
-- **Primary Objective:** Deliver foundational mechanical ingestion fixes, strict protocol conformance, relational edge pre-validation, brownfield intent scaffolding, and end-to-end closed-loop code traceability, proving that approved requirements govern executable code.
+- **Primary Objective:** Deliver foundational mechanical ingestion fixes, strict protocol conformance, relational edge pre-validation, brownfield intent scaffolding (including Spec-Driven Development formats), end-to-end closed-loop code traceability, content trust boundaries, and a rigorous re-verification pass for Gates 1 and 2 against written criteria.
 - **Core Deliverables:**
   1. **Structural Heading Taxonomy & Invariant I-1 Hierarchy Normalization:**
      - Update CommonMark AST decomposition worker (`src/worker/decomp.rs`): replace fragile keyword regex heuristics with a principled structural hierarchy convention. Top-level structural containers and Level-1 (`#`) or Level-2 (`##`) headings automatically classify as `REQUIREMENT` anchors by structural depth, with support for explicit frontmatter metadata overrides (`type: REQUIREMENT`). Sub-sections classify as `SPECIFICATION` nodes.
      - Ensures that upon staging approval, an intact ancestral hierarchy exists that naturally satisfies Invariant INV-1 out-of-the-box across arbitrary, real-world documentation formats.
   2. **MCP Protocol Conformance & Hardening:**
-     - Enforce strict adherence to the official Model Context Protocol (MCP 2024-11-05 spec) across `tks mcp-stdio` and HTTP endpoints.
+     - Enforce strict adherence to the official Model Context Protocol (MCP 2024-11-05 spec or contemporaneous active spec) across `tks mcp-stdio` and HTTP endpoints.
      - Specifically serialize tool parameter schemas under camelCase **`inputSchema`** (fixing the snake_case bug that prevented `call_mcp_tool` integration in client agent harnesses).
   3. **Relational Edge Pre-Validation & Endpoint Integrity:**
      - Enforce pre-validation on all proposed edge targets: both `from_node_id` and `to_node_id` must resolve to registered node UUIDs in `graph_nodes` *before* transaction execution, rejecting foreign-key violations (such as raw Git SHA strings) with clear error diagnostics.
-  4. **Pre-Merge CI Traceability & VCS Commit Duality:**
+  4. **Pre-Merge CI Traceability, VCS Commit Duality & Code-Side Drift Detection:**
      - Webhook endpoints (`POST /api/v1/vcs/commits`) and CLI commands linking repository commits directly to task nodes.
      - Pre-Merge PR Verification Gating: Resolve the pre-merge paradox by enabling CI test execution results (`POST /api/v1/verification/test-run`) to link directly to active `TASK` entities via `VERIFIED_BY` edges carrying candidate PR head commit SHAs in verification metadata (or to provisional `CODE_COMMIT` nodes). This allows CI pipelines to certify PR branch readiness *before* merging into `main`.
      - Release Commit Materialization: Ongoing branch-level commits remain in `attributes->'vcs_commits'`, while canonical merge commits to `main` or signed release tags are permanently materialized as typed `CODE_COMMIT` graph nodes linked via explicit `IMPLEMENTED_BY` edges.
+     - Code-Side Drift Detection Hooks: CI pre-merge checks verify pull request file diffs against active `VERIFIED_BY` path manifests, mechanically detecting and alerting when code paths tied to active requirements are modified or deleted in un-attributed commits.
      - Release readiness status inspection endpoint (`GET /api/v1/release/readiness`) reporting requirement fulfillment.
-  5. **Brownfield Intent Scaffolding:**
+  5. **Brownfield Intent Scaffolding (including Spec-Driven Development Adapters):**
      - Mechanical, zero-token ingestion adapters parsing OpenAPI/AsyncAPI/Protobuf schemas, Architecture Decision Records (ADRs), and BDD feature files into baseline requirement, architectural decision, and specification nodes.
-     - Drastically lowers Time-to-First-Value (`CAL-TTFV`) for brownfield repositories without speculative code reverse-engineering.
+     - **Spec-Driven Development (SDD) Adapters:** Zero-token parsers for GitHub Spec Kit specification trees (`.github/specs/`), AWS Kiro specification/steering files (`.kiro/`), and repository instruction files (`AGENTS.md`, `CLAUDE.md`). Converts file-based specs into version-governed graph nodes, providing immediate Time-to-First-Value (`CAL-TTFV`) without competing with file-based authoring workflows.
   6. **Multi-Tier Ingestion Analysis & Narrative-Preserving Staging Review:**
      - **4.6a: Baseline Mechanical AST Extraction & Scaffolding (Tier 1):**
        - Zero-token structural decomposition (`pulldown-cmark`) mapping top-level containers and Level-1/Level-2 headings directly to initial `REQUIREMENT` candidate anchors by structural hierarchy convention.
@@ -154,12 +155,19 @@ The foundational substrate, storage architecture, mutation engines, and supervis
      - Stable AST anchors and cryptographic hashes match candidate sections to active graph nodes. Unmodified nodes retain active status, UUIDs, and downstream task/verification edges.
      - Modified sections enter staging as delta candidates, triggering targeted invalidation cascades (`NEEDS_REVERIFICATION`) upon approval instead of clobbering active state.
      - Omitted sections are flagged for supervised deprecation, preventing accidental orphan cascades while preserving human supervisory oversight.
+  8. **Content Trust Boundary Hardening & Threat-Model Spike 9:**
+     - Enforce strict data-vs-instruction boundary on context envelopes emitted via MCP and REST.
+     - Embed explicit trust-tier metadata on graph nodes (`HUMAN_APPROVED`, `AGENT_DRAFTED`, `EXTERNALLY_IMPORTED`). Content from untrusted or brownfield sources is treated as passive data and cannot attain authoritative status or mutate governance rules without supervisory approval.
+  9. **Gates 1 & 2 Formal Re-Verification Pass:**
+     - Re-execute Milestone 1 (CommonMark AST heading classification promoting top-level containers and `#`/`##` headings to `REQUIREMENT` nodes, and MCP protocol conformance) and Gate 2 (agent mutation via MCP without SQL bypasses) under strict criteria once Phase 4 fixes land, updating the evidence ledger.
+  10. **Steady-State Curation Overhead Tracking (Hypothesis H-2 Data Collection):**
+      - Instrument human review workflows in CLI and Web Explorer to record supervisory time per staged batch, delta reconciliation, and invalidation triage, generating baseline empirical data for `CAL-STEADY` and H-2.
 
 ---
 
 ### Phase 5: Cognitive Planning Rails & Governed Dogfooding Milestone
 
-- **Primary Objective:** Equip TKS with active cognitive planning rails that supply external agents with the complete normative, architectural, and schema context needed to elaborate execution plans interactively under human-directed deliverable directives, culminating in Gate 4 dogfooding.
+- **Primary Objective:** Equip TKS with active cognitive planning rails that supply external agents with the complete normative, architectural, and schema context needed to elaborate execution plans interactively under human-directed deliverable directives, culminating in Gate 4 dogfooding across internal and external corpora, and an empirical feature extension trial.
 - **Core Deliverables:**
   1. **Multi-Axis Planning Dossier (`get_elaboration_context`):**
      - Introduce a dedicated MCP tool and REST endpoint: `GET /api/v1/nodes/{id}/elaboration-context` (`get_elaboration_context`), distinct from leaf-level `get_context_envelope`.
@@ -176,8 +184,11 @@ The foundational substrate, storage architecture, mutation engines, and supervis
   4. **Tactical Decision Capture & Permission Scoping:**
      - Automatically record agent-specified implementation parameters (ranges, CLI flags, types) into node attributes with full caller provenance.
      - Enforce permission scoping restricting upward propagation to preserve vision integrity.
-- **Dogfooding Milestone (Gate 4 - Bounded Planning of Phase 6):**
-  - Execute `scripts/phase4-experiment.sh` (or updated equivalent runner): the autonomous agent powered by a commercial utility model (e.g., Claude 3.5 Haiku, Gemini Flash, GPT-4o-mini, delivering 10x–20x cost reduction), strictly forbidden from reading `docs/vision/`, connects to TKS via MCP, requests `get_elaboration_context`, and successfully elaborates grounded, schema-compliant execution tasks for Phase 6 deliverables under human direction in the live property graph.
+  5. **Minimal External Feature Extension Trial:**
+     - Schedule and execute a bounded empirical trial wherein an external utility-tier model guided by `get_elaboration_context` implements a new feature module in a realistic third-party codebase not authored by the TKS team, evaluated in a 2×2 factorial design against the Canonical Agentic Baseline to gate Kill Condition 5.
+- **Dogfooding Milestone (Gate 4 - Bounded Planning of Phase 6 & External Corpus):**
+  - Execute `scripts/phase4-experiment.sh` (or updated equivalent runner): the autonomous agent powered by a commercial utility-tier model (e.g., contemporaneous Gemini Flash, GPT-4o-mini, or equivalent utility tier), strictly forbidden from reading raw vision markdown, connects to TKS via MCP, requests `get_elaboration_context`, and successfully elaborates grounded, schema-compliant execution tasks for Phase 6 deliverables under human direction in the live property graph.
+  - Repeat the bounded planning evaluation against an external specification corpus not authored by the TKS team, verifying that planning rails prevent hallucinations without corpus-specific overfitting.
 
 ---
 
@@ -199,14 +210,16 @@ The foundational substrate, storage architecture, mutation engines, and supervis
   4. **Policy Invalidation Cascades & Blast-Radius Throttling:**
      - Enforce policy update severity classification (Breaking vs. Advisory).
      - When breaking governance policies update, the invalidation engine cascades downstream across linked projects with blast-radius throttling, grouping invalidations into batched digest work packages and flagging affected requirements as `NEEDS_REVERIFICATION` to eliminate supervisory alert fatigue.
+  5. **External Project Adoption Verification:**
+     - Partner with at least one external project not authored by the TKS core team to adopt TKS as its intent and verification substrate, verifying that `CAL-STEADY` curation burden remains below the threshold.
 
 ---
 
 ### Phase N+: Advanced Strategic Horizons (Future Roadmap)
 
-- **The Real-World Feature Extension Benchmark (Tier 1 Utility Models):** The primary empirical evaluation demonstrating that an external agent powered by a commercial utility model (Haiku/Flash/mini, 10x–20x cost reduction) guided by TKS cognitive rails implements complex new feature modules in realistic codebases without invariant violations, proving model downgrading efficiency.
+- **The Real-World Feature Extension Benchmark (Full Multi-Codebase Suite):** Expanded multi-codebase evaluation demonstrating model downgrading efficiency across diverse software ecosystems.
 - **The Self-Reimplementation Benchmark & Edge Model Evaluation (Tier 2 Commodity 8B):** An aspirational post-v1.0 research evaluation exploring complete self-reconstruction and complex feature extension using local commodity 8B models (e.g., Qwen 8B in Ollama), investigating the lower limits of model scale when supported by cognitive rails.
-- **Reverse Document Projection:** Dynamic aggregation and synthesis of graph subgraphs into tailored, human-readable Markdown specifications (broad vision/architecture overviews or targeted vertical slices) via LLM orchestration.
+- **Deterministic Document Projection & Export:** Dynamic structural export of graph subgraphs into tailored, human-readable Markdown specifications via deterministic templating or external agent query orchestration over MCP, avoiding in-engine LLM ghostwriting.
 - **External Artifact Validation & Knowledge Base Review:** Validating external documents (slide decks, RFCs, PRDs) against the authoritative knowledge graph, providing structured inconsistency and gap feedback.
 
 ---
@@ -270,29 +283,31 @@ flowchart TD
 
 ### Bootstrap Phasing Plan
 
-1. **Phases 0–3 Baseline (Completed):**
+1. **Phases 0–3 Baseline (Provisional Gates 1 & 2):**
    - Built storage, Git coupling, two-stage mechanical AST decomposition, read/write MCP gateways, audit logging, per-node governance, supervisory web explorer, and branch workspace isolation.
-   - Passed Gate 1 (self-hosting documentation query), Gate 2 (autonomous mutation elaboration), and Gate 3 (multi-agent branch isolation and invalidation cascading).
-2. **Phase 4 Pipeline (Foundational Ingestion, Closed-Loop Traceability & Brownfield Scaffolding):**
-   - Implements mechanical heading promotion, camelCase MCP serialization, edge pre-validation, Brownfield Intent Scaffolding (OpenAPI, ADRs, BDD), and basic VCS commit / CI test-run mapping.
-   - Eliminates roadmap latency by proving the end-to-end loop from requirements to code commits and test runs early.
+   - Passed Gate 1 (provisional documentation querying, known heading classification defect), Gate 2 (provisional mutation elaboration, known MCP schema defect), and Gate 3 (multi-agent branch isolation and invalidation cascading).
+2. **Phase 4 Pipeline (Foundational Ingestion, Closed-Loop Traceability, SDD Scaffolding & Gates 1–2 Re-Verification):**
+   - Implements mechanical heading promotion, camelCase MCP serialization, edge pre-validation, Brownfield Intent Scaffolding (OpenAPI, ADRs, BDD, Spec Kit, Kiro, `AGENTS.md`), pre-merge VCS commit / CI test-run mapping, continuous verification code-side drift hooks, and content trust boundaries.
+   - Conducts formal re-verification pass for Gates 1 and 2 against written criteria.
+   - Pulls forward H-2 / steady-state curation data collection.
 3. **Phase 5 Transition (Cognitive Planning Rails & Dogfooding Gate 4):**
    - Deploys `get_elaboration_context`, actionable remediation envelopes, and bounded interactive task templates.
-   - **Verification Experiment:** Launch `scripts/phase4-experiment.sh` (or updated equivalent runner). An autonomous agent running via `agy` connects to TKS with `docs/vision/` forbidden, requests elaboration context, and generates grounded, schema-compliant child tasks for Phase 6 deliverables under human lead directives.
+   - **Verification Experiment:** Launch `scripts/phase4-experiment.sh` (or updated equivalent runner). An autonomous agent powered by a commercial utility-tier model connects to TKS with raw vision markdown forbidden, requests elaboration context, and generates grounded, schema-compliant child tasks for Phase 6 deliverables under human lead directives.
+   - Evaluated across both TKS internal roadmap deliverables and an external specification corpus, plus a minimal external Feature Extension trial.
 4. **Phase 6 (Modular Governance & Scheduled Maintenance):**
-   - Ingests governance policy profiles, runs scheduled/on-demand graph audits (`tks graph audit`) emitting to `relationship_review_backlog`, and cascades invalidations.
+   - Ingests governance policy profiles, runs scheduled/on-demand graph audits (`tks graph audit`) emitting to `relationship_review_backlog`, cascades invalidations, and verifies external project adoption.
 5. **Phase N+ (Advanced Strategic Horizons):**
-   - Real-World Feature Extension Benchmark, Reverse Document Projection, External Artifact Validation, and Self-Reimplementation POC.
+   - Real-World Feature Extension Benchmark (full multi-codebase suite), Deterministic Document Projection, External Artifact Validation, and Self-Reimplementation POC.
 
 ---
 
 ## 4. Minimum Viable Demonstration (MVD) Acceptance Test Scripts
 
-### Historical Demonstrations Summary (Milestones 1–3 - Completed)
+### Historical Demonstrations Summary (Milestones 1–3)
 
-- **Milestone 1 (Ingest, Version, and Retrieve - Phase 1):** Verified Git bare repository commit on `refs/heads/specs`, mechanical CommonMark AST decomposition into draft nodes with byte spans, staging CLI approval, and sub-5ms full-text and context queries.
-- **Milestone 2 (Bounded Mutation & Clean Rollback - Phase 2):** Verified autonomous task creation under `AUTONOMOUS_ELABORATION` nodes, transactional ancestor CTE validation, draft compaction upon approval, DAG cycle rejection, and unified `revert_mutations` rollback.
-- **Milestone 3 (Impact Cascading & Reverification - Phase 3):** Verified automated invalidation cascading marking downstream nodes as `NEEDS_REVERIFICATION`, context inspection of invalidated nodes, reverification via `reverify_node`, and Cytoscape explorer visualization.
+- **Milestone 1 (Ingest, Version, and Retrieve - Phase 1, Provisional):** Verified Git bare repository commit on `refs/heads/specs`, mechanical CommonMark AST decomposition into draft nodes with byte spans, staging CLI approval, and sub-5ms full-text and context queries. Known defect: AST heading classification heuristics classified headings as `SPECIFICATION` leaving 0 `REQUIREMENT` nodes; formal re-verification against written criteria scheduled in Phase 4.
+- **Milestone 2 (Bounded Mutation & Clean Rollback - Phase 2, Provisional):** Verified autonomous task creation under `AUTONOMOUS_ELABORATION` nodes, transactional ancestor CTE validation, draft compaction upon approval, DAG cycle rejection, and unified `revert_mutations` rollback. Known defects: MCP tool schema snake_case serialization and relational edge target pre-validation; formal re-verification against written criteria scheduled in Phase 4.
+- **Milestone 3 (Impact Cascading & Reverification - Phase 3, Completed):** Verified automated invalidation cascading marking downstream nodes as `NEEDS_REVERIFICATION`, context inspection of invalidated nodes, reverification via `reverify_node`, and Cytoscape explorer visualization.
 
 ---
 
@@ -300,15 +315,18 @@ flowchart TD
 
 - **Preconditions:** PostgreSQL instance active; Git repository initialized; dev identity authenticated; optional devcontainer Ollama service available.
 - **Test Procedure:**
-  1. Submit a multi-section technical vision document (`POST /api/v1/documents/ingest` with `doc_path = "specs/vision.md"`) containing top-level headings (`# Phase 1`, `## Core Requirements`). Also ingest a sample OpenAPI contract and ADR file to verify Brownfield Intent Scaffolding.
+  1. Submit a multi-section technical vision document (`POST /api/v1/documents/ingest` with `doc_path = "specs/vision.md"`) containing top-level headings (`# Phase 1`, `## Core Requirements`). Also ingest sample OpenAPI contracts, ADRs, and SDD artifacts (GitHub Spec Kit spec tree, AWS Kiro steering file, and `AGENTS.md`) to verify Brownfield Intent Scaffolding.
   2. Verify Tier 1: CommonMark AST parser mechanically classifies top-level structural containers and Level-1/Level-2 headings as `REQUIREMENT` nodes (with canonical `node_key` tags) by structural hierarchy convention rather than keyword regexes, and sub-sections as `SPECIFICATION` nodes, constructing valid `DERIVED_FROM` edges at zero token cost.
   3. Verify Tier 2: When requested, local LLM performs decoupled two-stage pre-analysis: Stage A assesses extraction quality and atomicity, splitting compound sentences into discrete candidate requirements, classifying modal intent (`SHALL` / `SHOULD` / `MAY`), and computing `extraction_confidence` (0.0 to 1.0); Stage B evaluates topological contradiction risk against existing approved nodes and checks relational binding gaps. Model provenance and extraction confidence are recorded in `attributes->'extraction_metadata'`.
   4. Verify Tier 3 (Escalation): Ingest a deliberately ambiguous or low-confidence chunk; user escalates to external commercial LLM via open protocol to resolve classification, verifying TKS records model provenance attributes.
   5. Invoke `tks staging list <job_id>`; verify candidate nodes are displayed in their source document **hierarchical narrative order by default**, displaying both the verbatim source span and normalized requirement statements, with modality, confidence, and contradiction risk rendered as inline visual badges. Low-confidence extractions display an advisory escalation callout. Invoke with `--triage-anomalies` to verify secondary flat anomaly view.
   6. Approve the staging batch via `tks staging approve <job_id>`; verify nodes are promoted to `ACTIVE`, with root `REQUIREMENT` nodes established in the live graph.
   7. Pre-Merge PR Verification & Commit Duality: Simulate continuous integration testing on a pull request branch: dispatch `POST /api/v1/verification/test-run` linking test results directly to active `TASK` entities via `VERIFIED_BY` edges carrying the PR head commit SHA in verification metadata (or provisional `CODE_COMMIT` entities), certifying PR branch readiness *before* merge. Dispatch `POST /api/v1/vcs/commits` upon merge to `main`, permanently materializing canonical `CODE_COMMIT` nodes linked via `IMPLEMENTED_BY` edges.
-  8. Query `GET /api/v1/release/readiness`; verify release readiness reports active requirement satisfaction.
-  9. Living Graph Re-Ingestion Verification: Ingest an updated revision of `specs/vision.md` with modified section text and an added requirement. Verify that three-way delta reconciliation preserves existing active node UUIDs, elaborated child tasks, and downstream verification links, while staging only modified and added nodes.
+  8. Code-Side Drift Detection: Simulate PR modifying a file previously recorded in `VERIFIED_BY` test run without an associated task; verify CI pre-merge hook flags code-side drift.
+  9. Query `GET /api/v1/release/readiness`; verify release readiness reports active requirement satisfaction.
+  10. Living Graph Re-Ingestion Verification: Ingest an updated revision of `specs/vision.md` with modified section text and an added requirement. Verify that three-way delta reconciliation preserves existing active node UUIDs, elaborated child tasks, and downstream verification links, while staging only modified and added nodes.
+  11. Formal Gates 1 & 2 Re-Verification: Execute test suites `tests/dogfood_gate1.rs` and `tests/dogfood_gate2.rs` verifying that decomposition outputs valid `REQUIREMENT` anchors and MCP tools adhere to camelCase `inputSchema`.
+  12. Curation Burden Tracking: Record human review time spent across ingestion staging and delta reconciliation to establish baseline data for `CAL-STEADY` and H-2.
 
 ---
 
@@ -316,7 +334,7 @@ flowchart TD
 
 - **Preconditions:** Phase 4 active; governance policy on target parent set to `AUTONOMOUS_ELABORATION`.
 - **Test Procedure:**
-  1. Connect `agy` or an external MCP client powered by a commercial utility model (e.g. Claude 3.5 Haiku, Gemini Flash, GPT-4o-mini, achieving 10x–20x cost reduction) to `tks mcp-stdio`. Verify `tools/list` returns valid JSON with camelCase `inputSchema` (zero permission errors in client).
+  1. Connect `agy` or an external MCP client powered by a commercial utility-tier model (e.g., contemporaneous Gemini Flash, GPT-4o-mini, or equivalent utility tier) to `tks mcp-stdio`. Verify `tools/list` returns valid JSON with camelCase `inputSchema` (zero permission errors in client).
   2. The agent invokes `get_elaboration_context` for the target Phase 6 parent node:
      - Verify response delivers: verbatim deliverable specifications, binding invariants (`INV-1`..`INV-9`), applicable decisions (`D-11`, `D-14`, `D-43`), physical schema enums, and concrete repository blueprint paths.
   3. The agent attempts to create a task with an invalid edge target (e.g. an external Git SHA string):
@@ -325,6 +343,8 @@ flowchart TD
      - Verify gateway returns an **Actionable Remediation Envelope** specifying the terminal node and providing a structured option to promote the immediate ancestor to `REQUIREMENT`.
   5. The agent executes bounded phased elaboration under human deliverable directives, generating atomic child tasks for Deliverables 1, 2, and 3:
      - Verify all created tasks are active in `graph_nodes`, correctly linked to parent requirements, and visible in Web Explorer.
+  6. External Corpus Bounded Planning Evaluation: Ingest an external, third-party software specification not authored by the TKS development team; verify the agent successfully elaborates schema-compliant subtasks under human directives without hallucinations or schema breakages.
+  7. Minimal External Feature Extension Trial: Execute a bounded trial on a realistic third-party codebase; verify that a utility-tier model guided by `get_elaboration_context` completes the assigned feature extension task with zero invariant breakages, comparing results against the Canonical Agentic Baseline in a 2×2 factorial design.
 
 ---
 
@@ -337,6 +357,7 @@ flowchart TD
   3. Run on-demand audit: `tks graph audit`. Verify deterministic topological linting executes first, followed by local LLM contradiction check.
   4. Verify relationship worker operates in strictly read-only advisory capacity: candidate adjustments and pruning suggestions are enqueued into `relationship_review_backlog` without modifying active graph topology.
   5. Inspect review backlog in CLI and Web Explorer.
+  6. External Project Adoption Check: Verify that at least one external project has adopted TKS and maintains steady-state curation burden within `CAL-STEADY` targets.
 
 ---
 
@@ -353,6 +374,7 @@ flowchart TD
 - **Spike 6 (Completed):** Two-tier identity model (API keys/HMAC) with Tower middleware and in-process cache, enforcing global advisory locks for structural mutations.
 - **Spike 7 (Completed):** Strongly typed `lifecycle_state`, partial unique indexes, and atomic staging draft purging.
 - **Spike 8 (Completed):** Local embedded vector inference (`fastembed-rs`, `all-MiniLM-L6-v2`). Achieved 15.9ms latency and 70% retrieval parity with commercial embeddings on commodity CPU.
+- **Spike 9 (Phase 4):** Ingestion Content Trust & Prompt Injection Threat Model. Analysis of indirect injection vectors in markdown documents and imported governance packs, testing strict delimiters and trust-tier categorization (`HUMAN_APPROVED`, `AGENT_DRAFTED`, `EXTERNALLY_IMPORTED`).
 
 ---
 
@@ -362,16 +384,17 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | **SLA-1** | Micro-Reflex Graph Traversal Latency | $< 50\text{ ms}$ for $k \le 3$ hop topological queries | Phase 1 Benchmark (Validated) |
 | **SLA-2** | Context Envelope Assembly Latency | $< 100\text{ ms}$ at $10^5$ nodes in PostgreSQL | Phase 2 Benchmark (Validated) |
-| **CAL-H1** | Contract Violation Reduction (Hypothesis H-1) | $\ge 40$% fewer architectural violations vs. competent agentic baseline (Spike 0 achieved 83.8%) | Phase 2 Controlled Trial |
-| **CAL-H2** | Human Review Overhead Reduction (Hypothesis H-2) | $\ge 50$% reduction in supervisory review time per feature | Phase 3 User Study |
-| **CAL-H3** | Single-Engine Scalability Bound (Hypothesis H-3) | Sustained $< 100\text{ ms}$ query latency at $10^6$ nodes | Phase 3 Stress Test |
-| **CAL-H4** | Extraction Fidelity Benchmark (Hypothesis H-4) | $\ge 95$% precision/recall on atomic requirement spans | Phase 1 Ingestion Eval |
-| **CAL-TTFV** | Time-to-First-Value Latency (Observable 7) | $\le 30\text{ minutes}$ from raw markdown specification upload to first active agent context retrieval | Phase 1 Benchmark |
-| **CAL-BROWN** | Brownfield Intent Scaffolding Efficiency | $\le 5\text{ minutes}$ to mechanically extract baseline requirement and decision nodes from OpenAPI or ADRs at zero token cost | Phase 4 Benchmark |
+| **CAL-H1** | Contract Violation Reduction (Hypothesis H-1) | $\ge 40$% fewer architectural violations vs. Canonical Agentic Baseline (Spike 0 achieved 83.8% on synthetic harness) | Phase 4 Controlled Trial (Partial) |
+| **CAL-H2** | Human Review Overhead Reduction (Hypothesis H-2) | $\ge 50$% reduction in supervisory review time per feature vs. unguided diff review | Phase 4 / Phase 5 User Study (Untested / Reprioritized) |
+| **CAL-STEADY** | Steady-State Curation Burden | $\le 15$ human-minutes per merged change or active contributor-week spent on graph triage, review, and re-verification | Phase 4 / Phase 5 Benchmark (Untested) |
+| **CAL-H3** | Single-Engine Scalability Bound (Hypothesis H-3) | Sustained $< 100\text{ ms}$ query latency at $10^6$ nodes | Phase 6 Stress Test (Untested) |
+| **CAL-H4** | Extraction Fidelity Benchmark (Hypothesis H-4) | $\ge 95$% precision/recall on atomic requirement spans and heading classification | Phase 4 Ingestion Eval (Partial - AST parsing verified, heading promotion re-verification pending) |
+| **CAL-TTFV** | Time-to-First-Value Latency (Observable 7) | $\le 30\text{ minutes}$ from raw markdown specification upload to first active agent context retrieval | Phase 4 Benchmark (Untested) |
+| **CAL-BROWN** | Brownfield Intent Scaffolding Efficiency | $\le 5\text{ minutes}$ to mechanically extract baseline requirement and decision nodes from OpenAPI, ADRs, or SDD files (`AGENTS.md`, Spec Kit) at zero token cost | Phase 4 Benchmark |
 | **CAL-Q1** | Two-Stage Ingestion Quality & Narrative Preservation | $\ge 90$% precision in automated two-stage quality evaluation (Stage A atomicity/modality/ambiguity followed by Stage B contradiction risk); 100% preservation of narrative order in default staging view | Phase 4 Benchmark |
-| **CAL-Q2** | Requirement Atomization & Extraction Benchmark | Benchmark precision, recall, and structured formatting reliability of local commodity 8B models (e.g. Qwen 8B) vs. commercial utility models (Haiku / Flash) on decomposing compound technical prose into atomic requirement tuples and modal classifications (`SHALL`/`SHOULD`/`MAY`) | Phase 4 Benchmark |
-| **CAL-PLAN** | Autonomous Planning Schema Compliance | 100% of agent-elaborated tasks and edges pass relational pre-validation (zero FK or orphan errors) under bounded human deliverable directives | Phase 5 Dogfooding (Gate 4) |
-| **CAL-DOWN-1** | Commercial Utility Model Arbitrage (Tier 1) | High-speed commercial utility model (Haiku/Flash/mini, 10x–20x cost reduction) guided by `get_elaboration_context` matches unguided frontier model plan completeness and feature fidelity on Real-World Feature Extension Benchmark | Phase 5 Evaluation (Gate 4) |
+| **CAL-Q2** | Requirement Atomization & Extraction Benchmark | Benchmark precision, recall, and structured formatting reliability of local commodity 8B models (e.g. Qwen 8B) vs. commercial utility models on decomposing compound technical prose into atomic requirement tuples and modal classifications (`SHALL`/`SHOULD`/`MAY`) | Phase 4 Benchmark |
+| **CAL-PLAN** | Autonomous Planning Schema Compliance | 100% of agent-elaborated tasks and edges pass relational pre-validation (zero FK or orphan errors) under bounded human deliverable directives across both internal and external corpora | Phase 5 Dogfooding (Gate 4) |
+| **CAL-DOWN-1** | Commercial Utility Model Arbitrage (Tier 1) | High-speed commercial utility model guided by `get_elaboration_context` matches unguided frontier model plan completeness and feature fidelity evaluated in a 2×2 factorial design against Canonical Agentic Baseline on Real-World Feature Extension Benchmark | Phase 5 Evaluation (Gate 4 & External Trial) |
 | **CAL-DOWN-2** | Local Commodity 8B Edge Parity (Tier 2) | Local commodity 8B model (Qwen 8B) guided by `get_elaboration_context` achieves schema compliance and task elaboration on Feature Extension Benchmark | Phase N+ Research Horizon |
 
 ---
