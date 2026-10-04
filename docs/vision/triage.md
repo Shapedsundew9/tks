@@ -1,30 +1,26 @@
-# Technical Alignment & Triage Ledger
-
-This ledger records the architectural triage decisions for the Lead Developer technical review findings (`LD-1` through `LD-13` from `docs/vision/response.md`).
+# Triage Ledger: Reconciliation Iteration 10
 
 ## Triage Table
 
 | ID | Severity | Bucket | Location |
 | :--- | :--- | :--- | :--- |
-| `LD-1` | Blocker | Adopt | `architecture.md` §5.1, §6, §9 (D-93); `technical-backlog.md` TB-12; `strategic-planning-backlog.md` Phase 4 Deliverable 4.4 |
-| `LD-2` | Blocker | Adopt | `architecture.md` §5.2, §9 (D-94); `strategic-planning-backlog.md` Phase 4 Deliverable 4.1 |
-| `LD-3` | Major | Adopt | `architecture.md` §6, §7, §9 (D-95); `technical-backlog.md` TB-13; `strategic-planning-backlog.md` Phase 5 Deliverable 5.1 |
-| `LD-4` | Major | Adopt | `architecture.md` §3 (INV-8), §6.2, §9 (D-96); `technical-backlog.md` TB-13 |
-| `LD-5` | Major | Adopt | `architecture.md` §5.2, §6.2, §7, §9 (D-97); `technical-backlog.md` TB-13 |
-| `LD-6` | Major | Adopt | `architecture.md` §4, §5.1, §5.2, §9 (D-98); `technical-backlog.md` TB-11; `strategic-planning-backlog.md` Phase 4 Deliverable 4.5 |
-| `LD-7` | Major | Adopt | `architecture.md` §4, §5.1, §6, §8, §9 (D-99); `strategic-planning-backlog.md` Phase 6 Deliverables 6.2, 6.3 |
-| `LD-8` | Major | Adopt | `architecture.md` §4, §7, §8, §9 (D-100); `strategic-planning-backlog.md` Phase 4 Deliverable 4.2 |
-| `LD-9` | Major | Adopt | `architecture.md` §5.1, §5.2, §6, §9 (D-101); `strategic-planning-backlog.md` Phase 4 Deliverable 4.6 |
-| `LD-10` | Major | Adopt | `architecture.md` §5.1, §9 (D-102); `technical-backlog.md` TB-7.5 |
-| `LD-11` | Major | Adopt | `architecture.md` §4, §7, §9 (D-100); `technical-backlog.md` TB-12 |
-| `LD-12` | Major | Adopt | `architecture.md` §5.1, §9 (D-93, D-103); `technical-backlog.md` TB-12; `strategic-planning-backlog.md` Phase 4 Deliverable 4.4 |
-| `LD-13` | Major | Adopt | `architecture.md` §4, §7, §8, §9 (D-104); `strategic-planning-backlog.md` Phase 4 Deliverable 4.6 |
+| LD-1 | Blocker | Adopt | `architecture.md` §3 (INV-9), §4, §5.1, §6, §7, §9 (D-107); `strategic-planning-backlog.md` §1, §2 (Phase 4 Deliverable 4.4), §4; `technical-backlog.md` TB-12.1 |
+| LD-2 | Blocker | Adopt | `architecture.md` §3 (INV-1), §4, §5.1, §6, §7, §9 (D-108); `strategic-planning-backlog.md` §1, §2 (Phase 4 Deliverable 4.4), §4; `technical-backlog.md` TB-12.2 |
+| LD-3 | Major | Adopt | `architecture.md` §5.1, §6, §9 (D-109); `strategic-planning-backlog.md` §1, §2 (Phase 4 Deliverable 4.7), §4; `technical-backlog.md` TB-7.5 |
+| LD-4 | Major | Adopt | `architecture.md` §4, §5.1, §5.2, §9 (D-110); `strategic-planning-backlog.md` §1, §2 (Phase 4 Deliverable 4.5); `technical-backlog.md` TB-11.2, TB-11.5 |
+| LD-5 | Major | Adopt | `architecture.md` §4, §6, §7, §9 (D-111); `strategic-planning-backlog.md` §2 (Phase 5 Deliverable 5.1); `technical-backlog.md` TB-13.2 |
+| LD-6 | Major | Adopt | `architecture.md` §2 (C-11), §4, §5.2, §9 (D-112); `strategic-planning-backlog.md` §2 (Phase 4 Deliverable 4.6b), §4; `technical-backlog.md` TB-2.9 |
+| LD-7 | Major | Adopt | `architecture.md` §6, §7, §9 (D-113); `strategic-planning-backlog.md` §2 (Phase 4 Deliverable 4.4), §4; `technical-backlog.md` TB-12.3 |
+| LD-8 | Major | Adopt | `architecture.md` §2 (C-22), §4, §5.2, §7, §9 (D-114); `technical-backlog.md` TB-6.1, TB-6.2 |
+| LD-9 | Minor | Adopt | `architecture.md` §5.1 (Active Draft Staging Lifecycle and Embedding Ingestion) |
+| LD-10 | Major (Simplification) | Adopt | `architecture.md` §3 (INV-7), §4, §5.2, §5.3, §6, §7, §8, §9 (D-105); `strategic-planning-backlog.md` §1; `technical-backlog.md` TB-1.7 |
+| LD-11 | Major (Simplification) | Adopt | `architecture.md` §9 (D-115); `strategic-planning-backlog.md` §1, §2 (Phase 6 Deliverable 6.1, Phase N+) |
+| LD-12 | Minor (Simplification) | Adopt | `architecture.md` §2 (C-26), §4, §5.1, §6, §7, §8, §9 (D-106); `strategic-planning-backlog.md` §1, §2 (Phase 6 Deliverables 6.2, 6.3), §4 |
 
 ## Upstream Issues
 
-### UI-1: Provisional Code Commit Graph Nodes vs. Direct Task Verification Binding
+1. **Mechanical Sentence/Clause Atomization vs LLM Atomization (`vision.md` §3 / §4):**
+   `vision.md` references downstream LLM decomposition performing requirement atomization. To preserve exact 0-based byte offsets (`byte_start`, `byte_end` per Invariant INV-4) and strict token minimization (Constraint C-11: zero verbatim text echoing), sentence and clause atomization must be executed mechanically during Stage 1 CommonMark AST parsing (`unicode-segmentation`), assigning discrete ordinal aliases (`c1`, `c2`, ...). Downstream Stage 2 semantic evaluation then classifies modality and confidence over pre-atomized spans without text echoing. The Project Initiator should update `vision.md` to reflect this two-tier atomization model.
 
-* **Document:** `docs/vision/vision.md` (§5 Invariant I-9 & Key Capability 1)
-* **Description:** `vision.md` contains passing narrative references suggesting the creation of provisional `CODE_COMMIT` graph nodes for candidate pull request branches prior to merging into `main`.
-* **Architectural Assessment:** As established in `LD-12` and adopted across `architecture.md` (§5.1, D-93, D-103), materializing provisional commit nodes for unmerged PR branches pollutes the property graph with ephemeral commit SHAs that must later be reconciled, superseded, or garbage-collected when PRs are squashed, rebased, or discarded. The architecture standardizes pre-merge CI verification strictly on binding `VERIFIED_BY` edge attributes (`attributes->'pr_commit_sha'`) directly to active `TASK` entities. Permanent `CODE_COMMIT` nodes are materialized exclusively upon canonical merge to `main`.
-* **Recommendation for Project Initiator:** In the next revision cycle of `docs/vision/vision.md`, update Invariant I-9 and Key Capability 1 descriptions to clarify that pre-merge verification status attaches directly to `TASK` nodes via `VERIFIED_BY` edges carrying the PR commit SHA attribute, reserving `CODE_COMMIT` graph nodes strictly for canonical merges to `main`.
+2. **Retirement of Enterprise ALM Protocols (`vision.md` §3 / §6):**
+   `vision.md` lists enterprise ALM synchronization protocols (OMG ReqIF and OASIS OSLC) in later phases. These protocols have been formally retired per LD-11 and Decision D-115 in favor of open JSON-LD, REST, and SQL property graph dumps. This avoids hundreds of pages of XML/RDF schema mapping that distract from developer-first agent cognition and governance. The Project Initiator should update `vision.md` to retire ReqIF/OSLC.

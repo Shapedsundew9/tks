@@ -1,220 +1,176 @@
-# Lead Developer Sub-Agent Technical Review & Alignment Critique
+# Lead Developer Technical Critique & Alignment Response
 
-## Executive Assessment
-
-As Lead Developer, I affirm our commitment to the Knowledge Substrate's core mission: grounding external autonomous agents to a version-governed property graph. The architectural foundations established in Phases 0 through 3—PostgreSQL single-engine topology, Git ODB integration via an isolated write actor, embedded refinery migrations, and advisory-locked DAG cycle enforcement—are robust, well-conceived, and sound.
-
-However, comparing the architecture baseline (`architecture.md`) against the governing vision (`vision.md`), the Phase 4 strategic reprioritization (`strategic-planning-backlog.md`), and the recent empirical dogfooding review reveals several critical blockers and major architectural gaps. Specifically:
-
-1. Concrete relational schemas (`chk_node_type`) strictly reject `CODE_COMMIT` nodes, and interfaces for pre-merge CI test run reporting are omitted, blocking closed-loop traceability.
-2. The mechanical AST decomposition pipeline still relies on RFC 2119 keywords rather than structural heading depth, producing documents with zero active `REQUIREMENT` nodes and triggering immediate Invariant INV-1 ancestry validation failures out-of-the-box.
-3. The cognitive planning rails (`get_elaboration_context`), camelCase MCP tool serialization (`inputSchema`), Actionable Remediation Envelopes (INV-8), and relational edge pre-validation (INV-9) are missing from the architecture and contract specifications.
-4. Redundant components (such as an asynchronous `CascadeWorker` alongside synchronous single-roundtrip invalidation CTEs, and provisional commit graph nodes) add unnecessary operational friction.
-
-The following 10 ranked findings and 3 architectural simplifications address these gaps to ensure the engineering team can build, deploy, and operate TKS cleanly.
+This document contains the architectural and technical alignment critique formulated by the Lead Developer Sub-Agent following a thorough inspection of `docs/vision/architecture.md`, `docs/vision/vision.md`, `docs/vision/strategic-planning-backlog.md`, and `docs/vision/technical-backlog.md`.
 
 ---
 
-## Ranked Findings (LD-1 to LD-10)
+## Substantive Findings
 
 ### LD-1
 
-* **Severity:** `Blocker`
-* **Target:** `architecture.md` §5.1 (Entity Typing and Relational Constraints) & §6 (Interfaces & Contracts)
-* **Critique:** The governing vision (`vision.md` §5 Invariant I-9, Key Capability 1) and strategic backlog (`strategic-planning-backlog.md` Phase 4 Deliverable 4.4) establish closed-loop traceability from requirements to executable code as the central objective of Phase 4. This requires materializing canonical merge commits to `main` as `CODE_COMMIT` graph nodes linked via `IMPLEMENTED_BY` edges, and reporting CI test runs via `POST /api/v1/verification/test-run`. However, the concrete DDL constraint in `architecture.md` §5.1 defines:
-
-  ```sql
-  ALTER TABLE graph_nodes ADD CONSTRAINT chk_node_type
-      CHECK (
-          (lifecycle_state = 'DRAFT' AND node_type IN ('REQUIREMENT', 'SPECIFICATION', 'TASK', 'VERIFICATION', 'DECISION', 'UNCLASSIFIED'))
-          OR (lifecycle_state != 'DRAFT' AND node_type IN ('REQUIREMENT', 'SPECIFICATION', 'TASK', 'VERIFICATION', 'DECISION'))
-      );
-  ```
-
-  This check constraint strictly excludes `'CODE_COMMIT'`. Any attempt by CI webhooks or release handlers to insert a `CODE_COMMIT` node fails with a fatal PostgreSQL `23514 check_violation`. Additionally, `architecture.md` §5.1 edge rules omit `IMPLEMENTED_BY`, and §6 completely omits `POST /api/v1/verification/test-run`, `POST /api/v1/vcs/commits`, and `GET /api/v1/release/readiness`. As specified, closed-loop traceability cannot be built or operated.
+* **Severity:** Blocker
+* **Target:** `architecture.md` §3 (INV-9), §5.1 (Entity Typing and Relational Constraints), §6 (Interfaces: Pre-Merge CI Test-Run Reporting), §9 (D-93, D-103)
+* **Critique:** Pre-merge CI verification via `VERIFIED_BY` edge on `TASK` is relationally and structurally impossible as specified.
+  1. The concrete DDL for `graph_edges` in §5.1 defines only `edge_id`, `from_node_id`, `to_node_id`, `edge_type`, `created_by`, and `lifecycle_state`. There is no `attributes` JSONB column on `graph_edges`.
+  2. Every edge in `graph_edges` mandates `from_node_id NOT NULL REFERENCES graph_nodes(id)` and `to_node_id NOT NULL REFERENCES graph_nodes(id)`. If provisional commit nodes do not exist in `graph_nodes` (eliminated by D-103 to prevent graph pollution), and test runs are not nodes, what is the opposing endpoint (`to_node_id` or `from_node_id`) of this edge? An edge cannot have a single endpoint in a relational property graph.
+  3. Pre-transaction edge validation (C-24, D-97) explicitly verifies that both edge endpoints exist in `graph_nodes`, which will unconditionally reject any edge creation attempt that lacks a valid registered target UUID.
 * **Proposed Alternative:**
-  1. Update `chk_node_type` DDL in `architecture.md` §5.1 to include `'CODE_COMMIT'`:
-
-     ```sql
-     ALTER TABLE graph_nodes ADD CONSTRAINT chk_node_type
-         CHECK (
-             (lifecycle_state = 'DRAFT' AND node_type IN ('REQUIREMENT', 'SPECIFICATION', 'TASK', 'VERIFICATION', 'DECISION', 'CODE_COMMIT', 'UNCLASSIFIED'))
-             OR (lifecycle_state != 'DRAFT' AND node_type IN ('REQUIREMENT', 'SPECIFICATION', 'TASK', 'VERIFICATION', 'DECISION', 'CODE_COMMIT'))
-         );
-     ```
-
-  2. Formally document the `IMPLEMENTED_BY` edge type in §5.1 (connecting `TASK` / `SPECIFICATION` nodes to `CODE_COMMIT` nodes).
-  3. Add the three missing traceability endpoints to §6 Interfaces & Contracts:
-     * `POST /api/v1/verification/test-run`: accepts test suite run metadata and candidate PR commit SHA, creating `VERIFIED_BY` edges to active `TASK` entities.
-     * `POST /api/v1/vcs/commits`: webhook creating `CODE_COMMIT` nodes and `IMPLEMENTED_BY` edges upon merge to `main`.
-     * `GET /api/v1/release/readiness`: reports requirement satisfaction based on active `VERIFIED_BY` and `IMPLEMENTED_BY` paths.
+  Disambiguate pre-merge verification storage from graph topology edges:
+  Record pre-merge CI test run verifications directly on the `TASK` node in `graph_nodes.attributes->'pre_merge_verification'` (e.g., `{"pr_commit_sha": "...", "status": "PASSED", "test_suite": "...", "verified_at": "..."}`), mirroring how branch commit SHAs are recorded in `attributes->'vcs_commits'`. This completely avoids ghost nodes, requires no impossible single-ended edges, and requires no schema changes to `graph_edges`.
+  Alternatively, if `VERIFIED_BY` edges must be preserved as topological edges, add `attributes JSONB NOT NULL DEFAULT '{}'::jsonb` to `graph_edges`, and define that `POST /api/v1/verification/test-run` links the `TASK` node to an existing, registered `VERIFICATION` node (representing the test specification or test suite) in `graph_nodes`, passing `verification_node_id` in the payload.
 
 ---
 
 ### LD-2
 
-* **Severity:** `Blocker`
-* **Target:** `architecture.md` §5.2 (Concurrency Model - Ingestion) & §9 (Decision D-15)
-* **Critique:** In the Phase 4 dogfooding experiment (`phase4-experiment.sh`), AST decomposition categorized all Markdown headings as `SPECIFICATION`, producing zero active `REQUIREMENT` nodes. When the external agent attempted to elaborate tasks, Invariant INV-1 validation failed with `ERR_ANCESTRY_VALIDATION_FAILED` because child tasks had no active `REQUIREMENT` root ancestor. In `architecture.md` §5.2 and Decision D-15, Stage 1 extraction still specifies assigning `node_type = 'REQUIREMENT'` strictly upon matching RFC 2119 keywords, and `'UNCLASSIFIED'` otherwise. In real-world specifications, top-level headings and structural containers rarely contain RFC 2119 modal verbs ("SHALL", "MUST"), guaranteeing that ingested documents yield graph trees lacking root `REQUIREMENT` anchors and blocking task elaboration across the entire substrate.
+* **Severity:** Blocker
+* **Target:** `architecture.md` §3 (INV-1), §5.1 (Edge Relationship Rules), §9 (D-50, D-93), `strategic-planning-backlog.md` §2 (Phase 4 Deliverable 4.4), `technical-backlog.md` TB-12.2
+* **Critique:** Directionality inversion and invariant breakdown for `IMPLEMENTED_BY` and `CODE_COMMIT`.
+  Invariant INV-1 mandates: *"Every active functional specification, implementation task, and code artifact reference must maintain a valid directed edge path terminating at an authorized active requirement node. All governance and structural edges must point directed upward toward governing requirements (`child_id -DERIVED_FROM-> parent_id`, `Spec -CONSTRAINED_BY-> Requirement`)."* Decision D-50 standardizes that all edges point uniformly upward toward governing requirements to allow unidirectional recursive CTE traversals.
+  However, §5.1 and TB-12.2 specify `IMPLEMENTED_BY` edges as *"pointing from resolved `TASK` or `SPECIFICATION` entities to the canonical `CODE_COMMIT` node"*.
+  This creates two severe implementation failures:
+  1. `CODE_COMMIT` is an active node in `graph_nodes` (`node_type = 'CODE_COMMIT'`, `lifecycle_state = 'ACTIVE'`), but it is a terminal sink with zero outgoing edges. An Invariant INV-1 ancestor check on a `CODE_COMMIT` node will immediately fail because no path exists from `CODE_COMMIT` to an active `REQUIREMENT`.
+  2. Recursive upward CTE queries (`get_context_envelope`, ancestor validation, impact analysis) cannot traverse from a commit to a requirement without switching join directions mid-query (`from_node_id` vs `to_node_id`), violating Decision D-50's performance rationale and complicating all graph traversal CTEs.
 * **Proposed Alternative:**
-  Update §5.2 and Decision D-15 to replace keyword regex heuristics with the **Structural Heading Taxonomy** defined in `strategic-planning-backlog.md` Deliverable 4.1:
-  1. During Stage 1 streaming CommonMark AST parsing (`pulldown-cmark`), top-level structural containers and Level-1 (`#`) or Level-2 (`##`) headings automatically classify as `REQUIREMENT` anchors by structural hierarchy depth, unless overridden by explicit frontmatter metadata (`type: REQUIREMENT` or `type: SPECIFICATION`).
-  2. Sub-sections (Level-3+ headings) classify as `SPECIFICATION`.
-  3. Non-heading paragraphs and lists inherit the enclosing section's typing or default to `'UNCLASSIFIED'` in `DRAFT`.
-  4. Upward `DERIVED_FROM` hierarchy edges are mechanically generated between sub-sections and their parent headings, ensuring that every approved specification and task maintains a valid upward path to an active `REQUIREMENT` root out-of-the-box.
+  Standardize edge orientation consistently with Invariant INV-1 and Decision D-50:
+  Define the edge as pointing upward from commit to task: `CODE_COMMIT -IMPLEMENTS-> TASK` (`from_node_id = commit_id, to_node_id = task_id`), maintaining an unbroken upward path from code commit to requirement root.
+  Alternatively, if the edge remains `task_id -IMPLEMENTED_BY-> commit_id`, explicitly exempt `node_type = 'CODE_COMMIT'` from Invariant INV-1 upward ancestry validation CTEs and document in §5.1 and §6 that `IMPLEMENTED_BY` is a special terminal downward reference edge queried exclusively via `idx_graph_edges_to_node_active`.
 
 ---
 
 ### LD-3
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §6 (Interfaces & Contracts) & §7 (Technology Stack)
-* **Critique:** The Phase 4 empirical review demonstrated that `get_context_envelope` is insufficient for strategic planning or deliverable elaboration: clamped to $\le 3$ hops and a 40-node budget, it delivers narrow leaf context stripped of governing architectural invariants (`INV-*`), historical design decisions (`D-*`), database schemas, and codebase blueprints. To resolve this, `vision.md` (Key Capability 10) and `strategic-planning-backlog.md` (Phase 5 Deliverable 5.1) introduced `get_elaboration_context`. However, `get_elaboration_context` is completely missing from `architecture.md` Section 6 and Section 7. Furthermore, the empirical dogfooding experiment revealed that the MCP stdio server serialized tool parameter schemas using snake_case `input_schema` instead of the official MCP specification's camelCase `inputSchema`, causing agent harnesses (`agy`, Claude Code) to reject tool definitions. `architecture.md` fails to specify camelCase `inputSchema` serialization.
+* **Severity:** Major
+* **Target:** `architecture.md` §5.1 (Entity Typing and Relational Constraints, Node Lifecycle State), §9 (D-74, D-102), `technical-backlog.md` TB-7.5
+* **Critique:** Premature active node mutation and Invariant INV-1 child invalidation via `PENDING_DEPRECATION`.
+  Decision D-102 was introduced to prevent premature downward invalidation of child tasks when a document is re-ingested with omitted sections. It states that omitted active sections are flagged for deprecation in staging metadata, and hard supersession only executes upon explicit supervisory approval.
+  However, §5.1 adds `PENDING_DEPRECATION` directly to `graph_nodes.chk_lifecycle_state` and states that the worker updates active nodes to `PENDING_DEPRECATION`. If a background ingestion worker updates existing active nodes in place:
+  1. It violates Invariant INV-2 and Decision D-74 (*"background ingestion and draft generation never mutate active graph state"*).
+  2. Because `get_context_envelope` filters on `lifecycle_state = 'ACTIVE'`, modifying an active node to `PENDING_DEPRECATION` immediately hides it from external agents before supervisory approval.
+  3. Active child tasks pointing to this node immediately fail Invariant INV-1 ancestor checks because their parent is no longer `ACTIVE`, breaking agent task elaboration across the entire subtree.
 * **Proposed Alternative:**
-  1. Add `get_elaboration_context` to `architecture.md` §6 as both an MCP tool and REST endpoint (`GET /api/v1/nodes/{id}/elaboration-context`), specifying its 4-axis synthesis payload: Normative Boundaries (active invariants `INV-1`..`INV-9`), Architectural Precedents (matching `D-*` records), Physical Schema Contracts (node/edge enums and check constraints), and Codebase Blueprints (canonical handler and CTE paths).
-  2. Explicitly specify in §6 and §7 that the MCP server gateway strictly adheres to the official MCP 2024-11-05 wire protocol specification, serializing tool schemas with camelCase `inputSchema` to ensure seamless client permission harness handshakes.
+  Active nodes must remain strictly in `lifecycle_state = 'ACTIVE'` during the entire background ingestion and staging window. Proposed deprecations must be stored strictly as staged metadata in `ingestion_jobs` or candidate staging attributes. Only upon explicit staging approval (`POST /api/v1/documents/ingest/{job_id}/approve`) does the approval transaction transition confirmed omitted nodes from `ACTIVE` to `SUPERSEDED` and trigger downward invalidation cascades under the global advisory lock. Remove `PENDING_DEPRECATION` from `chk_lifecycle_state` or document it strictly as an administrative post-approval state.
 
 ---
 
 ### LD-4
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §3 (Architectural Invariants) & §6.2 (Failure Semantics & Error Taxonomy)
-* **Critique:** `vision.md` §5 defines nine governing invariants, including `Invariant I-8 (Actionable Diagnostics & Self-Healing Remediation Envelopes)` and `Invariant I-9 (Physical Edge Relational Integrity & Pre-Merge Verification Gating)`. However, `architecture.md` Section 3 lists only `INV-1` through `INV-7`. In §6.2, ancestry validation failure is modeled as a bare string error (`ERR_ANCESTRY_VALIDATION_FAILED`), which the dogfooding experiment proved deadlocks external agents because they receive zero diagnostic details about where the ancestor chain broke or how to fix it within governance rules.
+* **Severity:** Major
+* **Target:** `architecture.md` §4 (Decomposition Pipeline), §5.1, §9 (D-98), `technical-backlog.md` TB-11.2, TB-11.5
+* **Critique:** Brownfield Intent Scaffolding under Authority Inheritance breaks Invariant INV-1 due to missing root requirement synthesis.
+  Decision D-98 and TB-11 state that when brownfield specifications (OpenAPI, ADRs, BDD) are ingested from pre-governed sources (`authority_source = 'BRANCH_PROTECTED_CODEOWNERS'`), candidate nodes bypass manual staging and are inserted directly into `graph_nodes` in `ACTIVE` state. TB-11 specifies that OpenAPI path operations and schemas are mapped directly to `SPECIFICATION` nodes.
+  However, in an OpenAPI document, there are no `REQUIREMENT` entities. If the adapter creates `SPECIFICATION` nodes directly in `ACTIVE` state without an active `REQUIREMENT` node above them, every single extracted node immediately violates Invariant INV-1 (*"Every active functional specification... must maintain a valid directed edge path terminating at an authorized active requirement node. Orphan execution tasks [and specifications] must be rejected at the database constraint level"*).
 * **Proposed Alternative:**
-  1. Incorporate `INV-8` and `INV-9` directly into `architecture.md` Section 3 to ensure alignment with `vision.md`.
-  2. Formalize the Actionable Remediation Envelope schema in §6.2: when an ancestry validation check fails, the gateway must return HTTP 422 with a structured payload:
-
-     ```json
-     {
-       "code": "ERR_INVALID_ANCESTOR_PATH",
-       "message": "Invariant INV-1 violated: task lacks path to active REQUIREMENT root",
-       "remediation": {
-         "target_node_id": "<uuid>",
-         "terminal_node_id": "<uuid>",
-         "terminal_node_type": "SPECIFICATION",
-         "suggested_actions": [
-           {
-             "action": "PROMOTE_ANCESTOR",
-             "node_id": "<uuid>",
-             "target_type": "REQUIREMENT",
-             "authorized": true
-           }
-         ]
-       }
-     }
-     ```
-
-  3. Specify gateway handling for executing authorized remediation actions within the caller's governance scope.
+  Specify in TB-11 and §4 that `ScaffoldingAdapter` implementations must mechanically synthesize a root `REQUIREMENT` node from the document-level container (e.g. OpenAPI `info.title` and `info.description`, ADR category, or BDD Feature header), mirroring the Structural Heading Taxonomy (D-94). All extracted `SPECIFICATION` and `DECISION` nodes must mechanically generate upward `DERIVED_FROM` edges terminating at this root `REQUIREMENT` node, guaranteeing that direct-to-active Authority Inheritance satisfies Invariant INV-1 out-of-the-box.
 
 ---
 
 ### LD-5
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §5.1 (Entity Typing) & §6.2 (Failure Semantics & Error Taxonomy)
-* **Critique:** In the Phase 4 dogfooding review, external agents attempting task elaboration submitted edge targets containing raw string literals (such as external Git commit SHAs, e.g. `c3a1f9e...`) instead of valid registered node UUIDs. In `architecture.md`, edge insertion transactions execute raw SQL without prior endpoint validation, causing unhandled PostgreSQL foreign key violations (`23503 foreign_key_violation`) that abort transactions and return uninformative 500 or 400 errors. `architecture.md` §6.2 lacks the `ERR_INVALID_EDGE_TARGET` error definition and does not mandate pre-transaction endpoint resolution.
+* **Severity:** Major
+* **Target:** `architecture.md` §6 (Interfaces: `get_elaboration_context`), §9 (D-95), `technical-backlog.md` TB-13.2
+* **Critique:** Data sourcing for `get_elaboration_context` planning rails is completely unspecified and conflates TKS dogfooding specifics with the substrate engine.
+  Key Capability 10, Decision D-95, and TB-13 define `get_elaboration_context` as a 4-axis planning dossier: Axis 1 (Normative Boundaries), Axis 2 (Architectural Precedents), Axis 3 (Physical Schema Contracts), and Axis 4 (Codebase Blueprints).
+  TB-13 specifies that Axis 4 returns *"canonical repository implementation patterns (e.g. Axum route handler templates, CTE query conventions, test templates)"*.
+  However:
+  1. In a production deployment, `tks serve` only has access to PostgreSQL and the bare Git repository (`refs/heads/specs`); it has no filesystem access to the user's local working copy.
+  2. The architecture provides no data model, table, schema, or configuration mechanism for how Axis 3 (schema contracts) or Axis 4 (codebase blueprints) are ingested, registered, or resolved.
+  3. If Axis 4 templates are hardcoded in Rust for Axum route handlers and SQL CTEs, TKS fails its core vision as a general-purpose, open-source substrate for arbitrary external codebases.
 * **Proposed Alternative:**
-  1. Update §5.2 to mandate that `propose_node_mutation` and workspace task elaboration execute a pre-transaction validation pass verifying that all proposed edge endpoints (`from_node_id`, `to_node_id`) are valid UUIDs that exist in `graph_nodes`.
-  2. Add `ERR_INVALID_EDGE_TARGET` (HTTP 422 Unprocessable Entity) to §6.2 Error Taxonomy table, specifying that the response payload returns the offending string value and field name.
+  Formalize the data model for planning rails. Blueprints and schema contracts must be modeled as first-class architectural entities in the graph (e.g., `SPECIFICATION` nodes with `attributes->'blueprint_type'` or a dedicated `blueprints` configuration manifest committed to `refs/heads/specs`). `get_elaboration_context` must dynamically assemble Axis 3 and Axis 4 by querying these stored graph entities rather than assuming hardcoded repository paths.
 
 ---
 
 ### LD-6
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §4 (Component Topology) & §5.1 (State Ownership)
-* **Critique:** `vision.md` (§1, §2 Key Capability 2, §3) and `strategic-planning-backlog.md` (Phase 4 Deliverable 4.5) introduce Brownfield Intent Scaffolding (extracting baseline nodes from OpenAPI/Protobuf, ADRs, BDD feature files, Spec Kit, Kiro, `AGENTS.md`) and the Authority Inheritance Principle to eliminate the cold-start adoption barrier. However, `architecture.md` assumes that all ingested artifacts are Markdown documents parsed by `pulldown-cmark`. It provides no component topology, adapter abstraction, or data model support for non-Markdown schemas, and no mechanism for pre-governed brownfield artifacts (e.g. committed schemas on protected branches) to inherit authoritative status without manual staging review.
+* **Severity:** Major
+* **Target:** `architecture.md` §2 (C-11), §5.2, §9 (D-15, D-101), `strategic-planning-backlog.md` §2 (Phase 4 Deliverable 4.6b)
+* **Critique:** Unresolvable conflict between LLM-driven requirement atomization, token minimization, and exact 0-based byte offset tracking.
+  Phase 4 Deliverable 4.6b, Decision D-101, and `vision.md` state that Stage 2 semantic evaluation *"atomizes structural blocks into $1 \dots N$ candidate requirements"*.
+  However:
+  1. Decision D-22 and Invariant INV-4 mandate that every requirement node store exact 0-based byte offsets (`byte_start`, `byte_end`) derived from `pulldown-cmark`.
+  2. Constraint C-11 mandates that LLMs output strictly compact classification tuples using ordinal aliases (`c1`, `c2`) and never echo verbatim source text.
+  If an LLM receives a compound paragraph and atomizes it into multiple sub-requirements, an LLM cannot compute exact 0-based byte offsets into the raw source buffer, nor can it return them via compact ordinal tuples without echoing text.
 * **Proposed Alternative:**
-  1. In §4 Component Topology, define a pluggable `ScaffoldingAdapter` trait within the Ingestion Pipeline supporting zero-token mechanical parsers for OpenAPI, ADRs, and SDD files.
-  2. In §5.1 `ingestion_jobs`, add `authority_source VARCHAR(64)`. When an ingestion job is verified against a pre-governed repository source (e.g. `BRANCH_PROTECTED_CODEOWNERS`), candidate nodes inherit baseline authority and can be automatically promoted to `ACTIVE` upon ingestion, bypassing manual staging while recording provenance in `audit_ledger`.
+  Specify that requirement atomization is performed *mechanically* during Stage 1 prior to LLM classification. The mechanical parser must segment structural blocks into sentence/clause atoms using deterministic sentence boundary rules (e.g. `unicode-segmentation`), assigning each atom an exact `(byte_start, byte_end)` span and ordinal alias (`c1`, `c2`, ...). The Tier 2 LLM or classifier then evaluates these pre-atomized chunks strictly for normative modality and confidence, preserving exact byte provenance, zero echoing, and token minimization.
 
 ---
 
 ### LD-7
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §4 (Component Topology), §5.1 (State Ownership), & §8 (Operational Model)
-* **Critique:** `vision.md` (Key Capability 9) and `strategic-planning-backlog.md` (Phase 6 Deliverables 6.2 & 6.3) specify a scheduled or on-demand graph maintenance auditor (`tks graph audit`) emitting findings to `relationship_review_backlog`. Crucially, to prevent unconstrained agent churn, this worker operates strictly in an advisory capacity without directly mutating active topology. However, `architecture.md` completely omits `relationship_review_backlog` from Table 5.1 State Ownership and DDL, omits the audit command from Section 8 Operational Model, and provides no interface in Section 6 for inspecting or clearing advisory backlog entries.
+* **Severity:** Major
+* **Target:** `architecture.md` §6 (Interfaces: `GET /api/v1/release/readiness`), §9 (D-93, D-103), `technical-backlog.md` TB-12.3
+* **Critique:** Release readiness evaluation creates a circular gating deadlock between pre-merge CI and post-merge commits.
+  TB-12.3 and §6 specify that `GET /api/v1/release/readiness` verifies that *"every leaf requirement maintains an active path through `SPECIFICATION` and `TASK` nodes terminating at verified test runs (`VERIFIED_BY`) and canonical commits (`IMPLEMENTED_BY`)"*.
+  However, Decision D-103 explicitly established that canonical `CODE_COMMIT` nodes and `IMPLEMENTED_BY` edges are created *exclusively* upon canonical branch merge to `main`.
+  If CI/CD pipelines query `GET /api/v1/release/readiness` to gate whether a PR can be merged to `main`, the query will ALWAYS return `BLOCKED` because the canonical merge commit cannot exist prior to merge.
 * **Proposed Alternative:**
-  1. In §5.1, add DDL for `relationship_review_backlog`:
-
-     ```sql
-     CREATE TABLE relationship_review_backlog (
-         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-         source_node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-         target_node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-         anomaly_type VARCHAR(32) NOT NULL,
-         confidence FLOAT NOT NULL,
-         rationale TEXT NOT NULL,
-         suggested_action VARCHAR(32) NOT NULL,
-         status VARCHAR(16) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACCEPTED', 'DISMISSED')),
-         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-     );
-     CREATE INDEX idx_review_backlog_status ON relationship_review_backlog(status);
-     ```
-
-  2. Add `tks graph audit` to §8 Operational Model, specifying its two-step execution (deterministic structural linting first, local LLM evaluation second).
-  3. Add `GET /api/v1/admin/review-backlog` and `POST /api/v1/admin/review-backlog/{id}/dismiss` to §6 Interfaces & Contracts.
-  4. Codify the architectural invariant that background relationship workers operate strictly in read-only advisory mode and cannot mutate active graph edges.
+  Disambiguate readiness gating into two distinct operational scopes:
+  1. `GET /api/v1/release/readiness?scope=pre-merge&pr_commit_sha=<sha>`: Evaluates strictly that all scoped `TASK` entities have passing `VERIFIED_BY` test runs matching the PR commit SHA.
+  2. `GET /api/v1/release/readiness?scope=release&milestone=<tag>`: Evaluates that all scoped tasks are both verified (`VERIFIED_BY`) AND materialized in canonical merge commits (`IMPLEMENTED_BY`).
 
 ---
 
 ### LD-8
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §4 (Component Topology), §7 (Technology Stack), & §9 (Decision D-87)
-* **Critique:** Decision D-87 and DEC-3.13 established that invalidation cascades execute synchronously as a single-roundtrip multi-statement recursive CTE (`DOWNWARD_INVALIDATION_SQL`) in PostgreSQL within the mutation transaction holding `pg_advisory_xact_lock`, taking $<6\text{ ms}$ p95. Despite this, Section 4 Table 4.1, Section 7 (line 315), and Section 8 (line 620) continue to list an asynchronous background `CascadeWorker` loop in `WorkerManager` polling PostgreSQL via `FOR UPDATE SKIP LOCKED`. Maintaining an asynchronous background cascade worker creates an architectural contradiction, introduces a race condition where external agents can query un-invalidated stale requirements before the background loop runs, and wastes database connection pool slots.
+* **Severity:** Major
+* **Target:** `architecture.md` §2 (C-22), §4 (WorkerManager, Embedding Worker), §5.1 (DDL), §9 (D-77), `technical-backlog.md` TB-6
+* **Critique:** Architecture conflates in-process CPU vector inference (`fastembed-rs`) with external HTTP API rate-limiting.
+  Decision D-77 and Phase 0 Spike 8 (DEC-0.12) formally confirmed that vector embeddings are generated locally on CPU using `fastembed-rs` executing `all-MiniLM-L6-v2` (384 dimensions) for 100% offline self-sufficiency.
+  However, `architecture.md` §4, §5.1, and §5.2 (line 570) still specify:
+  *"On HTTP 429 rate limits or transient errors, the worker increments `retry_count`, calculates exponential backoff delay... completely eliminating tight-loop API hammering."*
+  An in-process CPU library (`fastembed-rs`) executed via `spawn_blocking` does not emit HTTP 429 status codes or suffer from external network rate limits. Describing embedding generation as an HTTP rate-limited provider API creates confusion in worker implementation and error handling.
 * **Proposed Alternative:**
-  Formally retire and remove `CascadeWorker` from `WorkerManager` in §4, §7, and §8. Reaffirm that invalidation cascades execute exclusively and synchronously within the mutation transaction under `pg_advisory_xact_lock`, guaranteeing immediate topological consistency across all read queries before transaction commit.
+  Update the Embedding Worker specification in §4 and §5.2 to state that the default embedding engine is the in-process `fastembed-rs` provider running in `tokio::task::spawn_blocking` with standard task error handling (memory/panic catch). Clarify that HTTP rate-limit handling and exponential backoff on `scheduled_at` apply exclusively if an optional remote embedding API is explicitly configured.
 
 ---
 
 ### LD-9
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §5.2 (Concurrency Model) & §6 (Interfaces & Contracts)
-* **Critique:** `vision.md` (Key Capabilities 2 & 7) and `strategic-planning-backlog.md` (Phase 4 Deliverable 4.6) mandate a decoupled two-stage semantic ingestion pipeline: Stage A (Intra-Node Quality Assessment, Atomization into $1 \dots N$ candidate requirements, modality tagging, and `extraction_confidence` scoring) strictly preceding Stage B (Inter-Node Topological Contradiction Risk). Furthermore, staging review in CLI (`tks staging list`) and Web Explorer must preserve the source document's hierarchical narrative order by default, pairing verbatim source spans with normalized candidate statements and displaying inline visual badges. In `architecture.md` §5.2 and §6, Stage 2 remains specified as an older single-pass tuple classifier, `attributes->'extraction_metadata'` is missing from the data model, and `GET /api/v1/documents/ingest/{job_id}` lacks narrative ordering and anomaly filtering (`--triage-anomalies`).
+* **Severity:** Minor
+* **Target:** `architecture.md` §5.1 (line 450), §9 (D-82)
+* **Critique:** Residual reference to retired `embedding_queue` table in draft approval documentation.
+  Line 450 of `architecture.md` states: *"Promoted `ACTIVE` nodes are enqueued into `embedding_queue` with `scheduled_at = NOW()`."*
+  However, Decision D-82 and §5.1 explicitly retired `embedding_queue` and consolidated all queue state into `node_embeddings`.
 * **Proposed Alternative:**
-  1. Update §5.2 to formally define the two-stage semantic sequence: Stage A evaluates atomicity and assigns modality (`SHALL`/`SHOULD`/`MAY`) and `extraction_confidence` (0.0 to 1.0); Stage B evaluates contradiction risk against active approved requirements.
-  2. Specify the `extraction_metadata` JSONB schema inside `graph_nodes.attributes` in §5.1.
-  3. Update `GET /api/v1/documents/ingest/{job_id}` in §6 to return candidate nodes structured in native narrative sequence with parent heading paths, and support query parameter `triage_anomalies=true` for flat exception scanning.
+  Update line 450 to reference `node_embeddings` with `status = 'PENDING'`, aligning with D-82 and eliminating contradictory table references.
 
 ---
+
+## Component Simplifications
 
 ### LD-10
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §5.1 (Document Revision Reconciliation) & `technical-backlog.md` (TB-7.5)
-* **Critique:** TB-7.5 specifies that during document re-ingestion, "For deleted sections, transition active nodes anchored to doc_path missing from the approved revision to SUPERSEDED." Automatically superseding missing nodes triggers immediate downward invalidation cascades that mark all active child tasks as `NEEDS_REVERIFICATION`. In contrast, `vision.md` (lines 305, 406) and `strategic-planning-backlog.md` (line 160) mandate that omitted sections are flagged for *supervised deprecation* rather than triggering hard orphan cascades. Automatically superseding omitted sections introduces severe operational risk: if an author re-ingests a partial document draft or renames an un-anchored section, in-flight agent tasks across entire subtrees are prematurely invalidated without human consent.
+* **Severity:** Major (Simplification)
+* **Target:** `architecture.md` §4, §5.1, §6, `technical-backlog.md` TB-1.7
+* **Critique:** Branch workspaces duplicate caller-scoped draft capabilities and add an unexposed, complex 3-way merge subsystem.
+  Branch workspaces (`workspaces` table, `src/storage/workspace.rs`, `src/storage/conflict.rs`) were introduced to enable lock-free parallel agent exploration (D-88).
+  However:
+  1. Workspaces are exposed exclusively via REST endpoints (`/api/v1/workspaces/...`). The MCP tool suite in §6 contains NO tools to create, list, rebase, or promote workspaces. External agent harnesses (Claude Code, Cursor, Windsurf, agy) communicating via MCP stdio or HTTP/SSE cannot utilize branch workspaces.
+  2. In §5.1 and Decision D-75, TKS already implemented caller-scoped draft isolation via `created_by VARCHAR(64) NOT NULL` on `graph_nodes` and `graph_edges`, allowing agents to create and inspect their own `DRAFT` entities without locking or leaking drafts.
+  3. Staging batch approvals (`POST /api/v1/documents/ingest/{job_id}/approve`) already handle ancestor validation, squashing, and promotion.
+  Maintaining a complete parallel Git-like branch-merge engine in PostgreSQL (with three-way combined subgraph CTEs, auto-reparenting, and rebase endpoints) that is inaccessible over MCP adds massive implementation and maintenance overhead.
 * **Proposed Alternative:**
-  Harmonize §5.1 and TB-7 with `vision.md`: on document re-ingestion, active nodes anchored to `doc_path` that are absent in the revised candidate set must not be automatically superseded. Instead, the staging approval transaction flags omitted nodes as `PENDING_DEPRECATION` in staging metadata and presents them to the supervisor for explicit confirmation. Hard supersession and downward invalidation cascade execute only if the supervisor explicitly approves deprecation.
+  Consolidate branch workspaces into caller-scoped draft batches (`created_by`). Retire the separate `workspaces` table and complex 3-way merge CTEs in favor of standard caller-isolated draft staging and batch promotion.
 
 ---
 
-## Architectural Simplifications (LD-11 to LD-13)
-
 ### LD-11
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §4 (Component Topology) & §7 (Technology Stack)
-* **Critique:** As detailed in LD-8, retaining an asynchronous `CascadeWorker` polling loop in `WorkerManager` when Decision D-87 already established a synchronous, single-roundtrip multi-statement CTE (`DOWNWARD_INVALIDATION_SQL`, executing in $<6\text{ ms}$ p95) introduces redundant code, connection pool churn, and potential race windows.
-* **Proposed Alternative:** Retire `CascadeWorker` completely. Consolidate invalidation cascade execution into the `StorageRepo` layer as part of the synchronous structural mutation / rollback transaction.
+* **Severity:** Major (Simplification)
+* **Target:** `strategic-planning-backlog.md` §2 (Phase 6 Deliverable 6.1)
+* **Critique:** Premature enterprise ALM interoperability protocols (ReqIF / OSLC) in Phase 6.
+  Phase 6 specifies implementing export and synchronization adapters for enterprise ALM formats (OMG ReqIF XML and OASIS OSLC Linked Data). ReqIF and OSLC are notoriously complex enterprise standards requiring hundreds of pages of XML/RDF schema mapping. TKS explicitly disclaims being an enterprise ALM replacement (non-goal #3) and already provides open data export via SQL, JSON-LD, and REST. Forcing a solo developer or small team (C-9, DR-7) to build and maintain ReqIF/OSLC adapters creates massive implementation drag with near-zero utility for agentic software engineering.
+* **Proposed Alternative:**
+  Retire ReqIF and OSLC synchronization adapters from Phase 6. Standardize enterprise export exclusively on standard JSON-LD and SQL property graph dumps, preserving engineering focus on core graph governance and agent cognitive rails.
 
 ---
 
 ### LD-12
 
-* **Severity:** `Major`
-* **Target:** `architecture.md` §5.1 (State Ownership) & `strategic-planning-backlog.md` (Phase 4 Deliverable 4.4)
-* **Critique:** `strategic-planning-backlog.md` and `vision.md` describe two competing mechanisms for pre-merge CI verification gating: (1) linking test runs directly to active `TASK` entities via `VERIFIED_BY` edges carrying the PR head commit SHA in verification metadata attributes, or (2) creating ephemeral "provisional `CODE_COMMIT`" graph nodes. Provisional commit nodes pollute the property graph with unmerged branch SHAs that must later be reconciled, superseded, or garbage collected when a PR is squashed, rebased, or discarded.
-* **Proposed Alternative:** Eliminate provisional `CODE_COMMIT` graph nodes entirely. Standardize pre-merge CI verification strictly on binding `VERIFIED_BY` edges directly from test runs to active `TASK` nodes, with the candidate PR branch commit SHA stored in `VERIFIED_BY` edge or verification task attributes (`attributes->'pr_commit_sha'`). Only canonical merge commits to `main` or signed release tags materialize as permanent `CODE_COMMIT` nodes in `graph_nodes`.
-
----
-
-### LD-13
-
-* **Severity:** `Major`
-* **Target:** `architecture.md` §4 (Component Topology) & `strategic-planning-backlog.md` (Phase 4 Deliverable 4.6)
-* **Critique:** `strategic-planning-backlog.md` outlines Tier 2 (Local LLM Pre-Analysis) and Tier 3 (Commercial LLM Escalation) within the ingestion pipeline. Designing server-side commercial LLM orchestration into `tks serve` introduces immense complexity: external API provider clients, secret management, prompt versioning, rate limiting, and timeout retries inside the server daemon, violating Invariant I-3 and Environmental Contract C-7/C-8 (externalized cognitive compute).
-* **Proposed Alternative:** Keep `tks serve` completely free of commercial LLM provider SDKs. For Tier 2, maintain optional local Ollama inference over standard OpenAI-compatible REST API for background pre-analysis. For Tier 3 commercial escalation, externalize the workflow entirely to external client agents communicating over standard MCP: the supervisor or external agent queries staged candidate nodes (`tks staging list` or MCP `get_staged_candidates`), runs commercial inference within its own harness, and submits refined classifications back through `propose_node_mutation`. This eliminates server-side commercial LLM dependencies entirely while fully satisfying the vision.
+* **Severity:** Minor (Simplification)
+* **Target:** `architecture.md` §4, §5.1, §6, §9 (D-99)
+* **Critique:** Standalone `relationship_review_backlog` table creates an unnecessary review queue and redundant CRUD layer.
+  Introducing a dedicated relational table `relationship_review_backlog`, separate status state machine (`PENDING`, `DISMISSED`, `RESOLVED`), and dedicated REST endpoints (`/api/v1/admin/review-backlog`) for advisory graph audits violates the Supervisory Queue Economy (vision §2 Key Capabilities (7)). It creates an isolated review silo for developers to monitor.
+* **Proposed Alternative:**
+  Eliminate the standalone `relationship_review_backlog` table. Direct `tks graph audit` to output human-readable diagnostic reports directly to CLI/logs, and surface graph anomalies directly through the existing anomaly triage interface (`--triage-anomalies` / `attributes->'extraction_metadata'`) or as candidate tasks in `NEEDS_REVERIFICATION`.
