@@ -8,24 +8,47 @@ This chapter walks through how autonomous agents break down high-level requireme
 
 Once governing requirements are active in the substrate, external coding agents can autonomously elaborate subtasks under them without human supervisory gating:
 
-```text
-Active Governing Requirement (e.g. Invariant I-1)
-[ governance_policy = 'AUTONOMOUS_ELABORATION' ]
-                      │
-                      ▼
-         [ tks task create --parent ... ]
-                      │
-   * Ancestry Verification Check (INV-1)
-   * Cycle Detection CTE Check
-   * Inherits 'AUTONOMOUS_ELABORATION' (D-81)
-   * Created directly in ACTIVE state
-                      │
-                      ▼
-         [ tks task update --status ... ]
-                      │
-   * Native Row Lock (SELECT ... FOR UPDATE)
-   * Advances status: OPEN -> IN_PROGRESS -> COMPLETED
-   * Appends discrete event to audit_ledger
+```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'darkMode': true,
+    'background': '#161922',
+    'mainBkg': '#1e2230',
+    'nodeBorder': '#434c5e',
+    'textColor': '#e2e8f0',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
+    'lineColor': '#8892b0',
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
+  }
+}}%%
+flowchart TD
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
+    classDef note fill:#2e271a,stroke:#e5c07b,stroke-width:1.5px,color:#fdf4db;
+
+    REQ["🎯 Active Governing Requirement (e.g. Invariant I-1)<br/><i>governance_policy = 'AUTONOMOUS_ELABORATION'</i>"]:::primary
+    CREATE["⚙️ tks task create --parent ...<br/>• Ancestry Verification Check (INV-1)<br/>• Cycle Detection CTE Check<br/>• Inherits 'AUTONOMOUS_ELABORATION' (D-81)<br/>• Created directly in ACTIVE state"]:::secondary
+    UPDATE["⚡ tks task update --status ...<br/>• Native Row Lock (SELECT ... FOR UPDATE)<br/>• Advances status: OPEN → IN_PROGRESS → COMPLETED<br/>• Appends discrete event to audit_ledger"]:::secondary
+
+    REQ --> CREATE
+    CREATE --> UPDATE
 ```
 
 ---

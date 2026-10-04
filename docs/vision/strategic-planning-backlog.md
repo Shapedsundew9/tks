@@ -327,7 +327,7 @@ flowchart TD
   - *Zero-Dependency Runner:* Implemented `h1_spike_eval` supporting live REST LLM invocations via `/usr/bin/curl` subprocess when `TKS_LIVE_EVAL=1` without adding runtime crate dependencies, defaulting to deterministic offline simulation for CI.
 - **Rubric Scoping & Measurement (DEC-0.10):**
   - Rate of invariant violations across 20 controlled synthetic coding tasks (40 rubric checks).
-  - *Dual Rubric Scoping Rule:* Violations scoped to at most one violation per rubric rule (recording first missing required pattern or first encountered forbidden pattern as failure reason), with total rule checks as denominator ($V / \text{Rules}$), producing bounded relative reduction $(V_A - V_B) / V_A \times 100\%$.
+  - *Dual Rubric Scoping Rule:* Violations scoped to at most one violation per rubric rule (recording first missing required pattern or first encountered forbidden pattern as failure reason), with total rule checks as denominator ($V / \text{Rules}$), producing bounded relative reduction $(V_A - V_B) / V_A \times \text{100%}$.
 - **Decision Thresholds & Empirical Outcome:**
   - $\ge 30$% reduction in constraint violations provides strong directional greenlight for Phase 1 construction.
   - *Observed Trial Results:* Condition A produced 37/40 violations (92.5%), Condition B produced 6/40 violations (15.0%), yielding **83.8% constraint violation reduction** (PASS: GREENLIGHT CONFIRMED; see `spike0-results.md`).
@@ -387,7 +387,7 @@ flowchart TD
 - **Evaluation Criteria & Observed Results:**
   1. *Inference Latency:* Threshold $\le 50\text{ ms}$ per requirement chunk on standard commodity CPU. *Observed:* Mean 15.93 ms (p50: 17.05 ms, p95: 23.10 ms, microbenchmarks: 4.5–10.5 ms).
   2. *Binary & Memory Footprint:* Threshold added binary size $\le 50\text{ MB}$, runtime memory consumption $\le 256\text{ MB}$. *Observed:* Added binary footprint 5.7 MB, peak resident memory 193.2 MB.
-  3. *Retrieval Parity:* Evaluate Top-10 vector neighbor overlap against commercial API baselines. *Observed:* 70.0% overlap ($\ge 70\%$ threshold).
+  3. *Retrieval Parity:* Evaluate Top-10 vector neighbor overlap against commercial API baselines. *Observed:* 70.0% overlap ($\ge 70$% threshold).
 - **Decision & Designation:**
   - Satisfied all proof criteria. Formally designates `fastembed-rs` executing `all-MiniLM-L6-v2` (384 dimensions) as the default Phase 1 vector provider, making TKS 100% operationally self-sufficient offline, resolving Open Question Q-4, and grounding relational schema Decisions D-77 and D-82 (DEC-0.12). Architecture feature-gated via optional dependency `fastembed = "4"` (`vector-spike` feature in `default`; DEC-0.11).
 
@@ -413,7 +413,7 @@ In alignment with the Technical Vision's graduated response model (§7), empiric
 
 | Metric Identifier | Target Validation Band (Full Success) | Graduated Scope Adjustment Band (Partial Validation) | Falsification / Kill Band (Termination / Pivot) |
 | :--- | :--- | :--- | :--- |
-| **CAL-H1** (Constraint Preservation) | $\ge 40$% violation reduction vs. competent agentic baseline *(Phase 0 greenlight gate in Spike 0 is $\ge 30\%$, confirmed at 83.8% reduction; DEC-0.10)* | **20%–39% reduction:** Narrow domain to deeply coupled architectures or modular microservices; refine envelope filtering and hybridize topological envelopes with local code search. | $\le 0$% or non-significant improvement vs. competent agentic baseline (Triggers Kill #2). |
+| **CAL-H1** (Constraint Preservation) | $\ge 40$% violation reduction vs. competent agentic baseline *(Phase 0 greenlight gate in Spike 0 is $\ge 30$%, confirmed at 83.8% reduction; DEC-0.10)* | **20%–39% reduction:** Narrow domain to deeply coupled architectures or modular microservices; refine envelope filtering and hybridize topological envelopes with local code search. | $\le 0$% or non-significant improvement vs. competent agentic baseline (Triggers Kill #2). |
 | **CAL-H2** (Supervisory Review Overhead) | $\ge 50$% review time reduction | **25%–49% reduction:** Streamline supervisory UI staging workflows and enrich topological blast-radius visualizations. | $\le 0$% reduction (supervisory graph review equals or exceeds diff review time; Triggers Kill #1). |
 | **CAL-H3** (Single-Engine Scalability) | Sustained $< 100\text{ ms}$ at $10^6$ nodes | **$< 100\text{ ms}$ at $10^5$ nodes, degrading at $10^6$:** Satisfies small-to-mid enterprise repos; apply read-replica offloading, partition audit ledger, and optimize CTE indexes. | $> 500\text{ ms}$ latency at $\le 10^5$ nodes despite index optimization (Triggers Kill #3). |
 | **CAL-H4** (Assisted Ingestion Fidelity) | $\ge 95$% precision/recall on spans | **80%–94% precision/recall:** Engage deterministic span re-anchoring post-processor to correct offset drift; enforce structured Markdown specification templates and mandatory human-in-the-loop staging corrections. | $< 60$% precision/recall or severe span hallucination despite deterministic re-anchoring (Triggers Kill #1). |

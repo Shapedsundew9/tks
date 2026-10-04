@@ -4,7 +4,7 @@
 
 - **Evaluation Status:** Complete (Phase 0 WP-0.5 / Spike 8)
 - **Final Recommendation:** **Local Embedded Provider: CONFIRMED**
-- **Top-10 Retrieval Parity:** **70.0%** (Threshold: $\ge 70.0\%$)
+- **Top-10 Retrieval Parity:** **70.0%** (Threshold: $\ge 70.0$%)
 - **Single-Chunk CPU Latency:** **9.21 ms** (p50: 7.49 ms, p95: 19.10 ms | Threshold: $\le 50.0\text{ ms}$)
 - **Peak Runtime Memory (RSS):** **193.6 MB** (Threshold: $\le 256.0\text{ MB}$)
 - **Added Binary Footprint:** **48.07 MB** (Threshold: $\le 50.0\text{ MB}$)
@@ -19,7 +19,7 @@
 | **p95 CPU Latency per Chunk** | 19.10 ms | $\le 50\text{ ms}$ | PASS (Greenlight) |
 | **Peak Resident Memory (RSS)** | 193.6 MB | $\le 256\text{ MB}$ | PASS (Greenlight) |
 | **Binary Footprint Overhead** | 48.07 MB | $\le 50\text{ MB}$ | PASS (Greenlight) |
-| **Top-10 Retrieval Parity** | 70.0% | $\ge 70\%$ | PASS (Greenlight) |
+| **Top-10 Retrieval Parity** | 70.0% | $\ge 70$% | PASS (Greenlight) |
 
 ## 3. Retrieval Parity by Query
 

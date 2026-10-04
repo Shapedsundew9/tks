@@ -173,13 +173,13 @@ flowchart TD
 - **Implementation Tasks:**
   1. Enhance [`src/ingest/parser.rs`](file:///workspaces/tks/src/ingest/parser.rs) with enclosing heading attribution (`heading = Some(parent_heading_title)` for non-heading blocks under headings, `None` for pre-heading root blocks; DEC-0.2) and root pre-heading scope indexing (`doc_path#block-0`; DEC-0.3).
   2. Retain in-memory UTF-8 text via `content: Option<String>` on `ExtractedChunk` alongside exact byte offsets (`byte_start`, `byte_end`) for zero-source classification prompting (DEC-0.5).
-  3. Ensure [`src/ingest/classify.rs`](file:///workspaces/tks/src/ingest/classify.rs) maps chunks to compact ordinal aliases (`c1`, `c2`, ...), builds the system prompt enforcing $<10\%$ output token overhead, and executes bidirectional mapping in `map_classifications_to_chunks` (DEC-0.6).
+  3. Ensure [`src/ingest/classify.rs`](file:///workspaces/tks/src/ingest/classify.rs) maps chunks to compact ordinal aliases (`c1`, `c2`, ...), builds the system prompt enforcing $<10$% output token overhead, and executes bidirectional mapping in `map_classifications_to_chunks` (DEC-0.6).
   4. Implement [`src/ingest/reconcile.rs`](file:///workspaces/tks/src/ingest/reconcile.rs) executing 3-tier reconciliation: match by `node_key` (Tier 1), match by `ast_anchor` (Tier 2), match by normalized content SHA-256 (Tier 3).
   5. Stage candidate re-anchoring coordinates (`doc_hash`, `byte_start`, `byte_end`) within candidate metadata; ensure active nodes are never updated in place during reconciliation (TB-7, LD-1).
   6. Author unit and integration tests in [`tests/reconcile_eval.rs`](file:///workspaces/tks/tests/reconcile_eval.rs) verifying 100% exact byte offset slicing against multi-byte UTF-8 text and valid reconciliation across multi-revision Markdown edits.
 - **Verification & Proof Criteria:**
   - Automated test execution: `cargo test --test reconcile_eval` executes and passes cleanly.
-  - Verification of C-11: Classification prompt and output token evaluation confirms output token ratio is $<10\%$ ($<3\%$ observed) of input text.
+  - Verification of C-11: Classification prompt and output token evaluation confirms output token ratio is $<10$% ($<3$% observed) of input text.
   - Reconciliation test: Ingest revision 1 of a document, produce active nodes, ingest revision 2 with shifted paragraphs; verify candidate re-anchored coordinates are staged without modifying active node spans in place.
 
 ---

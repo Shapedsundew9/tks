@@ -54,12 +54,55 @@ Every node in the substrate has a distinct type and lifecycle state:
 
 In TKS, all structural and governance edges strictly point **upward** toward the governing authority:
 
-* **`DERIVED_FROM`:** Represents structural hierarchy. A sub-section or requirement points to its parent heading:
-  $$\text{Child Node} \xrightarrow{\text{DERIVED\_FROM}} \text{Parent Heading Node}$$
-* **`FULFILLS`:** Represents task execution traceability. An execution task or technical specification points upward to the requirement it satisfies:
-  $$\text{Task} \xrightarrow{\text{FULFILLS}} \text{Requirement}$$
-* **`CONSTRAINED_BY`:** Represents cross-cutting architectural constraints. A feature or task points upward to the invariant that governs it:
-  $$\text{Task} \xrightarrow{\text{CONSTRAINED\_BY}} \text{Security Invariant}$$
+```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'darkMode': true,
+    'background': '#161922',
+    'mainBkg': '#1e2230',
+    'nodeBorder': '#434c5e',
+    'textColor': '#e2e8f0',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
+    'lineColor': '#8892b0',
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
+  }
+}}%%
+flowchart LR
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+
+    subgraph Lineage["Structural Hierarchy"]
+        C1["Child Node"]:::secondary -->|"DERIVED_FROM"| P1["Parent Heading Node"]:::primary
+    end
+
+    subgraph Traceability["Execution Traceability"]
+        T1["Task / Spec"]:::secondary -->|"FULFILLS"| R1["Requirement"]:::primary
+    end
+
+    subgraph Constraints["Architectural Guardrails"]
+        T2["Task / Feature"]:::secondary -->|"CONSTRAINED_BY"| I1["Security Invariant"]:::primary
+    end
+```
+
+* **`DERIVED_FROM`:** Represents structural hierarchy. A sub-section or requirement points to its parent heading.
+* **`FULFILLS`:** Represents task execution traceability. An execution task or technical specification points upward to the requirement it satisfies.
+* **`CONSTRAINED_BY`:** Represents cross-cutting architectural constraints. A feature or task points upward to the invariant that governs it.
 
 By strictly enforcing upward edge directions, TKS guarantees that recursive CTE traversals cannot enter infinite cycles and that topological distance accurately reflects governance hierarchy.
 
@@ -83,26 +126,59 @@ The substrate operates under seven fundamental, non-negotiable architectural inv
 
 TKS clearly distinguishes between two fundamentally different types of changes:
 
-```text
-                  ┌──────────────────────────────────────────────┐
-                  │          External Caller / Agent             │
-                  └──────────────────────┬───────────────────────┘
-                                         │
-                 Is this an operational task or a normative requirement?
-                                         │
-                     ┌───────────────────┴───────────────────┐
-                     ▼                                       ▼
-           [ Operational Task ]                   [ Normative Requirement ]
-         (node_type = 'TASK')                  (node_type = 'REQUIREMENT')
-                     │                                       │
-     Parent governance_policy = ?               Parent governance_policy = ?
-                     │                                       │
-         ┌───────────┴───────────┐                           │
-         ▼                       ▼                           ▼
-[ AUTONOMOUS_ELABORATION ] [ HUMAN_REVIEW_REQUIRED ]  [ HUMAN_REVIEW_REQUIRED ]
-         │                       │                           │
-Direct commit to ACTIVE   Staged as DRAFT             Staged as DRAFT
-(Native Row Lock)         (Requires Approval)         (Creates Ingestion Job)
+```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'darkMode': true,
+    'background': '#161922',
+    'mainBkg': '#1e2230',
+    'nodeBorder': '#434c5e',
+    'textColor': '#e2e8f0',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
+    'lineColor': '#8892b0',
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
+  }
+}}%%
+flowchart TD
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
+    classDef note fill:#2e271a,stroke:#e5c07b,stroke-width:1.5px,color:#fdf4db;
+
+    CALLER["👤 External Caller / Agent"]:::secondary
+    DECIDE{"Operational Task or<br/>Normative Requirement?"}:::note
+
+    CALLER --> DECIDE
+
+    DECIDE -->|"node_type = 'TASK'"| TASK["⚙️ Operational Task"]:::secondary
+    DECIDE -->|"node_type = 'REQUIREMENT'"| REQ["🎯 Normative Requirement"]:::primary
+
+    TASK_GOV{"Parent Governance Policy?"}:::note
+    REQ_GOV{"Parent Governance Policy?"}:::note
+
+    TASK --> TASK_GOV
+    REQ --> REQ_GOV
+
+    TASK_GOV -->|"AUTONOMOUS_ELABORATION"| AUTO["⚡ Direct commit to ACTIVE<br/><i>(Native Row Lock FOR UPDATE)</i>"]:::secondary
+    TASK_GOV -->|"HUMAN_REVIEW_REQUIRED"| STAGE_TASK["📝 Staged as DRAFT<br/><i>(Requires Supervisor Approval)</i>"]:::note
+
+    REQ_GOV -->|"HUMAN_REVIEW_REQUIRED"| STAGE_REQ["📋 Staged as DRAFT<br/><i>(Creates Ingestion Job)</i>"]:::primary
 ```
 
 1. **Autonomous Task Elaboration:** When an agent works under a parent node with `governance_policy = 'AUTONOMOUS_ELABORATION'`, it can create subtasks directly in `ACTIVE` state and advance their execution status (`OPEN` $\to$ `IN_PROGRESS` $\to$ `COMPLETED`) using native row locks (`FOR UPDATE`).

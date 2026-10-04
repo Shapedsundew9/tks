@@ -40,23 +40,54 @@ If the document modification merely shifted text lines without changing semantic
 
 When an active requirement is superseded or structurally altered during staging approval, TKS executes the **Invalidation Cascade Engine** (`src/storage/cascade.rs`):
 
-```text
-                  Root Requirement Superseded / Modified
-                                    │
-                                    ▼
-       [ Single-Roundtrip Multi-Statement Recursive CTE ]
-                                    │
-   1. Recursive Downward Traversal (CONSTRAINED_BY, DERIVED_FROM, FULFILLS)
-   2. Shortest-Path Staleness Computation: MIN(depth)
-   3. Batch UPDATE: lifecycle_state = 'NEEDS_REVERIFICATION'
-   4. Single-Pass Aggregated Audit Log Insertion (audit_ledger)
-   5. In-Process Broadcast via GraphEventBus
-                                    │
-                                    ▼
-                     [ Downstream Graph Impact ]
-        * Task A (depth = 1): NEEDS_REVERIFICATION (staleness = 1.0)
-        * Task B (depth = 2): NEEDS_REVERIFICATION (staleness = 2.0)
-        * Live Web Explorer updates via SSE in real time
+```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'darkMode': true,
+    'background': '#161922',
+    'mainBkg': '#1e2230',
+    'nodeBorder': '#434c5e',
+    'textColor': '#e2e8f0',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
+    'lineColor': '#8892b0',
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
+  }
+}}%%
+flowchart TD
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
+    classDef note fill:#2e271a,stroke:#e5c07b,stroke-width:1.5px,color:#fdf4db;
+
+    ROOT["🎯 Root Requirement Superseded / Modified"]:::primary
+    CTE["⚙️ Single-Roundtrip Multi-Statement Recursive CTE<br/>1. Recursive Downward Traversal (CONSTRAINED_BY, DERIVED_FROM, FULFILLS)<br/>2. Shortest-Path Staleness Computation: MIN(depth)<br/>3. Batch UPDATE: lifecycle_state = 'NEEDS_REVERIFICATION'<br/>4. Single-Pass Aggregated Audit Log Insertion (audit_ledger)<br/>5. In-Process Broadcast via GraphEventBus"]:::secondary
+
+    subgraph Impact["Downstream Graph Impact"]
+        TA["⚠️ Task A (depth = 1): NEEDS_REVERIFICATION<br/><i>staleness = 1.0</i>"]:::note
+        TB["⚠️ Task B (depth = 2): NEEDS_REVERIFICATION<br/><i>staleness = 2.0</i>"]:::note
+        WEB["📊 Live Web Explorer Updates via SSE in Real Time"]:::tertiary
+    end
+
+    ROOT --> CTE
+    CTE --> TA
+    CTE --> TB
+    CTE --> WEB
 ```
 
 ### Key Performance Guarantees

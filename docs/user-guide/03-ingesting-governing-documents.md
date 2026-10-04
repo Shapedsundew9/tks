@@ -8,39 +8,61 @@ This chapter demonstrates how to ingest governing documents into the Knowledge S
 
 When a human or CI pipeline submits a Markdown document for ingestion, TKS executes a multi-stage pipeline designed for 100% mechanical determinism and cryptographic provenance:
 
-```text
-Markdown Document (e.g. docs/vision/vision.md)
-                      │
-                      ▼
-        [ POST /api/v1/documents/ingest ]
-                      │
-        ┌─────────────┴─────────────┐
-        ▼                           ▼
-[ Bare Git Repository ]     [ PostgreSQL Database ]
-* Commit to refs/heads/specs * Insert ingestion_jobs (QUEUED)
-* Extract Git blob hash     * Supersede prior open jobs
-        │                           │
-        └─────────────┬─────────────┘
-                      ▼
-           [ Background Worker ]
-   * Claims job (status = 'PROCESSING')
-   * Mechanical AST Parsing (pulldown-cmark)
-   * Heading stack generates DERIVED_FROM edges
-   * Exact 0-based byte spans extracted
-   * Candidate drafts written to graph_nodes (DRAFT)
-   * Transitions ingestion_jobs to STAGED
-                      │
-                      ▼
-           [ Staging Review & CLI ]
-   * tks staging list <job_id>
-   * tks staging inspect <job_id> <node_id> (verbatim Git slice)
-                      │
-                      ▼
-           [ Staging Approval ]
-   * tks staging approve <job_id>
-   * Promotes candidate nodes to ACTIVE
-   * Commits events to audit_ledger
-   * Enqueues vector generation into node_embeddings
+```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'darkMode': true,
+    'background': '#161922',
+    'mainBkg': '#1e2230',
+    'nodeBorder': '#434c5e',
+    'textColor': '#e2e8f0',
+    'fontFamily': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    'fontSize': '14px',
+    'lineColor': '#8892b0',
+    'primaryColor': '#422026',
+    'primaryTextColor': '#fde8ec',
+    'primaryBorderColor': '#e06c75',
+    'secondaryColor': '#1b3528',
+    'secondaryTextColor': '#e6f7ee',
+    'secondaryBorderColor': '#73c991',
+    'tertiaryColor': '#1d2c44',
+    'tertiaryTextColor': '#e4f0fc',
+    'tertiaryBorderColor': '#61afef',
+    'clusterBkg': '#13161f',
+    'clusterBorder': '#373e51',
+    'noteBkgColor': '#2e271a',
+    'noteTextColor': '#fdf4db',
+    'noteBorderColor': '#e5c07b',
+    'edgeLabelBackground': '#1a1d27'
+  }
+}}%%
+flowchart TD
+    classDef primary fill:#422026,stroke:#e06c75,stroke-width:1.5px,color:#fde8ec;
+    classDef secondary fill:#1b3528,stroke:#73c991,stroke-width:1.5px,color:#e6f7ee;
+    classDef tertiary fill:#1d2c44,stroke:#61afef,stroke-width:1.5px,color:#e4f0fc;
+    classDef note fill:#2e271a,stroke:#e5c07b,stroke-width:1.5px,color:#fdf4db;
+
+    DOC["📄 Markdown Document<br/><i>(e.g. docs/vision/vision.md)</i>"]:::secondary
+    API["🌐 POST /api/v1/documents/ingest<br/><i>(Stateless Ingestion Gateway)</i>"]:::secondary
+
+    subgraph StorageTier["Persistence Layer"]
+        GIT["🗄️ Bare Git Repository<br/>• Commit to refs/heads/specs<br/>• Extract Git blob hash"]:::tertiary
+        DB["🗄️ PostgreSQL Database<br/>• Insert ingestion_jobs (QUEUED)<br/>• Supersede prior open jobs"]:::tertiary
+    end
+
+    WORKER["⚡ Background Worker<br/>• Claims job (status = 'PROCESSING')<br/>• Mechanical AST Parsing (pulldown-cmark)<br/>• Heading stack generates DERIVED_FROM edges<br/>• Exact 0-based byte spans extracted<br/>• Candidate drafts written to graph_nodes (DRAFT)<br/>• Transitions ingestion_jobs to STAGED"]:::secondary
+
+    CLI["🔍 Staging Review & CLI<br/>• tks staging list &lt;job_id&gt;<br/>• tks staging inspect &lt;job_id&gt; &lt;node_id&gt; (verbatim Git slice)"]:::note
+    APPROVE["🛡️ Staging Approval<br/>• tks staging approve &lt;job_id&gt;<br/>• Promotes candidate nodes to ACTIVE<br/>• Commits events to audit_ledger<br/>• Enqueues vector generation into node_embeddings"]:::primary
+
+    DOC --> API
+    API --> GIT
+    API --> DB
+    GIT --> WORKER
+    DB --> WORKER
+    WORKER --> CLI
+    CLI --> APPROVE
 ```
 
 ---

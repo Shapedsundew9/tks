@@ -117,9 +117,17 @@ Once all Work Packages are completed and committed, the Orchestrator executes Se
      * Decisions targeting `strategic-planning-backlog.md` or `vision.md`
    * Formulate the list of upstream changes to be fed into the next Architecture Iteration cycle (`architecture-iteration.prompt.md`).
 
-6. **Final Completion Report:**
+6. **Assess Sub-Agent Token Efficiency:**
+   * Look for multiple iteration efforts by Sub-Agents on the same tasks, indicating potential inefficiencies or challenges.
+   * Identify any environment, devops or design-related challenges that affected Sub-Agent performance.
+   * The goal is saving tokens through less discovery / repeat work and more mechanical solutions.
+
+7. **Final Completion Report:**
    * Output a concise final report to the Project Initiator containing:
      * Phase Objective & Target Gate status: `VERIFIED & COMPLETE`
      * Work Packages delivered: list with commit hashes
      * Milestone Demonstration outcome: key metrics and greenlight status
      * Decision Record summary: total decisions recorded and table of pending upstream document updates.
+   * Sub-Agent Performance Assessment:
+     * Summary of identified inefficiencies and proposed solutions.
+  
