@@ -426,6 +426,15 @@
   function handleGraphChangeEvent(event) {
     addEventToast(event);
 
+    if (
+      event.event_type === 'STAGING_APPROVED' ||
+      event.event_type === 'WORKSPACE_PROMOTED' ||
+      event.event_type === 'TASK_ELABORATED'
+    ) {
+      loadGraph();
+      return;
+    }
+
     const targetNodeId = event.entity_id;
     if (!targetNodeId || !cy) return;
 
@@ -443,16 +452,11 @@
       } else if (event.event_type === 'REVERIFIED') {
         cyNode.data('lifecycle_state', 'ACTIVE');
         cyNode.data('staleness_score', 0.0);
-      }
-    } else {
-      // If node is not currently on canvas (e.g. newly elaborated or promoted), reload graph
-      if (
-        event.event_type === 'TASK_ELABORATED' ||
-        event.event_type === 'WORKSPACE_PROMOTED' ||
-        event.event_type === 'STAGING_APPROVED'
-      ) {
+      } else if (event.event_type === 'TASK_STATUS_UPDATED') {
         loadGraph();
       }
+    } else {
+      loadGraph();
     }
   }
 

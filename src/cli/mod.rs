@@ -3,6 +3,7 @@
 pub mod admin;
 pub mod explorer;
 pub mod identity;
+pub mod ingest;
 pub mod mcp_stdio;
 pub mod serve;
 pub mod staging;
@@ -12,6 +13,7 @@ pub mod workspace;
 pub use admin::{AdminReverifyArgs, AdminRevertArgs, AdminSubcommand, run_admin};
 pub use explorer::{ExplorerServeArgs, ExplorerSubcommand, run_explorer};
 pub use identity::{CreateIdentityArgs, IdentitySubcommand, RevokeIdentityArgs, run_identity};
+pub use ingest::{IngestArgs, run_ingest};
 pub use mcp_stdio::{McpStdioArgs, run_mcp_stdio};
 pub use serve::{ServeArgs, run_serve};
 pub use staging::{

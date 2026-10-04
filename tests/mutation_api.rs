@@ -187,7 +187,10 @@ async fn test_mcp_tools_list_all_eight_tools() {
             !tool["description"].as_str().unwrap_or("").is_empty(),
             "Tool '{name}' must have a non-empty description"
         );
-        let schema = &tool["input_schema"];
+        let schema = tool
+            .get("inputSchema")
+            .or_else(|| tool.get("input_schema"))
+            .unwrap();
         assert_eq!(
             schema["type"], "object",
             "Tool '{name}' schema must be type 'object'"

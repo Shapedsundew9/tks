@@ -24,6 +24,7 @@ use crate::storage::{SearchResultNode, TopologicalEnvelope};
 pub struct McpToolDefinition {
     pub name: String,
     pub description: String,
+    #[serde(rename = "inputSchema", alias = "input_schema")]
     pub input_schema: Value,
 }
 
@@ -604,6 +605,18 @@ pub async fn handle_propose_node_mutation(
             .await?
         };
 
+        state
+            .event_bus
+            .publish(crate::storage::event_bus::GraphChangeEvent {
+                event_seq: res.event_seq,
+                batch_id: res.batch_id,
+                event_type: "TASK_ELABORATED".to_string(),
+                entity_id: res.task_id,
+                entity_type: "TASK".to_string(),
+                actor_id: caller.agent_id.clone(),
+                timestamp: chrono::Utc::now(),
+            });
+
         Ok(serde_json::json!({
             "status": "COMMITTED",
             "node_id": res.task_id,
@@ -635,6 +648,18 @@ pub async fn handle_propose_node_mutation(
 
         let res =
             update_task_status(&mut client, target_node_id, task_status, notes, caller).await?;
+
+        state
+            .event_bus
+            .publish(crate::storage::event_bus::GraphChangeEvent {
+                event_seq: res.event_seq,
+                batch_id: res.batch_id,
+                event_type: "TASK_STATUS_UPDATED".to_string(),
+                entity_id: res.task_id,
+                entity_type: "TASK".to_string(),
+                actor_id: caller.agent_id.clone(),
+                timestamp: chrono::Utc::now(),
+            });
 
         Ok(serde_json::json!({
             "status": "COMMITTED",
@@ -704,7 +729,7 @@ pub async fn handle_create_subtask(
 
     let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
 
-    if let Some(ws_id) = workspace_id {
+    let res = if let Some(ws_id) = workspace_id {
         elaborate_in_workspace(
             &mut client,
             ws_id,
@@ -714,7 +739,7 @@ pub async fn handle_create_subtask(
             attributes,
             caller,
         )
-        .await
+        .await?
     } else {
         elaborate_task(
             &mut client,
@@ -724,8 +749,22 @@ pub async fn handle_create_subtask(
             attributes,
             caller,
         )
-        .await
-    }
+        .await?
+    };
+
+    state
+        .event_bus
+        .publish(crate::storage::event_bus::GraphChangeEvent {
+            event_seq: res.event_seq,
+            batch_id: res.batch_id,
+            event_type: "TASK_ELABORATED".to_string(),
+            entity_id: res.task_id,
+            entity_type: "TASK".to_string(),
+            actor_id: caller.agent_id.clone(),
+            timestamp: chrono::Utc::now(),
+        });
+
+    Ok(res)
 }
 
 /// Executes the `update_node_status` MCP tool.
@@ -752,7 +791,21 @@ pub async fn handle_update_node_status(
     let notes = args.get("notes").and_then(|v| v.as_str());
 
     let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
-    update_task_status(&mut client, node_id, task_status, notes, caller).await
+    let res = update_task_status(&mut client, node_id, task_status, notes, caller).await?;
+
+    state
+        .event_bus
+        .publish(crate::storage::event_bus::GraphChangeEvent {
+            event_seq: res.event_seq,
+            batch_id: res.batch_id,
+            event_type: "TASK_STATUS_UPDATED".to_string(),
+            entity_id: res.task_id,
+            entity_type: "TASK".to_string(),
+            actor_id: caller.agent_id.clone(),
+            timestamp: chrono::Utc::now(),
+        });
+
+    Ok(res)
 }
 
 /// Executes the `revert_mutations` MCP tool.

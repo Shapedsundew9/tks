@@ -187,9 +187,9 @@ echo ""
 # -----------------------------------------------------------------------------
 # Step 5: Ingest Governance Documents via CLI & REST
 # -----------------------------------------------------------------------------
-echo "==> [5/9] Ingesting governance documents into TKS..."
+echo "==> [5/9] Ingesting governance documents into TKS via native CLI..."
 
-ingest_and_approve() {
+ingest_doc() {
     local doc_file="$1"
     local doc_path="$2"
 
@@ -198,50 +198,11 @@ ingest_and_approve() {
         return 1
     fi
 
-    echo "--- Submitting: ${doc_file} -> ${doc_path} ---"
-
-    # Construct JSON payload using jq --rawfile to avoid argument limits
-    local payload
-    payload=$(jq -n --arg path "${doc_path}" --rawfile content "${doc_file}" \
-        '{doc_path: $path, content: $content}')
-
-    local resp
-    resp=$(curl -s -f -X POST "${TKS_SERVER_URL}/api/v1/documents/ingest" \
-        -H "Authorization: Bearer ${TKS_AUTH_TOKEN}" \
-        -H "Content-Type: application/json" \
-        -d "${payload}")
-
-    local job_id
-    job_id=$(echo "${resp}" | jq -r '.job_id')
-    echo "    Ingestion Job ID: ${job_id} (Status: QUEUED)"
-
-    # Poll until background decomposition worker parses CommonMark AST into candidate drafts
-    echo "    Waiting for mechanical decomposition worker..."
-    local status="QUEUED"
-    local retries=40
-    while [[ "${status}" != "STAGED" && $retries -gt 0 ]]; do
-        sleep 0.5
-        local job_info
-        job_info=$(curl -s -f "${TKS_SERVER_URL}/api/v1/documents/ingest/${job_id}" \
-            -H "Authorization: Bearer ${TKS_AUTH_TOKEN}")
-        status=$(echo "${job_info}" | jq -r '.status')
-
-        if [[ "${status}" == "FAILED" ]]; then
-            local err_msg
-            err_msg=$(echo "${job_info}" | jq -r '.error_message // "unknown error"')
-            echo "ERROR: Decomposition failed for ${doc_path}: ${err_msg}" >&2
-            return 1
-        fi
-        retries=$((retries - 1))
-    done
-
-    if [[ "${status}" != "STAGED" ]]; then
-        echo "ERROR: Timeout waiting for job ${job_id} to reach STAGED (current: ${status})" >&2
-        return 1
-    fi
-
-    echo "    Decomposition complete (Status: STAGED). Approving candidate drafts..."
-    "${TKS_BIN}" staging approve "${job_id}" \
+    echo "--- Ingesting via CLI: ${doc_file} -> ${doc_path} ---"
+    "${TKS_BIN}" ingest "${doc_file}" \
+        --doc-path "${doc_path}" \
+        --approve \
+        --timeout 60 \
         --server-url "${TKS_SERVER_URL}" \
         --auth-token "${TKS_AUTH_TOKEN}"
 
@@ -250,16 +211,16 @@ ingest_and_approve() {
 }
 
 # 1. Technical Vision
-ingest_and_approve "${WORKSPACE_ROOT}/docs/vision/vision.md" "specs/vision.md"
+ingest_doc "${WORKSPACE_ROOT}/docs/vision/vision.md" "specs/vision.md"
 
 # 2. System Architecture
-ingest_and_approve "${WORKSPACE_ROOT}/docs/vision/architecture.md" "specs/architecture.md"
+ingest_doc "${WORKSPACE_ROOT}/docs/vision/architecture.md" "specs/architecture.md"
 
 # 3. Technical Backlog
-ingest_and_approve "${WORKSPACE_ROOT}/docs/vision/technical-backlog.md" "specs/technical-backlog.md"
+ingest_doc "${WORKSPACE_ROOT}/docs/vision/technical-backlog.md" "specs/technical-backlog.md"
 
 # 4. Strategic Planning Backlog (Contains Phase 4 specifications)
-ingest_and_approve "${WORKSPACE_ROOT}/docs/vision/strategic-planning-backlog.md" "specs/strategic-planning-backlog.md"
+ingest_doc "${WORKSPACE_ROOT}/docs/vision/strategic-planning-backlog.md" "specs/strategic-planning-backlog.md"
 
 echo ""
 echo "    All governance documents ingested and activated in TKS."
@@ -271,7 +232,12 @@ echo ""
 echo "==> [6/9] Resolving Phase 4 parent requirement in TKS property graph..."
 
 PHASE4_NODE_ID=$(psql "${DB_URL}" -t -A -c \
-    "SELECT id FROM graph_nodes WHERE title ILIKE '%Phase 4%' AND lifecycle_state = 'ACTIVE' ORDER BY created_at ASC LIMIT 1;")
+    "SELECT id FROM graph_nodes WHERE title ILIKE '%Phase 4%' AND doc_path LIKE '%strategic-planning%' AND lifecycle_state = 'ACTIVE' LIMIT 1;")
+
+if [[ -z "${PHASE4_NODE_ID}" ]]; then
+    PHASE4_NODE_ID=$(psql "${DB_URL}" -t -A -c \
+        "SELECT id FROM graph_nodes WHERE title ILIKE '%Phase 4%' AND lifecycle_state = 'ACTIVE' LIMIT 1;")
+fi
 
 if [[ -z "${PHASE4_NODE_ID}" ]]; then
     echo "WARNING: Could not automatically locate active Phase 4 node. Searching by content..."
@@ -294,8 +260,8 @@ if [[ -n "${PHASE4_NODE_ID}" ]]; then
     if [[ "${AUTO_SET_POLICY}" == "true" ]]; then
         echo "    Updating governance_policy to 'AUTONOMOUS_ELABORATION' (Invariant INV-5 compliance)..."
         psql "${DB_URL}" -c \
-            "UPDATE graph_nodes SET governance_policy = 'AUTONOMOUS_ELABORATION' WHERE id = '${PHASE4_NODE_ID}';" >/dev/null
-        echo "    ✓ Policy updated. Autonomous agent can elaborate tasks directly under this node."
+            "UPDATE graph_nodes SET governance_policy = 'AUTONOMOUS_ELABORATION' WHERE title ILIKE '%Phase 4%' AND lifecycle_state = 'ACTIVE';" >/dev/null
+        echo "    ✓ Policy updated. Autonomous agent can elaborate tasks directly under Phase 4 node(s)."
     else
         echo "    [Experimental Note] AUTO_SET_POLICY is false. Leaving policy as '${CURRENT_POLICY}' to observe governance rejection."
     fi

@@ -539,29 +539,34 @@ async fn execute_approve(
         "approved_count": approved_node_ids.len(),
     });
 
-    tx.execute(
-        "INSERT INTO audit_ledger ( \
+    let audit_row = tx
+        .query_one(
+            "INSERT INTO audit_ledger ( \
             batch_id, event_type, entity_id, entity_type, \
             actor_id, actor_type, token_fingerprint, delta, snapshot, draft_evolution_summary \
-         ) VALUES ($1, 'APPROVED', $2, 'INGESTION_JOB', $3, $4, $5, $6, $7, $8);",
-        &[
-            &batch_id,
-            &job_id,
-            &caller.agent_id,
-            &caller.actor_type,
-            &caller.agent_id,
-            &approved_delta,
-            &snapshot,
-            &draft_evolution_summary,
-        ],
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": format!("Audit approved error: {e}") })),
+         ) VALUES ($1, 'APPROVED', $2, 'INGESTION_JOB', $3, $4, $5, $6, $7, $8) \
+         RETURNING event_seq, created_at;",
+            &[
+                &batch_id,
+                &job_id,
+                &caller.agent_id,
+                &caller.actor_type,
+                &caller.agent_id,
+                &approved_delta,
+                &snapshot,
+                &draft_evolution_summary,
+            ],
         )
-    })?;
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Audit approved error: {e}") })),
+            )
+        })?;
+
+    let event_seq: i64 = audit_row.get("event_seq");
+    let timestamp: chrono::DateTime<chrono::Utc> = audit_row.get("created_at");
 
     // Step 12: Transition ingestion_jobs status to APPROVED.
     tx.execute(
@@ -590,6 +595,20 @@ async fn execute_approve(
         approved_node_ids.len(),
         purged_count
     );
+
+    // Publish STAGING_APPROVED event to event bus so connected Web Explorer clients reload via SSE
+    let first_node_id = approved_node_ids.first().copied().unwrap_or(job_id);
+    state
+        .event_bus
+        .publish(crate::storage::event_bus::GraphChangeEvent {
+            event_seq,
+            batch_id,
+            event_type: "STAGING_APPROVED".to_string(),
+            entity_id: first_node_id,
+            entity_type: "INGESTION_JOB".to_string(),
+            actor_id: caller.agent_id.clone(),
+            timestamp,
+        });
 
     let resp = StagingApproveResponse {
         approved_nodes: approved_node_ids.len(),

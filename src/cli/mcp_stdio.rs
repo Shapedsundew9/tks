@@ -16,8 +16,8 @@ use serde_json::Value;
 #[derive(Debug, Args, Clone)]
 pub struct McpStdioArgs {
     /// Server base URL for the TKS daemon (default: http://127.0.0.1:8080).
-    #[arg(long, default_value = "http://127.0.0.1:8080")]
-    pub server_url: String,
+    #[arg(long)]
+    pub server_url: Option<String>,
 
     /// Optional bearer token for authentication.
     #[arg(long)]
@@ -30,12 +30,9 @@ pub struct McpStdioArgs {
 ///
 /// Returns an error only on unrecoverable I/O errors.
 pub async fn run_mcp_stdio(args: McpStdioArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let base_url = args.server_url.trim_end_matches('/');
-    let auth_token = args
-        .auth_token
-        .or_else(|| std::env::var("TKS_DEV_TOKEN").ok())
-        .or_else(|| std::env::var("TKS_AUTH_TOKEN").ok())
-        .unwrap_or_else(|| "tks_dev_token".to_string());
+    let resolved_url = crate::cli::resolve_server_url(args.server_url.as_deref());
+    let base_url = resolved_url.trim_end_matches('/');
+    let auth_token = crate::cli::resolve_auth_token(args.auth_token.as_deref());
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))

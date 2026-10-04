@@ -11,10 +11,10 @@ pub mod storage;
 pub mod worker;
 
 use cli::{
-    AdminSubcommand, ExplorerSubcommand, IdentitySubcommand, McpStdioArgs, ServeArgs,
+    AdminSubcommand, ExplorerSubcommand, IdentitySubcommand, IngestArgs, McpStdioArgs, ServeArgs,
     StagingSubcommand, TaskSubcommand, WorkspaceSubcommand, resolve_auth_token, resolve_server_url,
-    run_admin, run_explorer, run_identity, run_mcp_stdio, run_serve, run_staging, run_task,
-    run_workspace,
+    run_admin, run_explorer, run_identity, run_ingest, run_mcp_stdio, run_serve, run_staging,
+    run_task, run_workspace,
 };
 
 /// Command-line arguments for the TKS CLI.
@@ -47,6 +47,9 @@ pub struct Cli {
 pub enum Commands {
     /// Start the unified Knowledge Substrate daemon server.
     Serve(ServeArgs),
+
+    /// Ingest a specification document into the Knowledge Substrate.
+    Ingest(IngestArgs),
 
     /// Stdio streaming JSON-RPC proxy for MCP clients.
     #[command(name = "mcp-stdio")]
@@ -139,6 +142,12 @@ pub async fn run_with_args(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 args.database_url = cli.database_url;
             }
             run_serve(args).await
+        }
+
+        Some(Commands::Ingest(args)) => {
+            let server_url = resolve_server_url(cli.server_url.as_deref());
+            let auth_token = resolve_auth_token(cli.auth_token.as_deref());
+            run_ingest(args, &server_url, &auth_token).await
         }
 
         Some(Commands::McpStdio(args)) => run_mcp_stdio(args).await,
