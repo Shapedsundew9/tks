@@ -1525,6 +1525,30 @@ CREATE INDEX idx_graph_edges_draft_author
 * **Rationale:** 100% offline functionality; single-binary deployment; provides sub-second live visualization of graph evolution, invalidation cascades, and multi-agent branch operations without polling.
 * **Reopen If:** Client browser performance degrades at >10,000 displayed nodes, requiring server-side canvas tiling or WebGL shaders.
 
+### D-91: Native Streaming CLI Ingestion for Large Specification Documents
+
+* **Status:** Accepted (Updates D-14, D-53)
+* **Origin:** Phase 4 Dogfooding Experiment
+* **Context:** Orchestration scripts previously submitted documents to `/api/v1/documents/ingest` via shell-constructed `curl` commands passing file content as string arguments. For large documents such as `architecture.md` (250+ KB), the shell aborted with `Argument list too long` (`ARG_MAX` exceeded).
+* **Decision:**
+  1. Implement a first-class native CLI subcommand: `tks ingest <FILE> [--doc-path <PATH>] [--approve] [--timeout <SECS>]`.
+  2. Stream file content from disk directly into an HTTP multipart upload targeting `/api/v1/documents/ingest`.
+  3. Support polling and automatic staging approval (`--approve`) natively in Rust without external shell dependencies (`curl`, `jq`).
+* **Rationale:** Completely eliminates operating system argument length limitations, streamlines document ingestion into a single reliable CLI command, and prevents shell script brittleness.
+* **Reopen If:** Ingestion is fully decentralized to external message queues.
+
+### D-92: Real-Time Event-Bus Propagation for MCP Task Mutations and Staging Approvals
+
+* **Status:** Accepted (Updates D-87, D-90)
+* **Origin:** Phase 4 Dogfooding Experiment
+* **Context:** When specification documents were approved or when autonomous agents elaborated tasks via MCP (`create_subtask`, `update_node_status`), changes were committed to PostgreSQL but were not broadcast across `GraphEventBus`. Consequently, connected Cytoscape Web Explorer clients did not observe graph updates via Server-Sent Events (SSE) without a full browser refresh.
+* **Decision:**
+  1. In `src/gateway/routes/staging.rs`, publish `STAGING_APPROVED` to `GraphEventBus` upon successful transaction commit.
+  2. In `src/gateway/mcp/tools.rs`, publish `TASK_ELABORATED` and `TASK_STATUS_UPDATED` to `GraphEventBus` upon successful task creation or status update.
+  3. In `src/gateway/explorer/app.js`, handle `STAGING_APPROVED`, `WORKSPACE_PROMOTED`, `TASK_ELABORATED`, and `TASK_STATUS_UPDATED` by triggering graph data re-fetching and animated layout updates.
+* **Rationale:** Delivers true real-time observability across the web portal, allowing human supervisors to visually monitor document ingestion, task elaboration, and task completion as they happen.
+* **Reopen If:** Event frequency causes browser canvas rendering bottlenecks.
+
 ## 10. Risks & Spikes
 
 | ID | Risk / Hypothesis | Impact | Spike | Pass Threshold | Fail Response |
