@@ -64,7 +64,7 @@ fn mock_classify(candidate_chunks: &[&ExtractedChunk]) -> String {
             || content_upper.contains("IMPLEMENT ")
             || content_upper.contains("CONSTRUCT ");
 
-        let (node_type, governance_policy) = if is_task {
+        let (node_type, _governance_policy) = if is_task {
             ("TASK", "AUTONOMOUS_ELABORATION")
         } else if has_rfc2119
             || has_req_key
@@ -93,7 +93,6 @@ fn mock_classify(candidate_chunks: &[&ExtractedChunk]) -> String {
         tuples.push(serde_json::json!({
             "chunk_id": alias,
             "node_type": node_type,
-            "governance_policy": governance_policy,
         }));
     }
 
@@ -172,6 +171,11 @@ async fn test_precision_recall_h4_eval() {
             is_candidate: is_cand,
             content: Some(gt.text.clone()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         });
     }
 

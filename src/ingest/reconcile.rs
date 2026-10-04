@@ -104,6 +104,8 @@ pub struct NewDraftNode {
     pub content: String,
     /// Substrate node type (`REQUIREMENT`, `SPECIFICATION`, `TASK`, `UNCLASSIFIED`, etc.).
     pub node_type: String,
+    /// Trust tier provenance (`HUMAN_APPROVED`, `AGENT_DRAFTED`, `EXTERNALLY_IMPORTED`).
+    pub trust_tier: String,
     /// Substrate governance policy (`HUMAN_REVIEW_REQUIRED`, `AUTONOMOUS_ELABORATION`, etc.).
     pub governance_policy: String,
     /// Document path of the source specification.
@@ -448,6 +450,30 @@ pub fn reconcile_reingestion_with_options(
                 fallback_type
             };
 
+            let trust_tier = if !chunk.trust_tier.is_empty() {
+                chunk.trust_tier.clone()
+            } else if !node.trust_tier.is_empty() {
+                node.trust_tier.clone()
+            } else {
+                "HUMAN_APPROVED".to_string()
+            };
+
+            let mut extraction_meta = serde_json::Map::new();
+            if let Some(ref alias) = chunk.atom_alias {
+                extraction_meta.insert("atom_alias".to_string(), serde_json::json!(alias));
+            }
+            if let Some(ref modality) = chunk.modality {
+                extraction_meta.insert("modality".to_string(), serde_json::json!(modality));
+            }
+            if let Some(confidence) = chunk.confidence {
+                extraction_meta.insert("confidence".to_string(), serde_json::json!(confidence));
+            }
+            extraction_meta.insert("trust_tier".to_string(), serde_json::json!(trust_tier));
+            attrs.insert(
+                "extraction_metadata".to_string(),
+                serde_json::Value::Object(extraction_meta),
+            );
+
             let governance_policy = if !node.governance_policy.is_empty() {
                 node.governance_policy.clone()
             } else {
@@ -463,6 +489,7 @@ pub fn reconcile_reingestion_with_options(
                 title: chunk.heading.clone().or_else(|| node.title.clone()),
                 content: chunk.content.clone().unwrap_or_default(),
                 node_type,
+                trust_tier,
                 governance_policy,
                 doc_path,
                 doc_hash: doc_hash
@@ -553,10 +580,32 @@ pub fn reconcile_reingestion_with_options(
     for c_idx in unmatched_indices {
         let chunk = &new_chunks[c_idx];
         let (node_type, governance_policy) = classify_chunk_fallback(chunk);
+        let trust_tier = if !chunk.trust_tier.is_empty() {
+            chunk.trust_tier.clone()
+        } else {
+            "HUMAN_APPROVED".to_string()
+        };
+
         let mut attrs = serde_json::Map::new();
         attrs.insert(
             "ast_anchor".to_string(),
             serde_json::Value::String(chunk.ast_anchor.clone()),
+        );
+
+        let mut extraction_meta = serde_json::Map::new();
+        if let Some(ref alias) = chunk.atom_alias {
+            extraction_meta.insert("atom_alias".to_string(), serde_json::json!(alias));
+        }
+        if let Some(ref modality) = chunk.modality {
+            extraction_meta.insert("modality".to_string(), serde_json::json!(modality));
+        }
+        if let Some(confidence) = chunk.confidence {
+            extraction_meta.insert("confidence".to_string(), serde_json::json!(confidence));
+        }
+        extraction_meta.insert("trust_tier".to_string(), serde_json::json!(trust_tier));
+        attrs.insert(
+            "extraction_metadata".to_string(),
+            serde_json::Value::Object(extraction_meta),
         );
 
         // If chunk has table_data, attach it to attributes
@@ -629,6 +678,7 @@ pub fn reconcile_reingestion_with_options(
             title,
             content: chunk.content.clone().unwrap_or_default(),
             node_type,
+            trust_tier,
             governance_policy,
             doc_path,
             doc_hash: doc_hash.map(|s| s.to_string()),
@@ -688,6 +738,7 @@ mod tests {
             byte_start: Some(byte_start),
             byte_end: Some(byte_end),
             attributes: serde_json::Value::Object(attrs),
+            trust_tier: "HUMAN_APPROVED".to_string(),
         }
     }
 
@@ -710,6 +761,11 @@ mod tests {
             is_candidate: true,
             content: Some(content.to_string()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         }
     }
 

@@ -80,6 +80,12 @@ pub struct GraphNode {
     pub byte_start: Option<i32>,
     pub byte_end: Option<i32>,
     pub attributes: serde_json::Value,
+    #[serde(default = "default_trust_tier")]
+    pub trust_tier: String,
+}
+
+fn default_trust_tier() -> String {
+    "HUMAN_APPROVED".to_string()
 }
 
 impl GraphNode {
@@ -101,6 +107,9 @@ impl GraphNode {
             byte_start: row.get("byte_start"),
             byte_end: row.get("byte_end"),
             attributes: row.get("attributes"),
+            trust_tier: row
+                .try_get("trust_tier")
+                .unwrap_or_else(|_| "HUMAN_APPROVED".to_string()),
         }
     }
 }

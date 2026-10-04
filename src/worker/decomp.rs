@@ -251,7 +251,7 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
         .query(
             "SELECT id, node_key, node_type, title, content, lifecycle_state, \
              governance_policy, created_by, job_id, doc_path, doc_hash, \
-             byte_start, byte_end, attributes \
+             byte_start, byte_end, attributes, trust_tier \
              FROM graph_nodes \
              WHERE doc_path = $1 AND lifecycle_state = 'ACTIVE';",
             &[&doc_path],
@@ -291,8 +291,8 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
             "INSERT INTO graph_nodes ( \
                 id, node_key, node_type, title, content, lifecycle_state, \
                 governance_policy, created_by, job_id, doc_path, doc_hash, \
-                byte_start, byte_end, attributes \
-             ) VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, 'system', $7, $8, $9, $10, $11, $12);",
+                byte_start, byte_end, attributes, trust_tier \
+             ) VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, 'system', $7, $8, $9, $10, $11, $12, $13);",
             &[
                 &node_id,
                 &draft.node_key,
@@ -306,6 +306,7 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
                 &draft.byte_start,
                 &draft.byte_end,
                 &draft.attributes,
+                &draft.trust_tier,
             ],
         )
         .await?;

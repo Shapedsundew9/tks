@@ -27,10 +27,28 @@ pub fn fallback_classify(chunks: &[ExtractedChunk]) -> Vec<ClassificationResult>
         .enumerate()
         .map(|(idx, chunk)| {
             let (node_type, governance_policy) = classify_chunk_fallback(chunk);
+            let alias = chunk
+                .atom_alias
+                .clone()
+                .unwrap_or_else(|| format!("c{}", idx + 1));
+            let (modality, confidence) = if node_type == "REQUIREMENT" {
+                if chunk.rfc2119_keywords.iter().any(|k| k == "SHOULD") {
+                    ("SHOULD".to_string(), 0.85)
+                } else {
+                    ("SHALL".to_string(), 0.95)
+                }
+            } else if node_type == "SPECIFICATION" {
+                ("MAY".to_string(), 0.80)
+            } else {
+                ("UNCLASSIFIED".to_string(), 0.50)
+            };
             ClassificationResult {
-                chunk_id: format!("c{}", idx + 1),
+                chunk_id: alias,
                 node_type,
                 governance_policy,
+                modality,
+                confidence,
+                model_provenance: Some("rfc2119_fallback".to_string()),
             }
         })
         .collect()
@@ -96,6 +114,11 @@ mod tests {
             is_candidate: true,
             content: Some("Requests MUST be signed.".to_string()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         };
 
         let results = fallback_classify(&[chunk]);
@@ -118,6 +141,11 @@ mod tests {
             is_candidate: true,
             content: Some("Development identity seed.".to_string()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         };
 
         let results = fallback_classify(&[chunk]);
@@ -140,6 +168,11 @@ mod tests {
             is_candidate: true,
             content: Some("Decision on direct writes.".to_string()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         };
 
         let d_chunk = ExtractedChunk {
@@ -153,6 +186,11 @@ mod tests {
             is_candidate: true,
             content: Some("Decision on single engine.".to_string()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         };
 
         let c_chunk = ExtractedChunk {
@@ -169,6 +207,11 @@ mod tests {
                     .to_string(),
             ),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         };
 
         let results = fallback_classify(&[dec_chunk, d_chunk, c_chunk]);

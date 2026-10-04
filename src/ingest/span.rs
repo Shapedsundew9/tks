@@ -78,6 +78,53 @@ pub fn slice_source_span(source_bytes: &[u8], start: usize, end: usize) -> Resul
     std::str::from_utf8(slice).map_err(|source| SpanError::InvalidUtf8 { start, end, source })
 }
 
+/// Slices a raw byte slice from a buffer, verifying range bounds without UTF-8 validation.
+///
+/// # Errors
+///
+/// Returns [`SpanError::InvalidRange`] if `start > end`.
+/// Returns [`SpanError::OutOfBounds`] if `end > source_bytes.len()`.
+pub fn slice_raw_byte_span(
+    source_bytes: &[u8],
+    start: usize,
+    end: usize,
+) -> Result<&[u8], SpanError> {
+    if start > end {
+        return Err(SpanError::InvalidRange { start, end });
+    }
+    if end > source_bytes.len() {
+        return Err(SpanError::OutOfBounds {
+            start,
+            end,
+            len: source_bytes.len(),
+        });
+    }
+    Ok(&source_bytes[start..end])
+}
+
+/// Validates that `start..end` aligns with valid UTF-8 character boundaries in `source_bytes`.
+///
+/// # Errors
+///
+/// Returns [`SpanError`] if range or UTF-8 boundary checks fail.
+pub fn validate_utf8_boundaries(
+    source_bytes: &[u8],
+    start: usize,
+    end: usize,
+) -> Result<(), SpanError> {
+    let _ = slice_source_span(source_bytes, start, end)?;
+    Ok(())
+}
+
+/// Slices a UTF-8 string reference from a source string using 0-based byte offsets.
+///
+/// # Errors
+///
+/// Returns [`SpanError`] if range or character boundary checks fail.
+pub fn slice_str_span(source: &str, start: usize, end: usize) -> Result<&str, SpanError> {
+    slice_source_span(source.as_bytes(), start, end)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

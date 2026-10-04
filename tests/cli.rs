@@ -23,9 +23,12 @@ async fn test_cli_default_invocation() {
 
 #[tokio::test]
 async fn test_cli_top_level_migrate_only() {
+    let test_db_url = tks::db::ensure_test_database_ready_for(Some("cli_top_level"))
+        .await
+        .expect("test db ready");
     let cli = Cli {
         migrate_only: true,
-        database_url: None,
+        database_url: Some(test_db_url),
         server_url: None,
         auth_token: None,
         command: None,
@@ -35,15 +38,18 @@ async fn test_cli_top_level_migrate_only() {
 
 #[tokio::test]
 async fn test_cli_serve_migrate_only() {
+    let test_db_url = tks::db::ensure_test_database_ready_for(Some("cli_serve"))
+        .await
+        .expect("test db ready");
     let cli = Cli {
         migrate_only: false,
-        database_url: None,
+        database_url: Some(test_db_url.clone()),
         server_url: None,
         auth_token: None,
         command: Some(Commands::Serve(ServeArgs {
             port: 8080,
             migrate_only: true,
-            database_url: None,
+            database_url: Some(test_db_url),
             git_dir: None,
         })),
     };

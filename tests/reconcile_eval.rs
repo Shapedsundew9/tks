@@ -58,16 +58,16 @@ fn mock_classify(candidate_chunks: &[&ExtractedChunk]) -> String {
             "SPECIFICATION"
         };
 
-        let gov_policy = if node_type == "REQUIREMENT" {
-            "HUMAN_REVIEW_REQUIRED"
+        let modality = if node_type == "REQUIREMENT" || node_type == "TASK" {
+            "SHALL"
         } else {
-            "AUTONOMOUS_ELABORATION"
+            "MAY"
         };
 
         tuples.push(serde_json::json!({
-            "chunk_id": alias,
-            "node_type": node_type,
-            "governance_policy": gov_policy,
+            "alias": alias,
+            "modality": modality,
+            "confidence": 0.95,
         }));
     }
 
@@ -102,6 +102,7 @@ fn make_active_node_from_chunk(
         byte_start: Some(chunk.byte_start as i32),
         byte_end: Some(chunk.byte_end as i32),
         attributes: serde_json::Value::Object(attrs),
+        trust_tier: "HUMAN_APPROVED".to_string(),
     }
 }
 
@@ -339,6 +340,11 @@ fn test_graceful_degradation_offline_fallback() {
         is_candidate: true,
         content: Some("Requests MUST include a valid bearer token.".to_string()),
         table_data: None,
+        node_type: None,
+        atom_alias: None,
+        trust_tier: "HUMAN_APPROVED".to_string(),
+        modality: None,
+        confidence: None,
     };
 
     let chunk_unkeyed = ExtractedChunk {
@@ -352,6 +358,11 @@ fn test_graceful_degradation_offline_fallback() {
         is_candidate: true,
         content: Some("General overview of identity seeding mechanism.".to_string()),
         table_data: None,
+        node_type: None,
+        atom_alias: None,
+        trust_tier: "HUMAN_APPROVED".to_string(),
+        modality: None,
+        confidence: None,
     };
 
     let results = fallback_classify(&[chunk_rfc, chunk_unkeyed]);

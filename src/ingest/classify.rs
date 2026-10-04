@@ -19,8 +19,11 @@ pub const VALID_NODE_TYPES: &[&str] = &[
 pub const VALID_GOVERNANCE_POLICIES: &[&str] =
     &["HUMAN_REVIEW_REQUIRED", "AUTONOMOUS_ELABORATION", "LOCKED"];
 
+/// Permitted normative modalities in the Knowledge Substrate ontology.
+pub const VALID_MODALITIES: &[&str] = &["SHALL", "SHOULD", "MAY", "UNCLASSIFIED"];
+
 /// Structured semantic classification tuple for an extracted AST chunk.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClassificationResult {
     /// Chunk identifier (e.g. ordinal alias "c1", "c2" or AST anchor).
     pub chunk_id: String,
@@ -28,6 +31,23 @@ pub struct ClassificationResult {
     pub node_type: String,
     /// Governance policy (e.g. "HUMAN_REVIEW_REQUIRED", "AUTONOMOUS_ELABORATION", "LOCKED").
     pub governance_policy: String,
+    /// Normative modality (`SHALL`, `SHOULD`, `MAY`, `UNCLASSIFIED`).
+    #[serde(default = "default_modality")]
+    pub modality: String,
+    /// Classification confidence score (0.0 to 1.0).
+    #[serde(default = "default_confidence")]
+    pub confidence: f64,
+    /// Model provenance (e.g. "qwen3:8b", "rfc2119_fallback").
+    #[serde(default)]
+    pub model_provenance: Option<String>,
+}
+
+fn default_modality() -> String {
+    "UNCLASSIFIED".to_string()
+}
+
+fn default_confidence() -> f64 {
+    1.0
 }
 
 /// Errors that can occur during classification prompt generation or response parsing.
@@ -62,7 +82,7 @@ impl std::error::Error for ClassificationError {}
 /// Builds a compact semantic classification prompt for candidate Markdown chunks.
 ///
 /// Prompts an external LLM to classify candidate chunks into compact JSON tuples
-/// (`chunk_id`, `node_type`, `governance_policy`) without echoing or repeating
+/// (`alias`, `modality`, `confidence`) without echoing or repeating
 /// chunk text, achieving minimal output token usage (<10% of document tokens).
 #[must_use]
 pub fn build_classification_prompt(chunks: &[ExtractedChunk]) -> String {
@@ -80,26 +100,28 @@ Classify each candidate chunk below into a compact JSON array of classification 
 
 CRITICAL INSTRUCTIONS:
 1. Output ONLY a valid JSON array matching the schema:
-   [{"chunk_id": "c1", "node_type": "REQUIREMENT|SPECIFICATION|TASK|DECISION", "governance_policy": "HUMAN_REVIEW_REQUIRED|AUTONOMOUS_ELABORATION"}]
+   [{"alias": "c1", "modality": "SHALL|SHOULD|MAY|UNCLASSIFIED", "confidence": 0.95}]
 2. Do NOT echo, quote, or repeat any chunk text in your output.
 3. Output NO explanation, conversational text, or surrounding markdown fences.
 
-Allowed node_type values:
-- "REQUIREMENT": Normative rules, constraints, architectural invariants, or RFC 2119 statements (MUST, SHALL, REQUIRED).
-- "SPECIFICATION": Technical architecture, data structures, interface designs, schemas, component definitions.
-- "TASK": Concrete implementation action items, work packages, or execution steps.
-- "DECISION": Design choices, architectural resolutions, or tactical implementation decisions (e.g. DEC-*).
+Allowed modality values:
+- "SHALL": Normative rules, constraints, architectural invariants, or RFC 2119 statements (MUST, SHALL, REQUIRED).
+- "SHOULD": Strong recommendation, best practice, or architectural guideline (RFC 2119 SHOULD, RECOMMENDED).
+- "MAY": Optional specification, permissive guideline, alternative design choice (RFC 2119 MAY, OPTIONAL).
+- "UNCLASSIFIED": Non-normative prose, narrative description, context, or unclassified candidate.
 
-Allowed governance_policy values:
-- "HUMAN_REVIEW_REQUIRED": Core requirements, architectural decisions, and safety-critical constraints.
-- "AUTONOMOUS_ELABORATION": Execution subtasks and non-normative implementation actions.
+Allowed confidence values:
+- Float from 0.0 to 1.0 reflecting classification certainty.
 
 Candidate Chunks:
 "#,
     );
 
     for (idx, chunk) in candidate_chunks.iter().enumerate() {
-        let alias = format!("c{}", idx + 1);
+        let alias = chunk
+            .atom_alias
+            .clone()
+            .unwrap_or_else(|| format!("c{}", idx + 1));
         prompt.push_str(&format!("\n[{alias}]"));
 
         if let Some(ref heading) = chunk.heading {
@@ -130,11 +152,23 @@ Candidate Chunks:
     prompt
 }
 
+fn normalize_modality(raw: &str) -> Result<String, ClassificationError> {
+    let upper = raw.trim().to_uppercase();
+    match upper.as_str() {
+        "SHALL" | "MUST" | "REQUIRED" => Ok("SHALL".to_string()),
+        "SHOULD" | "RECOMMENDED" => Ok("SHOULD".to_string()),
+        "MAY" | "OPTIONAL" => Ok("MAY".to_string()),
+        "UNCLASSIFIED" => Ok("UNCLASSIFIED".to_string()),
+        other => Err(ClassificationError::InvalidFormat(format!(
+            "invalid modality '{other}'"
+        ))),
+    }
+}
+
 /// Parses compact classification JSON tuples from an LLM response string.
 ///
-/// Handles raw JSON arrays, markdown code-fenced JSON, and extracts JSON arrays
-/// embedded within surrounding prose. Validates that `node_type` and `governance_policy`
-/// strictly conform to substrate ontology rules.
+/// Handles both compact modality tuples (`alias`, `modality`, `confidence`) and legacy
+/// ontology tuples (`chunk_id`, `node_type`, `governance_policy`).
 ///
 /// # Errors
 ///
@@ -162,43 +196,90 @@ pub fn parse_classification_tuples(
         })?;
 
         let chunk_id = obj
-            .get("chunk_id")
+            .get("alias")
+            .or_else(|| obj.get("chunk_id"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                ClassificationError::InvalidFormat(format!("item {i} missing 'chunk_id'"))
+                ClassificationError::InvalidFormat(format!(
+                    "item {i} missing 'alias' or 'chunk_id'"
+                ))
             })?
             .to_string();
 
-        let raw_node_type = obj
-            .get("node_type")
+        let raw_modality_opt = obj.get("modality").and_then(|v| v.as_str());
+        let raw_node_type_opt = obj.get("node_type").and_then(|v| v.as_str());
+        let raw_gov_opt = obj.get("governance_policy").and_then(|v| v.as_str());
+
+        let (node_type, modality) = match (raw_node_type_opt, raw_modality_opt) {
+            (Some(nt), Some(m)) => {
+                let nt_upper = nt.trim().to_uppercase();
+                if !VALID_NODE_TYPES.contains(&nt_upper.as_str()) {
+                    return Err(ClassificationError::InvalidNodeType(nt_upper));
+                }
+                let m_upper = normalize_modality(m)?;
+                (nt_upper, m_upper)
+            }
+            (Some(nt), None) => {
+                let nt_upper = nt.trim().to_uppercase();
+                if !VALID_NODE_TYPES.contains(&nt_upper.as_str()) {
+                    return Err(ClassificationError::InvalidNodeType(nt_upper));
+                }
+                let m = match nt_upper.as_str() {
+                    "REQUIREMENT" => "SHALL".to_string(),
+                    "SPECIFICATION" => "MAY".to_string(),
+                    "TASK" => "SHALL".to_string(),
+                    _ => "UNCLASSIFIED".to_string(),
+                };
+                (nt_upper, m)
+            }
+            (None, Some(m)) => {
+                let m_upper = normalize_modality(m)?;
+                let nt = match m_upper.as_str() {
+                    "SHALL" | "MUST" => "REQUIREMENT".to_string(),
+                    "SHOULD" => "REQUIREMENT".to_string(),
+                    "MAY" => "SPECIFICATION".to_string(),
+                    _ => "UNCLASSIFIED".to_string(),
+                };
+                (nt, m_upper)
+            }
+            (None, None) => {
+                return Err(ClassificationError::InvalidFormat(format!(
+                    "item {i} missing both 'modality' and 'node_type'"
+                )));
+            }
+        };
+
+        let governance_policy = if let Some(gp) = raw_gov_opt {
+            let gp_upper = gp.trim().to_uppercase();
+            if !VALID_GOVERNANCE_POLICIES.contains(&gp_upper.as_str()) {
+                return Err(ClassificationError::InvalidGovernancePolicy(gp_upper));
+            }
+            gp_upper
+        } else {
+            match node_type.as_str() {
+                "TASK" | "SPECIFICATION" => "AUTONOMOUS_ELABORATION".to_string(),
+                _ => "HUMAN_REVIEW_REQUIRED".to_string(),
+            }
+        };
+
+        let confidence = obj
+            .get("confidence")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0)
+            .clamp(0.0, 1.0);
+
+        let model_provenance = obj
+            .get("model_provenance")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                ClassificationError::InvalidFormat(format!("item {i} missing 'node_type'"))
-            })?;
-
-        let node_type = raw_node_type.trim().to_uppercase();
-        if !VALID_NODE_TYPES.contains(&node_type.as_str()) {
-            return Err(ClassificationError::InvalidNodeType(node_type));
-        }
-
-        let raw_gov_policy = obj
-            .get("governance_policy")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                ClassificationError::InvalidFormat(format!("item {i} missing 'governance_policy'"))
-            })?;
-
-        let governance_policy = raw_gov_policy.trim().to_uppercase();
-        if !VALID_GOVERNANCE_POLICIES.contains(&governance_policy.as_str()) {
-            return Err(ClassificationError::InvalidGovernancePolicy(
-                governance_policy,
-            ));
-        }
+            .map(|s| s.to_string());
 
         results.push(ClassificationResult {
             chunk_id,
             node_type,
             governance_policy,
+            modality,
+            confidence,
+            model_provenance,
         });
     }
 
@@ -246,28 +327,35 @@ pub fn map_classifications_to_chunks<'a>(
     let mut mapped = Vec::with_capacity(classifications.len());
 
     for res in classifications {
-        // Try matching by alias "c<N>" or "<N>"
-        let matched_chunk = if let Some(stripped) = res.chunk_id.strip_prefix('c') {
-            stripped.parse::<usize>().ok().and_then(|idx| {
-                if idx > 0 && idx <= candidate_chunks.len() {
-                    Some(candidate_chunks[idx - 1])
+        // Try matching by atom_alias first
+        let matched_chunk = candidate_chunks
+            .iter()
+            .copied()
+            .find(|c| c.atom_alias.as_deref() == Some(&res.chunk_id))
+            .or_else(|| {
+                // Try matching by alias "c<N>" or "<N>"
+                if let Some(stripped) = res.chunk_id.strip_prefix('c') {
+                    stripped.parse::<usize>().ok().and_then(|idx| {
+                        if idx > 0 && idx <= candidate_chunks.len() {
+                            Some(candidate_chunks[idx - 1])
+                        } else {
+                            None
+                        }
+                    })
+                } else if let Ok(idx) = res.chunk_id.parse::<usize>() {
+                    if idx > 0 && idx <= candidate_chunks.len() {
+                        Some(candidate_chunks[idx - 1])
+                    } else {
+                        None
+                    }
                 } else {
-                    None
+                    // Try matching by exact ast_anchor
+                    candidate_chunks
+                        .iter()
+                        .copied()
+                        .find(|c| c.ast_anchor == res.chunk_id)
                 }
-            })
-        } else if let Ok(idx) = res.chunk_id.parse::<usize>() {
-            if idx > 0 && idx <= candidate_chunks.len() {
-                Some(candidate_chunks[idx - 1])
-            } else {
-                None
-            }
-        } else {
-            // Try matching by exact ast_anchor
-            candidate_chunks
-                .iter()
-                .copied()
-                .find(|c| c.ast_anchor == res.chunk_id)
-        };
+            });
 
         if let Some(chunk) = matched_chunk {
             mapped.push((chunk, res.clone()));
@@ -294,6 +382,11 @@ mod tests {
             is_candidate: true,
             content: Some("The substrate MUST enforce 0-based byte offsets.".to_string()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         };
 
         let prompt = build_classification_prompt(&[chunk]);
@@ -371,6 +464,11 @@ mod tests {
             is_candidate: true,
             content: Some("chunk 1".to_string()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         };
         let chunk2 = ExtractedChunk {
             byte_start: 11,
@@ -383,6 +481,11 @@ mod tests {
             is_candidate: true,
             content: Some("chunk 2".to_string()),
             table_data: None,
+            node_type: None,
+            atom_alias: None,
+            trust_tier: "HUMAN_APPROVED".to_string(),
+            modality: None,
+            confidence: None,
         };
 
         let chunks = vec![chunk1, chunk2];
@@ -391,11 +494,17 @@ mod tests {
                 chunk_id: "c1".to_string(),
                 node_type: "REQUIREMENT".to_string(),
                 governance_policy: "HUMAN_REVIEW_REQUIRED".to_string(),
+                modality: "REQUIREMENT".to_string(),
+                confidence: 1.0,
+                model_provenance: Some("test".to_string()),
             },
             ClassificationResult {
                 chunk_id: "c2".to_string(),
                 node_type: "TASK".to_string(),
                 governance_policy: "AUTONOMOUS_ELABORATION".to_string(),
+                modality: "TASK".to_string(),
+                confidence: 1.0,
+                model_provenance: Some("test".to_string()),
             },
         ];
 
