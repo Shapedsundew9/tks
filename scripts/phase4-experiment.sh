@@ -28,6 +28,7 @@ TKS_SERVER_URL="${TKS_SERVER_URL:-http://127.0.0.1:${TKS_PORT}}"
 TKS_GIT_DIR="${TKS_GIT_DIR:-${WORKSPACE_ROOT}/.substrate/git/tks.git}"
 TKS_BIN="${WORKSPACE_ROOT}/target/release/tks"
 AGENT_NAME="${AGENT_NAME:-phase4-autonomous-agent}"
+AGENT_MODEL="${AGENT_MODEL:-gemini-3.8-flash-high}"
 EXEC_MODE="${EXEC_MODE:-print}" # 'print' (non-interactive) or 'interactive' (TUI)
 AUTO_SET_POLICY="${AUTO_SET_POLICY:-true}"
 
@@ -66,7 +67,9 @@ echo " Workspace Root: ${WORKSPACE_ROOT}"
 echo " Database URL:   ${DB_URL}"
 echo " Server URL:     ${TKS_SERVER_URL}"
 echo " Git Substrate:  ${TKS_GIT_DIR}"
+echo " Agent Model:    ${AGENT_MODEL}"
 echo " Execution Mode: ${EXEC_MODE}"
+echo " Auto Policy:    ${AUTO_SET_POLICY}"
 echo "=========================================================================="
 echo ""
 
@@ -361,11 +364,11 @@ Step 6: Output a clear summary table listing all created task IDs, titles, and k
 EOF
 
 if [[ "${EXEC_MODE}" == "interactive" ]]; then
-    echo "Starting interactive agy session for task elaboration..."
-    agy --prompt-interactive "${ELABORATION_PROMPT}"
+    echo "Starting interactive agy session for task elaboration (model: ${AGENT_MODEL})..."
+    agy --model "${AGENT_MODEL}" --prompt-interactive "${ELABORATION_PROMPT}"
 else
-    echo "Running agy in print mode (--dangerously-skip-permissions)..."
-    agy -p "${ELABORATION_PROMPT}" --dangerously-skip-permissions
+    echo "Running agy in print mode (--dangerously-skip-permissions, model: ${AGENT_MODEL})..."
+    agy --model "${AGENT_MODEL}" -p "${ELABORATION_PROMPT}" --dangerously-skip-permissions
 fi
 
 echo ""
@@ -412,11 +415,11 @@ Step 4: Report your implementation results, files modified, and verification sta
 EOF
 
 if [[ "${EXEC_MODE}" == "interactive" ]]; then
-    echo "Starting interactive agy session for implementation..."
-    agy --prompt-interactive "${IMPLEMENTATION_PROMPT}"
+    echo "Starting interactive agy session for implementation (model: ${AGENT_MODEL})..."
+    agy --model "${AGENT_MODEL}" --prompt-interactive "${IMPLEMENTATION_PROMPT}"
 else
-    echo "Running agy in print mode (--dangerously-skip-permissions)..."
-    agy -p "${IMPLEMENTATION_PROMPT}" --dangerously-skip-permissions
+    echo "Running agy in print mode (--dangerously-skip-permissions, model: ${AGENT_MODEL})..."
+    agy --model "${AGENT_MODEL}" -p "${IMPLEMENTATION_PROMPT}" --dangerously-skip-permissions
 fi
 
 echo ""
