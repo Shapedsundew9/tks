@@ -17,6 +17,7 @@ This document captures vital component-level designs, library evaluation tasks, 
   4. **Concurrent Read-Only ODB Access (`tokio::task::spawn_blocking`):** Restrict the dedicated Git actor exclusively to serializing Git commits and tree updates (`refs/heads/specs` writes). For read-only blob extraction (`get_document_span`, worker decomposition), gateway handlers and workers open thread-local read-only repository handles or direct ODB blob lookups via `tokio::task::spawn_blocking` using `git2::Odb::read`. Because Git ODB blobs are content-addressed and strictly immutable once written, concurrent reads never block on `.git/refs/...lock`, execute concurrently without queuing behind write commits, and eliminate head-of-line blocking on the Git actor (addressing LD-12, iteration 7).
   5. **Dedicated Storage Volume Binding:** In the devcontainer and container deployment manifests (`.devcontainer/docker-compose.yml`), configure a dedicated, persistent filesystem volume mount for the bare Git repository co-located with the PostgreSQL persistent data volume, ensuring Git blob storage persists across container recreation and redeployment cycles.
   6. **Point-in-Time Backup & Restore Synchronization:** Author operational shell scripts in `scripts/` to orchestrate coordinated point-in-time backups: trigger a PostgreSQL WAL checkpoint / `pg_dump` and execute a simultaneous snapshot of the bare Git repository object database (`objects/` and `refs/`), preventing referential drift between PostgreSQL blob hash columns and underlying Git blobs.
+  7. **Branch-Isolated Workspace Containers & Topological Conflict Resolution:** In `src/storage/workspace.rs` and `src/storage/conflict.rs`, implement ephemeral branch workspace containers (`workspaces` table, Migration V4) allowing external agents to elaborate candidate tasks without taking global structural advisory locks (DEC-3.4). Promoted workspaces resolve topological divergence via three-way combined subgraph cycle CTEs (DEC-3.6) and deterministic recursive `replaces_node_id` auto-reparenting lineage resolution (DEC-3.7).
 
 ---
 
@@ -75,6 +76,7 @@ This document captures vital component-level designs, library evaluation tasks, 
      ```
 
   3. **Diagnostic Stream Separation:** Ensure all diagnostic connection status messages, warning traces, and retry logs write exclusively to `stderr`, preserving standard output strictly for valid JSON-RPC protocol framing.
+  4. **Dual Authentication Extraction for Mutation Tools:** In `src/gateway/mcp/mod.rs`, support caller authentication extraction from both HTTP `Authorization: Bearer <token>` headers and top-level or parameters-level `auth_token` fields in JSON-RPC payloads. Unauthenticated attempts to invoke any mutation tool fail immediately with standardized JSON-RPC error code `-32000` and payload `{ "code": "ERR_AUTH_FAILED", "message": "Authentication required for mutation tool" }` (DEC-2.10).
 
 ---
 
@@ -114,6 +116,7 @@ This document captures vital component-level designs, library evaluation tasks, 
      This allows newly created tasks to immediately benefit from vector-enriched cross-cutting governance constraints without requiring synchronous embedding calculation.
   3. **Pending Embedding Graceful Fallback:** If both `target_node_id` and its parent requirement node lack an embedding in `node_embeddings` with `status = 'COMPLETED'` (because asynchronous embedding generation is pending, throttled by backoff, or external embedding API is disabled), the repository layer must gracefully skip vector similarity search.
   4. **Dynamic Quota Reallocation:** When vector neighbor search is skipped, reallocate the full 40-node context envelope budget to deterministic topological recursive CTE traversal. This ensures external agents always receive a rich, bounded context envelope of ancestor requirements and sibling constraints without failing, waiting on external APIs, or timing out.
+  5. **Recursive Invalidation CTE Single-Pass Aggregation & Plan Optimization:** In `src/storage/cascade.rs`, optimize the multi-statement invalidation cascade CTE (`DOWNWARD_INVALIDATION_SQL`) for scale execution by projecting `(delta->>'depth')::int4 AS depth` directly from `inserted_audit RETURNING` into an `audit_summary` CTE that computes `array_agg(ia.entity_id ORDER BY ia.event_seq ASC)`, `coalesce(max(ia.depth), 0)`, and `coalesce(max(ia.event_seq), 0)` in a single scan while dispatching `pg_notify`. Eliminates multiple correlated subquery rescans over modified tables, reducing p95 cascade sweep latency across $10^4$ nodes from ~13.4ms to ~1.86ms (DEC-3.13).
 
 ---
 
@@ -155,3 +158,46 @@ This document captures vital component-level designs, library evaluation tasks, 
        `DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT';`
      * *Atomic Timeout Reclaim Purge:* When a background worker reclaims a timed-out `PROCESSING` job (`updated_at < NOW() - INTERVAL '180s'`), the worker atomically purges any existing partial candidate draft nodes (`DELETE FROM graph_nodes WHERE job_id = $1 AND lifecycle_state = 'DRAFT';`) before restarting AST parsing and semantic classification, preventing duplicate candidate draft rows.
   7. **Governance Policy Inheritance for Autonomous Tasks:** In `src/storage/mutation.rs`, when a verified agent elaborates an execution sub-task (`node_type = 'TASK'`) directly into `ACTIVE` state under a parent node with `governance_policy = 'AUTONOMOUS_ELABORATION'`, the newly created task inherits the parent's `governance_policy` (`AUTONOMOUS_ELABORATION`) by default unless explicitly overridden in the mutation payload (addressing LD-9, iteration 8). This ensures that the agent retains permission to update its own task status (`IN_PROGRESS`, `COMPLETED`) under native row locks without requiring supervisory intervention or violating NOT NULL check constraints.
+
+---
+
+## TB-8
+
+* **ID:** TB-8
+* **Title:** Operational Task Management REST Endpoints and CLI Operational Subcommand Suite (`tks task`, `tks admin`)
+* **Origin:** phase2-decisions.md DEC-2.12
+* **Status:** Implemented
+* **Description/Tactical Details:**
+  1. **Dedicated Task Enumeration Endpoint:** In `src/gateway/routes/mutation.rs`, implement `GET /api/v1/tasks` accepting `parent_id: Option<Uuid>`, `status: Option<TaskStatus>`, and `limit: Option<i64>`, querying `graph_nodes` joined with upward `graph_edges` under `lifecycle_state = 'ACTIVE'`.
+  2. **Thin HTTP Client CLI Commands:** In `src/cli/task.rs` and `src/cli/admin.rs`, implement operational CLI commands interacting with running `tks serve` instances:
+     * `tks task create --parent <id> --title <title> [--content <desc>] [--assignee <agent>]`
+     * `tks task update <id> --status <OPEN|IN_PROGRESS|BLOCKED|COMPLETED>`
+     * `tks task list [--parent <id>] [--status <status>] [--limit <n>]`
+     * `tks admin revert [--batch-id <id>] [--agent-id <agent>] [--dry-run] [--force]`
+     * `tks admin reverify <id> [--rationale <reason>] [--reparent-to <new_parent>]`
+  3. **Zero Direct DB Connections:** CLI commands execute as thin HTTP clients communicating via REST, preserving connection pool isolation and gateway security middleware.
+
+---
+
+## TB-9
+
+* **ID:** TB-9
+* **Title:** Isolated Temporary Schema Architecture with Hex-Encoded UUIDs for Large-Scale Graph Benchmarks
+* **Origin:** phase2-decisions.md DEC-2.13
+* **Status:** Implemented
+* **Description/Tactical Details:**
+  1. **Hex-Encoded Temporary Schema Namespace:** In `benches/context_envelope_bench.rs`, format temporary benchmark schema names as `bench_scale_<hex_uuid>` (stripping hyphens from UUID v4 to adhere to PostgreSQL SQL identifier rules without requiring quoted identifier escaping).
+  2. **Zero Test Residue & Zero Table Bloat:** Apply initial DDL migrations into the temporary schema, populate $10^5$ synthetic nodes and $>109,000$ edges across depths 1 to 6, execute SLA-2 benchmark iterations under `search_path = bench_scale_<hex_uuid>`, and tear down the schema via `DROP SCHEMA bench_scale_<hex_uuid> CASCADE`. This guarantees zero contamination of functional test suites, zero WAL bloat from bulk row deletes, and reproducible sub-2ms p95 traversal latency verification.
+
+---
+
+## TB-10
+
+* **ID:** TB-10
+* **Title:** PostgreSQL Template Database Isolation Pattern (`TEMPLATE tks_template`) for Safe Parallel Test Execution
+* **Origin:** Phase 3 Test Harness Hardening; phase3-decisions.md DEC-3.4, DEC-3.8
+* **Status:** Implemented
+* **Description/Tactical Details:**
+  1. **Per-Binary Database Derivation:** In `src/db.rs`, implement `ensure_test_database_ready_for` and `resolve_test_database_name`, dynamically deriving isolated test database names from `std::env::current_exe()` (e.g. `tks_test_cascade_engine`, `tks_test_dogfood_gate3`).
+  2. **Advisory-Locked Template Initialization:** Bootstrap `tks_template` under PostgreSQL advisory lock `pg_advisory_xact_lock(hashtext('tks_template_init'))`, applying all embedded refinery migrations (V1 through V4) exactly once.
+  3. **Instantaneous Database Cloning:** Each test suite provisions its isolated database via `CREATE DATABASE tks_test_<suite> TEMPLATE tks_template` in $<200\text{ ms}$, eliminating table lock contention and race conditions during parallel `cargo test --all-targets --all-features`.
