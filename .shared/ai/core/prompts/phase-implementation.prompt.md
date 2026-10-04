@@ -115,6 +115,7 @@ Once all Work Packages are completed and committed, the Orchestrator executes Se
      * Decisions targeting `architecture.md` (e.g. new schema fields, query patterns, invariants)
      * Decisions targeting `technical-backlog.md` (e.g. follow-on optimization tickets, test debt)
      * Decisions targeting `strategic-planning-backlog.md` or `vision.md`
+   * Reduce completed items in `technical-backlog.md` and `strategic-planning-backlog.md` to a very short summary and mark them as completed.
    * Formulate the list of upstream changes to be fed into the next Architecture Iteration cycle (`architecture-iteration.prompt.md`).
 
 6. **Assess Sub-Agent Token Efficiency:**

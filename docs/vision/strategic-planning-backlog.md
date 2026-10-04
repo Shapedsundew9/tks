@@ -221,7 +221,7 @@ The foundational substrate, storage architecture, mutation engines, and supervis
 
 ### Phase N+: Advanced Strategic Horizons (Future Roadmap)
 
-- **The Long-Horizon Benchmark (Primary Milestone Evaluation):** An enterprise-scale empirical benchmark executing a sequence of $N \ge 10$ interdependent changes over an extended multi-week operational horizon on a representative large-scale codebase ($\ge 100\text{k}$ LOC). Measures flat token consumption per verified change ($\pm 15\%$), supervisory intervention rate, and contextual drift across successive modifications to evaluate Hypotheses H-1, H-2, and H-6.
+- **The Long-Horizon Benchmark (Primary Milestone Evaluation):** An enterprise-scale empirical benchmark executing a sequence of $N \ge 10$ interdependent changes over an extended multi-week operational horizon on a representative large-scale codebase ($\ge 100\text{k}$ LOC). Measures flat token consumption per verified change ($\pm 15$%), supervisory intervention rate, and contextual drift across successive modifications to evaluate Hypotheses H-1, H-2, and H-6.
 - **The Real-World Feature Extension Benchmark (Full Multi-Codebase Suite):** Expanded multi-codebase evaluation demonstrating model efficiency across diverse software ecosystems.
 - **The Self-Reimplementation Benchmark & Edge Model Evaluation (Tier 2 Commodity 8B):** An aspirational post-v1.0 research evaluation exploring complete self-reconstruction and complex feature extension using local commodity 8B models (e.g., Qwen 8B in Ollama), investigating the lower limits of model scale when supported by cognitive rails.
 - **Deterministic Document Projection & Open Interchange Export:** Dynamic structural export of graph subgraphs into tailored, human-readable Markdown specifications and open JSON-LD / SQL dumps via deterministic templating or external agent query orchestration over MCP, avoiding in-engine LLM ghostwriting and retiring legacy ReqIF/OSLC protocols (LD-11, D-115).
@@ -401,7 +401,7 @@ flowchart TD
 | **CAL-PLAN** | Autonomous Planning Schema Compliance | 100% of agent-elaborated tasks and edges pass relational pre-validation (zero FK or orphan errors) under bounded human deliverable directives across both internal and external corpora | Phase 5 Dogfooding (Gate 4) |
 | **CAL-DOWN-1** | Commercial Utility Model Guidance & Token Efficiency (Tier 1) | High-speed commercial utility model guided by `get_elaboration_context` matches unguided frontier model plan completeness and feature fidelity evaluated in a 2×2 factorial design against Canonical Agentic Baseline on Real-World Feature Extension and Long-Horizon benchmarks | Phase 5 Evaluation (Gate 4 & External Trial) |
 | **CAL-DOWN-2** | Local Commodity 8B Edge Parity (Tier 2) | Local commodity 8B model (Qwen 8B) guided by `get_elaboration_context` achieves schema compliance and task elaboration on Feature Extension Benchmark | Phase N+ Research Horizon |
-| **CAL-LONG** | Long-Horizon Token Efficiency | Sustained flat token consumption per verified change ($\pm 15\%$) across a sequence of $N \ge 10$ interdependent changes on a large-scale codebase ($\ge 100\text{k}$ LOC) | Phase 5 / Phase N+ Benchmark |
+| **CAL-LONG** | Long-Horizon Token Efficiency | Sustained flat token consumption per verified change ($\pm 15$%) across a sequence of $N \ge 10$ interdependent changes on a large-scale codebase ($\ge 100\text{k}$ LOC) | Phase 5 / Phase N+ Benchmark |
 
 ---
 
