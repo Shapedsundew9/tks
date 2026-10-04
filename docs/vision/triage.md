@@ -1,26 +1,35 @@
-# Triage Ledger: Reconciliation Iteration 10
+# Architectural Triage Ledger
+
+This document records the triage classification for all findings (`LD-1` through `LD-13`) presented in `docs/vision/response.md`.
 
 ## Triage Table
 
-| ID | Severity | Bucket | Location |
+| ID | Severity | Bucket (Adopt/Defer/Rebut) | Location |
 | :--- | :--- | :--- | :--- |
-| LD-1 | Blocker | Adopt | `architecture.md` §3 (INV-9), §4, §5.1, §6, §7, §9 (D-107); `strategic-planning-backlog.md` §1, §2 (Phase 4 Deliverable 4.4), §4; `technical-backlog.md` TB-12.1 |
-| LD-2 | Blocker | Adopt | `architecture.md` §3 (INV-1), §4, §5.1, §6, §7, §9 (D-108); `strategic-planning-backlog.md` §1, §2 (Phase 4 Deliverable 4.4), §4; `technical-backlog.md` TB-12.2 |
-| LD-3 | Major | Adopt | `architecture.md` §5.1, §6, §9 (D-109); `strategic-planning-backlog.md` §1, §2 (Phase 4 Deliverable 4.7), §4; `technical-backlog.md` TB-7.5 |
-| LD-4 | Major | Adopt | `architecture.md` §4, §5.1, §5.2, §9 (D-110); `strategic-planning-backlog.md` §1, §2 (Phase 4 Deliverable 4.5); `technical-backlog.md` TB-11.2, TB-11.5 |
-| LD-5 | Major | Adopt | `architecture.md` §4, §6, §7, §9 (D-111); `strategic-planning-backlog.md` §2 (Phase 5 Deliverable 5.1); `technical-backlog.md` TB-13.2 |
-| LD-6 | Major | Adopt | `architecture.md` §2 (C-11), §4, §5.2, §9 (D-112); `strategic-planning-backlog.md` §2 (Phase 4 Deliverable 4.6b), §4; `technical-backlog.md` TB-2.9 |
-| LD-7 | Major | Adopt | `architecture.md` §6, §7, §9 (D-113); `strategic-planning-backlog.md` §2 (Phase 4 Deliverable 4.4), §4; `technical-backlog.md` TB-12.3 |
-| LD-8 | Major | Adopt | `architecture.md` §2 (C-22), §4, §5.2, §7, §9 (D-114); `technical-backlog.md` TB-6.1, TB-6.2 |
-| LD-9 | Minor | Adopt | `architecture.md` §5.1 (Active Draft Staging Lifecycle and Embedding Ingestion) |
-| LD-10 | Major (Simplification) | Adopt | `architecture.md` §3 (INV-7), §4, §5.2, §5.3, §6, §7, §8, §9 (D-105); `strategic-planning-backlog.md` §1; `technical-backlog.md` TB-1.7 |
-| LD-11 | Major (Simplification) | Adopt | `architecture.md` §9 (D-115); `strategic-planning-backlog.md` §1, §2 (Phase 6 Deliverable 6.1, Phase N+) |
-| LD-12 | Minor (Simplification) | Adopt | `architecture.md` §2 (C-26), §4, §5.1, §6, §7, §8, §9 (D-106); `strategic-planning-backlog.md` §1, §2 (Phase 6 Deliverables 6.2, 6.3), §4 |
+| LD-1 | Blocker | Adopt | `architecture.md` §5.1, §9 (D-116); `technical-backlog.md` TB-13.2 |
+| LD-2 | Major | Adopt | `strategic-planning-backlog.md` §1, §4, §7 |
+| LD-3 | Major | Adopt | `architecture.md` §5.1, §9 (D-117); `technical-backlog.md` TB-11.5 |
+| LD-4 | Major | Adopt | `architecture.md` §5.1, §6, §9 (D-118); `technical-backlog.md` TB-8 |
+| LD-5 | Major | Adopt | `architecture.md` §4, §5.1, §6, §9 (D-119); `technical-backlog.md` TB-1 |
+| LD-6 | Major | Adopt | `architecture.md` §6, §9 (D-120); `strategic-planning-backlog.md` §4; `technical-backlog.md` TB-12.3 |
+| LD-7 | Major | Adopt | `architecture.md` §6, §9 (D-121); `technical-backlog.md` TB-7.3 |
+| LD-8 | Major | Adopt | `architecture.md` §6, §9 (D-122); `technical-backlog.md` TB-13.2 |
+| LD-9 | Minor | Defer | `technical-backlog.md` TB-7.6 |
+| LD-10 | Minor | Adopt | `architecture.md` §4; `strategic-planning-backlog.md` §4, §7 |
+| LD-11 | Major | Adopt | `architecture.md` §5.1, §9 (D-116); `technical-backlog.md` TB-13.2 |
+| LD-12 | Major | Adopt | `architecture.md` §6, §7 |
+| LD-13 | Major | Adopt | `architecture.md` §5.1, §5.2, §6, §9 (D-123); `technical-backlog.md` TB-6 |
 
 ## Upstream Issues
 
-1. **Mechanical Sentence/Clause Atomization vs LLM Atomization (`vision.md` §3 / §4):**
-   `vision.md` references downstream LLM decomposition performing requirement atomization. To preserve exact 0-based byte offsets (`byte_start`, `byte_end` per Invariant INV-4) and strict token minimization (Constraint C-11: zero verbatim text echoing), sentence and clause atomization must be executed mechanically during Stage 1 CommonMark AST parsing (`unicode-segmentation`), assigning discrete ordinal aliases (`c1`, `c2`, ...). Downstream Stage 2 semantic evaluation then classifies modality and confidence over pre-atomized spans without text echoing. The Project Initiator should update `vision.md` to reflect this two-tier atomization model.
+The following issues were identified in `docs/vision/vision.md` for resolution by the Project Initiator:
 
-2. **Retirement of Enterprise ALM Protocols (`vision.md` §3 / §6):**
-   `vision.md` lists enterprise ALM synchronization protocols (OMG ReqIF and OASIS OSLC) in later phases. These protocols have been formally retired per LD-11 and Decision D-115 in favor of open JSON-LD, REST, and SQL property graph dumps. This avoids hundreds of pages of XML/RDF schema mapping that distract from developer-first agent cognition and governance. The Project Initiator should update `vision.md` to retire ReqIF/OSLC.
+1. **Pre-Merge CI Verification and VCS Commit Lineage Inversion (`vision.md` §3, §5 Invariant I-9):**
+   * *Problem:* `vision.md` §3 and §5 (Invariant I-9) specify creating `VERIFIED_BY` edges directly on `TASK` nodes carrying PR commit metadata, link commits via downward `IMPLEMENTED_BY` edges (`Task -IMPLEMENTED_BY-> Commit`), and reference provisional commit nodes.
+   * *Alignment with Architecture:* `architecture.md` (Decisions D-107, D-108, Invariant INV-9) and `strategic-planning-backlog.md` record pre-merge CI test runs directly into `graph_nodes.attributes->'pre_merge_verification'` on active `TASK` entities without creating graph edges, and link canonical VCS merge commits upward via `CODE_COMMIT -IMPLEMENTS-> TASK`, preserving Invariant INV-1 upward ancestry.
+   * *Recommended Action:* Update `vision.md` §3 and §5 (Invariant I-9) to reflect that pre-merge test runs are recorded in task attributes and merge commits link upward via `IMPLEMENTS`.
+
+2. **Stale `relationship_review_backlog` Reference in Architecture Diagrams (`vision.md` §4):**
+   * *Problem:* In `vision.md` §4, the component topology Mermaid diagram includes a `Backlog` node representing `relationship_review_backlog` (lines 370 and 390).
+   * *Alignment with Architecture:* Decision D-106 explicitly retired the `relationship_review_backlog` table in favor of direct structured log/CLI output and existing anomaly triage (`--triage-anomalies` / `attributes->'extraction_metadata'`). References in `architecture.md` and `strategic-planning-backlog.md` have been scrubbed.
+   * *Recommended Action:* Update `vision.md` §4 Mermaid diagrams to remove the `Backlog` node and direct relationship audit output to CLI and logs.
