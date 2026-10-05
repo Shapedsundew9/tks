@@ -135,6 +135,7 @@ pub async fn run_ingest(
         let approve_payload = StagingApproveRequest {
             job_id: Some(job_id),
             approved_node_ids: None,
+            ..Default::default()
         };
 
         let approve_resp = client

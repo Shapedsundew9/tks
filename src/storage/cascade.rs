@@ -277,3 +277,38 @@ pub async fn trigger_downward_invalidation_with_bus(
         event_seq,
     })
 }
+
+/// Triggers recursive downward invalidation within an existing transactional client (e.g. during staging approval).
+///
+/// Executes `DOWNWARD_INVALIDATION_SQL` on `client`, updates descendant nodes to `NEEDS_REVERIFICATION`,
+/// appends `CASCADE_INVALIDATED` audit records, and returns the list of invalidated node UUIDs.
+///
+/// # Errors
+///
+/// Returns `tokio_postgres::Error` if query execution fails.
+pub async fn execute_downward_invalidation_tx(
+    client: &(impl tokio_postgres::GenericClient + ?Sized),
+    root_node_id: Uuid,
+    reason: &str,
+    batch_id: Uuid,
+    actor_id: &str,
+    actor_type: &str,
+    token_fingerprint: &str,
+) -> Result<Vec<Uuid>, tokio_postgres::Error> {
+    let row = client
+        .query_one(
+            DOWNWARD_INVALIDATION_SQL,
+            &[
+                &root_node_id,
+                &reason,
+                &batch_id,
+                &actor_id,
+                &actor_type,
+                &token_fingerprint,
+            ],
+        )
+        .await?;
+
+    let invalidated_nodes: Vec<Uuid> = row.get(1);
+    Ok(invalidated_nodes)
+}

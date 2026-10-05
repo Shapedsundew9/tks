@@ -47,6 +47,13 @@
   const drawerSpanOffsets = document.getElementById('drawer-span-offsets');
   const drawerSpanText = document.getElementById('drawer-span-text');
   const drawerAttributesJson = document.getElementById('drawer-attributes-json');
+  const drawerModalityBadge = document.getElementById('drawer-modality-badge');
+  const drawerConfidenceBadge = document.getElementById('drawer-confidence-badge');
+  const drawerRiskBadge = document.getElementById('drawer-risk-badge');
+  const drawerExtractionAlert = document.getElementById('drawer-extraction-alert');
+  const drawerExtractionAlertText = document.getElementById('drawer-extraction-alert-text');
+  const drawerHierarchySection = document.getElementById('drawer-hierarchy-section');
+  const drawerParentAnchor = document.getElementById('drawer-parent-anchor');
 
   // Policy icon mapping
   function getPolicyIcon(policy) {
@@ -355,7 +362,52 @@
     }
 
     // Attributes viewer
-    drawerAttributesJson.textContent = JSON.stringify(data.attributes || {}, null, 2);
+    const attrs = data.attributes || {};
+    drawerAttributesJson.textContent = JSON.stringify(attrs, null, 2);
+
+    // Extraction & Staging Anomaly Metadata (WP-4.3)
+    const extMeta = attrs.extraction_metadata || {};
+    const modality = attrs.modality || extMeta.modality;
+    const confidence = attrs.confidence !== undefined ? attrs.confidence : extMeta.confidence;
+    const risk = extMeta.contradiction_risk || attrs.contradiction_risk || null;
+    const parentAnchor = attrs.parent_anchor;
+
+    if (modality) {
+      drawerModalityBadge.textContent = `[${String(modality).toUpperCase()}]`;
+      drawerModalityBadge.style.display = 'inline-block';
+    } else {
+      drawerModalityBadge.style.display = 'none';
+    }
+
+    if (confidence !== undefined && confidence !== null) {
+      const confNum = parseFloat(confidence);
+      drawerConfidenceBadge.textContent = `[CONF: ${confNum.toFixed(2)}]`;
+      drawerConfidenceBadge.style.display = 'inline-block';
+
+      if (confNum < 0.70) {
+        drawerExtractionAlertText.textContent = `Low extraction confidence (${confNum.toFixed(2)}) - supervisor review required`;
+        drawerExtractionAlert.style.display = 'flex';
+      } else {
+        drawerExtractionAlert.style.display = 'none';
+      }
+    } else {
+      drawerConfidenceBadge.style.display = 'none';
+      drawerExtractionAlert.style.display = 'none';
+    }
+
+    if (risk) {
+      drawerRiskBadge.textContent = `[CONTRADICTION RISK: ${String(risk).toUpperCase()}]`;
+      drawerRiskBadge.style.display = 'inline-block';
+    } else {
+      drawerRiskBadge.style.display = 'none';
+    }
+
+    if (parentAnchor) {
+      drawerParentAnchor.textContent = `Parent Anchor: ${parentAnchor}`;
+      drawerHierarchySection.style.display = 'block';
+    } else {
+      drawerHierarchySection.style.display = 'none';
+    }
 
     // Initial clear of remote fields
     drawerContentSection.style.display = 'none';

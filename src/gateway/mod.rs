@@ -84,7 +84,15 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/documents/ingest/{job_id}",
             get(routes::documents::get_ingestion_job),
         )
-        // Staging review, approval, and rejection routes (D-83)
+        // Staging review, approval, and rejection routes (D-83, WP-4.3)
+        .route(
+            "/api/v1/staging/{job_id}/candidates",
+            get(routes::staging::get_staging_candidates),
+        )
+        .route(
+            "/api/v1/documents/ingest/{job_id}/candidates",
+            get(routes::staging::get_staging_candidates),
+        )
         .route(
             "/api/v1/documents/ingest/{job_id}/approve",
             post(routes::staging::approve_ingestion_job),

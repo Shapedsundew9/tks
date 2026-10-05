@@ -115,6 +115,21 @@
       <div class="meta-badges">
         <span id="drawer-state-badge" class="badge active">ACTIVE</span>
         <span id="drawer-policy-badge" class="badge policy">⚡ AUTONOMOUS ELABORATION</span>
+        <span id="drawer-modality-badge" class="badge modality" style="display: none; background: #3b82f6; color: white;">[SHALL]</span>
+        <span id="drawer-confidence-badge" class="badge confidence" style="display: none; background: #6366f1; color: white;">[CONF: 1.00]</span>
+        <span id="drawer-risk-badge" class="badge risk" style="display: none; background: #10b981; color: white;">[CONTRADICTION RISK: LOW]</span>
+      </div>
+
+      <!-- Extraction Anomaly Alert -->
+      <div id="drawer-extraction-alert" class="alert-banner warning" style="display: none; background: rgba(239, 68, 68, 0.15); border-left: 4px solid #ef4444; color: #fca5a5; padding: 8px 12px; margin-bottom: 12px; border-radius: 4px;">
+        <span>⚠️</span>
+        <span id="drawer-extraction-alert-text">Low extraction confidence - supervisor review required</span>
+      </div>
+
+      <!-- Hierarchy Section -->
+      <div id="drawer-hierarchy-section" style="display: none; margin-bottom: 12px;">
+        <div class="section-title">Document Hierarchy</div>
+        <div id="drawer-parent-anchor" class="text-block" style="font-family: monospace; font-size: 12px; color: #94a3b8;"></div>
       </div>
 
       <!-- Staleness Warning Alert -->

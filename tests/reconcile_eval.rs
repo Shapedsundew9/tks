@@ -9,16 +9,23 @@
 //! 5. 3-tier document reconciliation (node_key -> ast_anchor -> content hash) across multi-revision Markdown edits.
 //! 6. Immutability of active nodes in place during reconciliation (staged coordinates only).
 
+use reqwest::StatusCode;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use tks::db;
+use tks::gateway::{AppState, create_router};
 use tks::ingest::{
     ExtractedChunk, ReconciliationTier, build_classification_prompt, fallback_classify,
     map_classifications_to_chunks, parse_classification_tuples, parse_markdown,
     reconcile_reingestion, slice_source_span, stage_reanchoring_metadata,
 };
-use tks::storage::GraphNode;
+use tks::storage::git::{SPECS_BRANCH_REF, start_git_actor};
+use tks::storage::{GraphNode, StorageRepo};
+use tks::worker::decomp::process_one_job;
 
 /// Estimates token count from text using word/subword and byte heuristics (~4 chars or 1.3 words per token).
 fn estimate_tokens(text: &str) -> usize {
@@ -613,4 +620,490 @@ REQ-NEW-003: Newly introduced capabilities MUST register with the central capabi
     }
 
     println!("PASS: Multi-revision 3-tier document reconciliation verified cleanly.\n");
+}
+
+static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Spawns a test server on an ephemeral port for WP-4.3 end-to-end evaluation.
+async fn spawn_reconcile_test_server() -> (
+    String,
+    CancellationToken,
+    AppState,
+    String,
+    tokio::sync::MutexGuard<'static, ()>,
+) {
+    let guard = TEST_MUTEX.lock().await;
+    let test_db_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test database");
+    let pool = db::create_pool(&test_db_url).expect("Failed to create connection pool");
+
+    // Clean any prior specs/service.md test data
+    {
+        let client = pool.get().await.expect("Failed to get DB client");
+        let _ = client
+            .execute(
+                "DELETE FROM node_embeddings WHERE node_id IN (SELECT id FROM graph_nodes WHERE doc_path = 'specs/service.md' OR node_key LIKE 'REQ-%' OR node_key LIKE 'TASK-%');",
+                &[],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM graph_edges WHERE from_node_id IN (SELECT id FROM graph_nodes WHERE doc_path = 'specs/service.md' OR node_key LIKE 'REQ-%' OR node_key LIKE 'TASK-%') OR to_node_id IN (SELECT id FROM graph_nodes WHERE doc_path = 'specs/service.md' OR node_key LIKE 'REQ-%' OR node_key LIKE 'TASK-%');",
+                &[],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM graph_nodes WHERE doc_path = 'specs/service.md' OR node_key LIKE 'REQ-%' OR node_key LIKE 'TASK-%';",
+                &[],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM ingestion_jobs WHERE doc_path = 'specs/service.md';",
+                &[],
+            )
+            .await;
+    }
+
+    let repo_dir = format!("target/test-reconcile-eval-git-{}", Uuid::new_v4());
+    let (git_write, git_read) =
+        start_git_actor(&repo_dir, 64).expect("Failed to start test git actor");
+
+    let storage = StorageRepo::new(pool.clone());
+    let state = AppState::new(pool, storage, git_write, git_read);
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+    let state_clone = state.clone();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("Failed to bind ephemeral TCP port");
+    let port = listener.local_addr().unwrap().port();
+    let base_url = format!("http://127.0.0.1:{port}");
+
+    tokio::spawn(async move {
+        let app = create_router(state_clone);
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                cancel_token_clone.cancelled().await;
+            })
+            .await
+            .ok();
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    (base_url, cancel_token, state, repo_dir, guard)
+}
+
+#[tokio::test]
+async fn test_wp43_reingestion_delta_reconciliation_omissions_and_staging_lifecycle() {
+    println!(
+        "\n=== WP-4.3 Integration Test: Living Graph Re-Ingestion, Delta Reconciliation & Narrative Staging ===\n"
+    );
+
+    let (base_url, cancel, state, repo_dir, _guard) = spawn_reconcile_test_server().await;
+    let http = reqwest::Client::new();
+
+    // 1. Provision supervisor identity token
+    let agent_name = format!("supervisor-{}", Uuid::new_v4().simple());
+    let create_resp = http
+        .post(format!("{base_url}/api/v1/identities"))
+        .json(&serde_json::json!({
+            "name": agent_name,
+            "role": "AGENT"
+        }))
+        .send()
+        .await
+        .expect("Failed to provision supervisor identity");
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+    let create_body: serde_json::Value = create_resp.json().await.unwrap();
+    let token = create_body["token"].as_str().unwrap().to_string();
+
+    // 2. Initial Ingestion (Revision 1)
+    let rev1_doc = r#"# REQ-SVC-00: Service Specification System Architecture
+The system architecture SHALL satisfy all declared service requirements.
+
+## Core
+The service SHALL maintain 99.9% availability.
+REQ-CORE-01: Availability MUST be 99.9%.
+
+## Security
+The service SHALL use TLS 1.3.
+REQ-SEC-02: Cryptographic transport MUST be TLS 1.3.
+
+## Deprecated Subsystem
+The legacy subsystem is active.
+REQ-LEGACY-03: Legacy protocol SHALL be supported.
+"#;
+
+    let ingest1_resp = http
+        .post(format!("{base_url}/api/v1/documents/ingest"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "doc_path": "specs/service.md",
+            "content": rev1_doc
+        }))
+        .send()
+        .await
+        .expect("Ingest rev 1 request failed");
+    assert_eq!(ingest1_resp.status(), StatusCode::ACCEPTED);
+    let ingest1_json: serde_json::Value = ingest1_resp.json().await.unwrap();
+    let job1_id = Uuid::parse_str(ingest1_json["job_id"].as_str().unwrap()).unwrap();
+
+    // Decompose Revision 1 job
+    let processed1 = process_one_job(&state.pool, &state.git_read)
+        .await
+        .expect("Decomposition job 1 failed");
+    assert!(
+        processed1,
+        "Job 1 must be successfully claimed and processed"
+    );
+
+    // Approve Revision 1 job to establish initial active graph baseline
+    let approve1_resp = http
+        .post(format!(
+            "{base_url}/api/v1/documents/ingest/{job1_id}/approve"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .expect("Approve job 1 failed");
+    assert_eq!(approve1_resp.status(), StatusCode::OK);
+
+    // Inspect active node UUIDs established in Revision 1
+    let db_client = state.pool.get().await.unwrap();
+    let active_rows = db_client
+        .query(
+            "SELECT id, node_key FROM graph_nodes WHERE doc_path = 'specs/service.md' AND lifecycle_state = 'ACTIVE';",
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let mut core_id = None;
+    let mut sec_id = None;
+    let mut legacy_id = None;
+    for r in &active_rows {
+        let id: Uuid = r.get("id");
+        let k: Option<String> = r.get("node_key");
+        match k.as_deref() {
+            Some("REQ-CORE-01") => core_id = Some(id),
+            Some("REQ-SEC-02") => sec_id = Some(id),
+            Some("REQ-LEGACY-03") => legacy_id = Some(id),
+            _ => {}
+        }
+    }
+    let core_id = core_id.expect("REQ-CORE-01 active node must exist in Rev 1");
+    let sec_id = sec_id.expect("REQ-SEC-02 active node must exist in Rev 1");
+    let legacy_id = legacy_id.expect("REQ-LEGACY-03 active node must exist in Rev 1");
+
+    // Create a downstream TASK node linked to REQ-CORE-01 via FULFILLS edge
+    let task_id = Uuid::new_v4();
+    db_client
+        .execute(
+            "INSERT INTO graph_nodes (id, node_key, node_type, title, lifecycle_state, governance_policy, created_by) \
+             VALUES ($1, 'TASK-IMPL-01', 'TASK', 'Implement Core System', 'ACTIVE', 'AUTONOMOUS_ELABORATION', 'tester');",
+            &[&task_id],
+        )
+        .await
+        .unwrap();
+    db_client
+        .execute(
+            "INSERT INTO graph_edges (from_node_id, to_node_id, edge_type, lifecycle_state, created_by) \
+             VALUES ($1, $2, 'FULFILLS', 'ACTIVE', 'tester');",
+            &[&task_id, &core_id],
+        )
+        .await
+        .unwrap();
+
+    // Verify initial Git branch state: refs/heads/specs exists and resolves to commit
+    let repo = git2::Repository::open(&repo_dir).expect("Failed to open test git repo");
+    let commit1_oid = {
+        let branch_ref = repo
+            .find_reference(SPECS_BRANCH_REF)
+            .expect("Branch refs/heads/specs must exist");
+        let commit = branch_ref
+            .peel_to_commit()
+            .expect("Branch must resolve to commit");
+        commit.id()
+    };
+
+    // 3. Re-Ingestion (Revision 2):
+    // - Preamble added (shifts all downstream byte offsets)
+    // - REQ-CORE-01 edited (same key, modified content)
+    // - REQ-SEC-02 unchanged (same key and content, byte shift only)
+    // - REQ-LEGACY-03 OMITTED (removed from document)
+    // - REQ-OBS-04 ADDED (new section)
+    let rev2_doc = r#"# REQ-SVC-00: Service Specification System Architecture
+The system architecture SHALL satisfy all declared service requirements.
+Extra preamble paragraph that shifts all downstream byte coordinates.
+
+## Core
+The service SHALL maintain 99.9% availability with zero downtime.
+REQ-CORE-01: Availability MUST be 99.99% with multi-region redundancy.
+
+## Security
+The service SHALL use TLS 1.3.
+REQ-SEC-02: Cryptographic transport MUST be TLS 1.3.
+
+## Observability
+The service SHALL emit Prometheus metrics.
+REQ-OBS-04: Metrics emission SHALL be enabled.
+"#;
+
+    let ingest2_resp = http
+        .post(format!("{base_url}/api/v1/documents/ingest"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "doc_path": "specs/service.md",
+            "content": rev2_doc
+        }))
+        .send()
+        .await
+        .expect("Ingest rev 2 request failed");
+    assert_eq!(ingest2_resp.status(), StatusCode::ACCEPTED);
+    let ingest2_json: serde_json::Value = ingest2_resp.json().await.unwrap();
+    let job2_id = Uuid::parse_str(ingest2_json["job_id"].as_str().unwrap()).unwrap();
+
+    // 4. Verify Git Invariant (D-119):
+    // Prior to staging approval, refs/heads/specs must NOT have advanced!
+    {
+        let branch_ref = repo.find_reference(SPECS_BRANCH_REF).unwrap();
+        let current_commit = branch_ref.peel_to_commit().unwrap();
+        assert_eq!(
+            current_commit.id(),
+            commit1_oid,
+            "refs/heads/specs must NOT advance prior to staging approval (D-119)"
+        );
+    }
+
+    // Process Revision 2 job
+    let processed2 = process_one_job(&state.pool, &state.git_read)
+        .await
+        .expect("Decomposition job 2 failed");
+    assert!(processed2, "Job 2 must be successfully processed");
+
+    // 5. Verify Omission Isolation (D-109):
+    // Active nodes omitted in revised document text must NOT be prematurely mutated
+    let legacy_row = db_client
+        .query_one(
+            "SELECT lifecycle_state FROM graph_nodes WHERE id = $1;",
+            &[&legacy_id],
+        )
+        .await
+        .unwrap();
+    let legacy_state: String = legacy_row.get("lifecycle_state");
+    assert_eq!(
+        legacy_state, "ACTIVE",
+        "Omitted section must remain strictly ACTIVE before approval (D-109)"
+    );
+
+    let job2_row = db_client
+        .query_one(
+            "SELECT attributes FROM ingestion_jobs WHERE job_id = $1;",
+            &[&job2_id],
+        )
+        .await
+        .unwrap();
+    let job2_attrs: serde_json::Value = job2_row.get("attributes");
+    let omitted_arr = job2_attrs
+        .get("omitted_node_ids")
+        .and_then(|v| v.as_array())
+        .expect("omitted_node_ids must be present in job attributes");
+    assert!(
+        omitted_arr
+            .iter()
+            .any(|v| v.as_str() == Some(&legacy_id.to_string())),
+        "legacy_id must be tracked in ingestion_jobs.attributes->'omitted_node_ids'"
+    );
+
+    // 6. Verify Candidate Staging & Narrative Sequence:
+    let candidates_resp = http
+        .get(format!("{base_url}/api/v1/staging/{job2_id}/candidates"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("Failed to get staging candidates");
+    assert_eq!(candidates_resp.status(), StatusCode::OK);
+    let candidates: Vec<serde_json::Value> = candidates_resp.json().await.unwrap();
+    assert!(!candidates.is_empty(), "Candidates list must not be empty");
+
+    // Verify ordering by byte_start ascending
+    let mut prev_start = -1;
+    for c in &candidates {
+        let start = c["byte_start"].as_i64().unwrap_or(0);
+        assert!(
+            start >= prev_start,
+            "Candidates must be returned in exact document narrative sequence"
+        );
+        prev_start = start;
+        assert!(c.get("hierarchical_order").is_some());
+        assert!(c.get("extraction_metadata").is_some());
+    }
+
+    // Verify Anomaly Triage Flag (?triage_anomalies=true)
+    let triage_resp = http
+        .get(format!(
+            "{base_url}/api/v1/staging/{job2_id}/candidates?triage_anomalies=true"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("Failed to get candidates in anomaly triage mode");
+    assert_eq!(triage_resp.status(), StatusCode::OK);
+    let triage_candidates: Vec<serde_json::Value> = triage_resp.json().await.unwrap();
+    assert_eq!(triage_candidates.len(), candidates.len());
+
+    // 7. Verify CLI invocations (narrative tree view and anomaly triage)
+    tks::cli::staging::run_staging(
+        tks::cli::staging::StagingSubcommand::List(tks::cli::staging::StagingListArgs {
+            job_id: job2_id,
+            triage_anomalies: false,
+        }),
+        &base_url,
+        &token,
+    )
+    .await
+    .expect("CLI staging list in narrative order must succeed");
+
+    tks::cli::staging::run_staging(
+        tks::cli::staging::StagingSubcommand::List(tks::cli::staging::StagingListArgs {
+            job_id: job2_id,
+            triage_anomalies: true,
+        }),
+        &base_url,
+        &token,
+    )
+    .await
+    .expect("CLI staging list --triage-anomalies must succeed");
+
+    // 8. Verify Task Edge & Active Node UUID Preservation before approval
+    let edge_before = db_client
+        .query_one(
+            "SELECT lifecycle_state FROM graph_edges WHERE from_node_id = $1 AND to_node_id = $2;",
+            &[&task_id, &core_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(edge_before.get::<_, String>("lifecycle_state"), "ACTIVE");
+
+    // 9. Staging Approval with Confirmed Omissions & Review Duration Instrumentation (CAL-STEADY, H-2)
+    let approve2_resp = http
+        .post(format!(
+            "{base_url}/api/v1/documents/ingest/{job2_id}/approve"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "confirm_omissions": true,
+            "review_duration_seconds": 18.75
+        }))
+        .send()
+        .await
+        .expect("Approve job 2 request failed");
+    let approve2_status = approve2_resp.status();
+    let approve2_body = approve2_resp.text().await.unwrap();
+    assert_eq!(
+        approve2_status,
+        StatusCode::OK,
+        "Approve job 2 failed: {approve2_body}"
+    );
+
+    // 10. Post-Approval Invariants:
+    // (a) Git branch refs/heads/specs advances strictly upon staging approval (D-119)
+    let commit2_oid = {
+        let branch_ref = repo.find_reference(SPECS_BRANCH_REF).unwrap();
+        let commit = branch_ref.peel_to_commit().unwrap();
+        commit.id()
+    };
+    assert_ne!(
+        commit1_oid, commit2_oid,
+        "refs/heads/specs MUST advance strictly upon staging approval (D-119)"
+    );
+
+    // (b) Superseded node: old core_id is SUPERSEDED, new REQ-CORE-01 is ACTIVE
+    let old_core_row = db_client
+        .query_one(
+            "SELECT lifecycle_state FROM graph_nodes WHERE id = $1;",
+            &[&core_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        old_core_row.get::<_, String>("lifecycle_state"),
+        "SUPERSEDED"
+    );
+
+    let new_core_row = db_client
+        .query_one(
+            "SELECT id, lifecycle_state FROM graph_nodes WHERE node_key = 'REQ-CORE-01' AND lifecycle_state = 'ACTIVE';",
+            &[],
+        )
+        .await
+        .unwrap();
+    let new_core_id: Uuid = new_core_row.get("id");
+    assert_ne!(new_core_id, core_id);
+
+    // (c) Unmodified node: sec_id remains ACTIVE with identical UUID and updated span
+    let sec_row = db_client
+        .query_one(
+            "SELECT lifecycle_state, byte_start FROM graph_nodes WHERE id = $1;",
+            &[&sec_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(sec_row.get::<_, String>("lifecycle_state"), "ACTIVE");
+
+    // (d) Confirmed omitted node: legacy_id transitioned to SUPERSEDED
+    let legacy_post = db_client
+        .query_one(
+            "SELECT lifecycle_state FROM graph_nodes WHERE id = $1;",
+            &[&legacy_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        legacy_post.get::<_, String>("lifecycle_state"),
+        "SUPERSEDED"
+    );
+
+    // (e) Downward invalidation cascade: task_id cascaded to NEEDS_REVERIFICATION
+    let task_row = db_client
+        .query_one(
+            "SELECT lifecycle_state FROM graph_nodes WHERE id = $1;",
+            &[&task_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        task_row.get::<_, String>("lifecycle_state"),
+        "NEEDS_REVERIFICATION",
+        "Downstream task dependent on superseded requirement must be cascaded to NEEDS_REVERIFICATION"
+    );
+
+    // (f) Review duration baseline instrumentation recorded in ingestion_jobs.attributes
+    let approved_job_row = db_client
+        .query_one(
+            "SELECT status, attributes FROM ingestion_jobs WHERE job_id = $1;",
+            &[&job2_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(approved_job_row.get::<_, String>("status"), "APPROVED");
+    let review_duration = approved_job_row
+        .get::<_, serde_json::Value>("attributes")
+        .get("staging_review_duration_seconds")
+        .and_then(|v| v.as_f64());
+    assert_eq!(
+        review_duration,
+        Some(18.75),
+        "staging_review_duration_seconds must be stored in ingestion_jobs.attributes"
+    );
+
+    cancel.cancel();
+    println!("PASS: WP-4.3 end-to-end integration test passed cleanly.\n");
 }

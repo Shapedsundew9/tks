@@ -141,6 +141,8 @@ pub struct ReconciliationPlan {
     pub new_draft_nodes: Vec<NewDraftNode>,
     /// Active node IDs that were deleted (missing from the revised document) or replaced.
     pub superseded_node_ids: Vec<Uuid>,
+    /// Active node IDs that are omitted (missing from the revised document and not replaced).
+    pub omitted_node_ids: Vec<Uuid>,
 }
 
 impl ReconciliationPlan {
@@ -439,6 +441,12 @@ pub fn reconcile_reingestion_with_options(
                 "ast_anchor".to_string(),
                 serde_json::Value::String(chunk.ast_anchor.clone()),
             );
+            if let Some(ref pa) = chunk.parent_heading_chunk_id {
+                attrs.insert(
+                    "parent_anchor".to_string(),
+                    serde_json::Value::String(pa.clone()),
+                );
+            }
             attrs.insert(
                 "replaces_node_id".to_string(),
                 serde_json::Value::String(node.id.to_string()),
@@ -469,6 +477,7 @@ pub fn reconcile_reingestion_with_options(
                 extraction_meta.insert("confidence".to_string(), serde_json::json!(confidence));
             }
             extraction_meta.insert("trust_tier".to_string(), serde_json::json!(trust_tier));
+            extraction_meta.insert("contradiction_risk".to_string(), serde_json::json!("LOW"));
             attrs.insert(
                 "extraction_metadata".to_string(),
                 serde_json::Value::Object(extraction_meta),
@@ -591,6 +600,12 @@ pub fn reconcile_reingestion_with_options(
             "ast_anchor".to_string(),
             serde_json::Value::String(chunk.ast_anchor.clone()),
         );
+        if let Some(ref pa) = chunk.parent_heading_chunk_id {
+            attrs.insert(
+                "parent_anchor".to_string(),
+                serde_json::Value::String(pa.clone()),
+            );
+        }
 
         let mut extraction_meta = serde_json::Map::new();
         if let Some(ref alias) = chunk.atom_alias {
@@ -603,6 +618,7 @@ pub fn reconcile_reingestion_with_options(
             extraction_meta.insert("confidence".to_string(), serde_json::json!(confidence));
         }
         extraction_meta.insert("trust_tier".to_string(), serde_json::json!(trust_tier));
+        extraction_meta.insert("contradiction_risk".to_string(), serde_json::json!("LOW"));
         attrs.insert(
             "extraction_metadata".to_string(),
             serde_json::Value::Object(extraction_meta),
@@ -691,10 +707,12 @@ pub fn reconcile_reingestion_with_options(
         new_draft_nodes.push(draft);
     }
 
-    // Remaining unmatched active nodes: deleted sections missing from revised document
+    // Remaining unmatched active nodes: deleted / omitted sections missing from revised document (D-109)
+    let mut omitted_node_ids = Vec::new();
     for node in existing_active_nodes {
         if !matched_node_ids.contains(&node.id) {
             superseded_node_ids.push(node.id);
+            omitted_node_ids.push(node.id);
         }
     }
 
@@ -702,6 +720,7 @@ pub fn reconcile_reingestion_with_options(
         reanchored_spans,
         new_draft_nodes,
         superseded_node_ids,
+        omitted_node_ids,
     }
 }
 

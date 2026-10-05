@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::gateway::routes::documents::IngestionJobStatusResponse;
 use crate::gateway::routes::staging::{
-    InspectNodeResponse, StagingApproveRequest, StagingApproveResponse, StagingRejectRequest,
-    StagingRejectResponse,
+    CandidateNodeResponse, InspectNodeResponse, StagingApproveRequest, StagingApproveResponse,
+    StagingRejectRequest, StagingRejectResponse,
 };
 
 /// Subcommands for candidate draft review and staging promotion/rejection.
@@ -23,11 +23,15 @@ pub enum StagingSubcommand {
     Reject(StagingRejectArgs),
 }
 
-/// Arguments for `tks staging list <job_id>`.
+/// Arguments for `tks staging list <job_id> [--triage-anomalies]`.
 #[derive(Debug, Args)]
 pub struct StagingListArgs {
     /// Ingestion job ID to list candidate drafts for.
     pub job_id: Uuid,
+
+    /// Sort by contradiction risk and confidence ascending for anomaly exception triage.
+    #[arg(long)]
+    pub triage_anomalies: bool,
 }
 
 /// Arguments for `tks staging inspect <node_id>`.
@@ -37,7 +41,7 @@ pub struct StagingInspectArgs {
     pub node_id: String,
 }
 
-/// Arguments for `tks staging approve <job_id> [--only <id,...> | --exclude <id,...>]`.
+/// Arguments for `tks staging approve <job_id> [--only <id,...> | --exclude <id,...>] [--confirm-omissions]`.
 #[derive(Debug, Args)]
 pub struct StagingApproveArgs {
     /// Ingestion job ID to approve.
@@ -50,6 +54,10 @@ pub struct StagingApproveArgs {
     /// Optional comma-separated list of candidate node IDs to exclude from approval.
     #[arg(long, value_delimiter = ',')]
     pub exclude: Option<Vec<Uuid>>,
+
+    /// Confirm deprecation/omission of active nodes omitted in this revision.
+    #[arg(long)]
+    pub confirm_omissions: bool,
 }
 
 /// Arguments for `tks staging reject [--job-id <job_id> | <node_id>]`.
@@ -82,10 +90,13 @@ pub async fn run_staging(
 
     match subcmd {
         StagingSubcommand::List(args) => {
-            let url = format!("{base_url}/api/v1/documents/ingest/{}", args.job_id);
+            let candidates_url = format!(
+                "{base_url}/api/v1/staging/{}/candidates?triage_anomalies={}",
+                args.job_id, args.triage_anomalies
+            );
 
             let resp = client
-                .get(&url)
+                .get(&candidates_url)
                 .header(AUTHORIZATION, format!("Bearer {auth_token}"))
                 .send()
                 .await?;
@@ -93,27 +104,105 @@ pub async fn run_staging(
             if !resp.status().is_success() {
                 let status = resp.status();
                 let err_text = resp.text().await.unwrap_or_default();
-                eprintln!("Failed to fetch job {status}: {err_text}");
+                eprintln!("Failed to fetch candidates {status}: {err_text}");
                 return Err(format!("Server returned {status}: {err_text}").into());
             }
 
-            let job_info: IngestionJobStatusResponse = resp.json().await?;
+            let candidates: Vec<CandidateNodeResponse> = resp.json().await?;
 
-            println!("Ingestion Job: {}", job_info.job_id);
-            println!("  Document Path: {}", job_info.doc_path);
-            println!("  Status:        {}", job_info.status);
-            println!("  Document Hash: {}", job_info.document_hash);
-            println!("  Candidate Nodes ({}):", job_info.nodes.len());
+            if args.triage_anomalies {
+                println!("Staging Anomaly Triage (Job: {}):", args.job_id);
+                println!("  Candidates ({}):", candidates.len());
+                for node in &candidates {
+                    let key = node.node_key.as_deref().unwrap_or("<no-key>");
+                    let title = node.title.as_deref().unwrap_or("<no-title>");
+                    let start = node.byte_start.unwrap_or(0);
+                    let end = node.byte_end.unwrap_or(0);
+                    let modality = node
+                        .extraction_metadata
+                        .get("modality")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("SHALL");
+                    let conf = node
+                        .extraction_metadata
+                        .get("confidence")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(1.0);
+                    let risk = node
+                        .extraction_metadata
+                        .get("contradiction_risk")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("LOW");
 
-            for node in &job_info.nodes {
-                let key = node.node_key.as_deref().unwrap_or("<no-key>");
-                let title = node.title.as_deref().unwrap_or("<no-title>");
-                let start = node.byte_start.unwrap_or(0);
-                let end = node.byte_end.unwrap_or(0);
-                println!(
-                    "    [{}] {} | {} | \"{}\" | bytes: {start}..{end}",
-                    node.id, key, node.node_type, title
-                );
+                    println!(
+                        "    [{}] {} | {} | \"{}\" | bytes: {start}..{end} [{}] [CONF: {:.2}] [CONTRADICTION RISK: {}]",
+                        node.id,
+                        key,
+                        node.node_type,
+                        title,
+                        modality.to_uppercase(),
+                        conf,
+                        risk.to_uppercase()
+                    );
+                    if conf < 0.70 {
+                        println!(
+                            "      ⚠️  ADVISORY: Low extraction confidence ({:.2}) - supervisor verification required",
+                            conf
+                        );
+                    }
+                }
+            } else {
+                let doc_path = candidates
+                    .first()
+                    .and_then(|c| c.doc_path.as_deref())
+                    .unwrap_or("<unknown>");
+                println!("Staging Candidates (Job: {}):", args.job_id);
+                println!("  Document Path: {doc_path}");
+                println!("  Candidates ({}):", candidates.len());
+
+                for node in &candidates {
+                    let key = node.node_key.as_deref().unwrap_or("<no-key>");
+                    let title = node.title.as_deref().unwrap_or("<no-title>");
+                    let start = node.byte_start.unwrap_or(0);
+                    let end = node.byte_end.unwrap_or(0);
+                    let modality = node
+                        .extraction_metadata
+                        .get("modality")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("SHALL");
+                    let conf = node
+                        .extraction_metadata
+                        .get("confidence")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(1.0);
+                    let risk = node
+                        .extraction_metadata
+                        .get("contradiction_risk")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("LOW");
+
+                    let is_child = node.parent_anchor.is_some();
+                    let prefix = if is_child { "      └─" } else { "    " };
+
+                    println!(
+                        "{} [{}] {} | {} | \"{}\" | bytes: {start}..{end} [{}] [CONF: {:.2}] [CONTRADICTION RISK: {}]",
+                        prefix,
+                        node.id,
+                        key,
+                        node.node_type,
+                        title,
+                        modality.to_uppercase(),
+                        conf,
+                        risk.to_uppercase()
+                    );
+                    if conf < 0.70 {
+                        let adv_prefix = if is_child { "         " } else { "      " };
+                        println!(
+                            "{}⚠️  ADVISORY: Low extraction confidence ({:.2}) - supervisor verification required",
+                            adv_prefix, conf
+                        );
+                    }
+                }
             }
         }
 
@@ -202,6 +291,13 @@ pub async fn run_staging(
             let payload = StagingApproveRequest {
                 job_id: Some(args.job_id),
                 approved_node_ids,
+                confirm_omissions: if args.confirm_omissions {
+                    Some(true)
+                } else {
+                    None
+                },
+                confirmed_omitted_node_ids: None,
+                review_duration_seconds: None,
             };
 
             let resp = client
@@ -262,6 +358,7 @@ pub async fn run_staging(
                 job_id,
                 reason: args.reason,
                 rejected_node_ids,
+                ..Default::default()
             };
 
             let resp = client

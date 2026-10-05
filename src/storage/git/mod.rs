@@ -32,6 +32,22 @@ pub enum GitCommand {
         /// Channel to return the commit result or error.
         respond_to: oneshot::Sender<Result<GitCommitResult, GitError>>,
     },
+    /// Write raw blob directly to bare repository ODB without moving branch refs (D-119).
+    WriteBlob {
+        /// Raw document text to write as blob.
+        content: String,
+        /// Channel to return the hexadecimal blob hash or error.
+        respond_to: oneshot::Sender<Result<String, GitError>>,
+    },
+    /// Commit an approved document specification onto refs/heads/specs using an existing ODB blob (D-119).
+    CommitApprovedSpecs {
+        /// Relative persistent document path (e.g. `specs/vision.md`).
+        doc_path: String,
+        /// Hexadecimal SHA-1 hash of the previously written ODB blob.
+        blob_hash: String,
+        /// Channel to return the commit result or error.
+        respond_to: oneshot::Sender<Result<GitCommitResult, GitError>>,
+    },
 }
 
 /// Metadata describing a successful Git document commit.
@@ -73,6 +89,53 @@ impl GitWriteHandle {
             .send(GitCommand::CommitDocument {
                 doc_path: doc_path.to_string(),
                 content: content.to_string(),
+                respond_to,
+            })
+            .await
+            .map_err(|_| GitError::ChannelClosed)?;
+
+        rx.await.map_err(|_| GitError::ChannelClosed)?
+    }
+
+    /// Writes a raw document blob directly into the bare repository ODB (D-119).
+    ///
+    /// Leaves `refs/heads/specs` untouched and returns the immutable blob SHA.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GitError` if the actor channel is closed, the actor panics,
+    /// or libgit2 fails writing the blob.
+    pub async fn write_blob(&self, content: &str) -> Result<String, GitError> {
+        let (respond_to, rx) = oneshot::channel();
+        self.sender
+            .send(GitCommand::WriteBlob {
+                content: content.to_string(),
+                respond_to,
+            })
+            .await
+            .map_err(|_| GitError::ChannelClosed)?;
+
+        rx.await.map_err(|_| GitError::ChannelClosed)?
+    }
+
+    /// Commits an approved document specification onto `refs/heads/specs` (D-119).
+    ///
+    /// Reuses the previously written ODB blob identified by `blob_hash`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GitError` if the actor channel is closed, the actor panics,
+    /// or libgit2 fails locating the blob or committing the new tree.
+    pub async fn commit_approved_specs(
+        &self,
+        doc_path: &str,
+        blob_hash: &str,
+    ) -> Result<GitCommitResult, GitError> {
+        let (respond_to, rx) = oneshot::channel();
+        self.sender
+            .send(GitCommand::CommitApprovedSpecs {
+                doc_path: doc_path.to_string(),
+                blob_hash: blob_hash.to_string(),
                 respond_to,
             })
             .await

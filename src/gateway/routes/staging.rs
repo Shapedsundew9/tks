@@ -1,7 +1,7 @@
-//! Staging review, approval, and rejection REST routes (WP-1.5, D-46, D-47, D-61, D-65, D-74, D-82, D-83).
+//! Staging review, approval, and rejection REST routes (WP-1.5, D-46, D-47, D-61, D-65, D-74, D-82, D-83, WP-4.3).
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,39 @@ use crate::gateway::AppState;
 use crate::gateway::auth::{AuthenticatedAgent, MaybeAuthenticatedAgent};
 use crate::ingest::reconcile::CandidateSpanReanchor;
 use crate::storage::GraphNode;
+use crate::storage::cascade::execute_downward_invalidation_tx;
 use crate::storage::envelope::validate_ancestor_path;
+
+/// Query parameters for `GET /api/v1/staging/{job_id}/candidates`.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CandidatesQuery {
+    /// Flag to sort by contradiction risk and confidence ascending (exception triage).
+    #[serde(default)]
+    pub triage_anomalies: Option<bool>,
+}
+
+/// Rich candidate node response for narrative-preserving staging review (WP-4.3).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateNodeResponse {
+    pub id: Uuid,
+    pub node_key: Option<String>,
+    pub node_type: String,
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub lifecycle_state: String,
+    pub governance_policy: String,
+    pub created_by: String,
+    pub job_id: Option<Uuid>,
+    pub doc_path: Option<String>,
+    pub doc_hash: Option<String>,
+    pub byte_start: Option<i32>,
+    pub byte_end: Option<i32>,
+    pub attributes: serde_json::Value,
+    pub trust_tier: String,
+    pub hierarchical_order: u32,
+    pub parent_anchor: Option<String>,
+    pub extraction_metadata: serde_json::Value,
+}
 
 /// Payload for approving an ingestion job and promoting candidate drafts to `ACTIVE`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -21,6 +53,15 @@ pub struct StagingApproveRequest {
     pub job_id: Option<Uuid>,
     /// Optional subset of candidate node IDs to approve. If omitted, all candidate drafts for the job are approved.
     pub approved_node_ids: Option<Vec<Uuid>>,
+    /// Optional flag to confirm all omitted nodes recorded in `ingestion_jobs.attributes->'omitted_node_ids'` (D-102, D-109).
+    #[serde(default)]
+    pub confirm_omissions: Option<bool>,
+    /// Optional explicit list of omitted node IDs to confirm and supersede (D-102, D-109).
+    #[serde(default)]
+    pub confirmed_omitted_node_ids: Option<Vec<Uuid>>,
+    /// Optional supervisory curation duration in seconds for `CAL-STEADY` tracking (WP-4.3).
+    #[serde(default)]
+    pub review_duration_seconds: Option<f64>,
 }
 
 /// Response returned on successful staging approval.
@@ -40,6 +81,9 @@ pub struct StagingRejectRequest {
     pub reason: Option<String>,
     /// Optional specific draft node IDs to reject. If omitted, all candidate drafts for the job are rejected.
     pub rejected_node_ids: Option<Vec<Uuid>>,
+    /// Optional supervisory curation duration in seconds for `CAL-STEADY` tracking (WP-4.3).
+    #[serde(default)]
+    pub review_duration_seconds: Option<f64>,
 }
 
 /// Response returned on staging rejection.
@@ -56,6 +100,153 @@ pub struct InspectNodeResponse {
     pub span_text: Option<String>,
 }
 
+/// Handler for `GET /api/v1/staging/{job_id}/candidates` (WP-4.3, D-101, D-112).
+///
+/// Returns candidate draft nodes for `job_id` in source document hierarchical narrative order
+/// (`byte_start ASC`) by default, or flat exception triage if `?triage_anomalies=true`.
+pub async fn get_staging_candidates(
+    State(state): State<AppState>,
+    Path(job_id): Path<Uuid>,
+    Query(params): Query<CandidatesQuery>,
+    _caller: MaybeAuthenticatedAgent,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let client = state.pool.get().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Pool error: {e}") })),
+        )
+    })?;
+
+    let rows = client
+        .query(
+            "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+             governance_policy, created_by, job_id, doc_path, doc_hash, \
+             byte_start, byte_end, attributes, trust_tier \
+             FROM graph_nodes \
+             WHERE job_id = $1 AND lifecycle_state = 'DRAFT' \
+             ORDER BY coalesce(byte_start, 0) ASC, id ASC;",
+            &[&job_id],
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Query candidates error: {e}") })),
+            )
+        })?;
+
+    let mut candidates: Vec<CandidateNodeResponse> = rows
+        .iter()
+        .enumerate()
+        .map(|(idx, r)| {
+            let id: Uuid = r.get("id");
+            let node_key: Option<String> = r.get("node_key");
+            let node_type: String = r.get("node_type");
+            let title: Option<String> = r.get("title");
+            let content: Option<String> = r.get("content");
+            let lifecycle_state: String = r.get("lifecycle_state");
+            let governance_policy: String = r.get("governance_policy");
+            let created_by: String = r.get("created_by");
+            let job_id: Option<Uuid> = r.get("job_id");
+            let doc_path: Option<String> = r.get("doc_path");
+            let doc_hash: Option<String> = r.get("doc_hash");
+            let byte_start: Option<i32> = r.get("byte_start");
+            let byte_end: Option<i32> = r.get("byte_end");
+            let attributes: serde_json::Value = r.get("attributes");
+            let trust_tier: String = r.get("trust_tier");
+
+            let parent_anchor = attributes
+                .get("parent_anchor")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            let extraction_metadata = if let Some(meta) = attributes
+                .get("extraction_metadata")
+                .and_then(|v| v.as_object())
+            {
+                let mut map = meta.clone();
+                if !map.contains_key("contradiction_risk") {
+                    map.insert("contradiction_risk".to_string(), serde_json::json!("LOW"));
+                }
+                serde_json::Value::Object(map)
+            } else {
+                let mut map = serde_json::Map::new();
+                if let Some(alias) = attributes.get("atom_alias") {
+                    map.insert("atom_alias".to_string(), alias.clone());
+                }
+                if let Some(modality) = attributes.get("modality") {
+                    map.insert("modality".to_string(), modality.clone());
+                }
+                if let Some(conf) = attributes.get("confidence") {
+                    map.insert("confidence".to_string(), conf.clone());
+                }
+                map.insert("trust_tier".to_string(), serde_json::json!(trust_tier));
+                map.insert("contradiction_risk".to_string(), serde_json::json!("LOW"));
+                serde_json::Value::Object(map)
+            };
+
+            CandidateNodeResponse {
+                id,
+                node_key,
+                node_type,
+                title,
+                content,
+                lifecycle_state,
+                governance_policy,
+                created_by,
+                job_id,
+                doc_path,
+                doc_hash,
+                byte_start,
+                byte_end,
+                attributes,
+                trust_tier,
+                hierarchical_order: (idx + 1) as u32,
+                parent_anchor,
+                extraction_metadata,
+            }
+        })
+        .collect();
+
+    let triage = params.triage_anomalies.unwrap_or(false);
+    if triage {
+        candidates.sort_by(|a, b| {
+            let risk_score = |c: &CandidateNodeResponse| match c
+                .extraction_metadata
+                .get("contradiction_risk")
+                .and_then(|v| v.as_str())
+            {
+                Some("HIGH") => 0,
+                Some("MEDIUM") => 1,
+                _ => 2,
+            };
+            let conf_score = |c: &CandidateNodeResponse| {
+                c.extraction_metadata
+                    .get("confidence")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(1.0)
+            };
+
+            let risk_cmp = risk_score(a).cmp(&risk_score(b));
+            if risk_cmp != std::cmp::Ordering::Equal {
+                return risk_cmp;
+            }
+
+            let conf_a = conf_score(a);
+            let conf_b = conf_score(b);
+            conf_a
+                .partial_cmp(&conf_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::to_value(&candidates).unwrap()),
+    )
+        .into_response())
+}
+
 /// Handler for `POST /api/v1/documents/ingest/{job_id}/approve`.
 pub async fn approve_ingestion_job(
     State(state): State<AppState>,
@@ -63,7 +254,7 @@ pub async fn approve_ingestion_job(
     caller: AuthenticatedAgent,
     Json(payload): Json<StagingApproveRequest>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    execute_approve(state, job_id, payload.approved_node_ids, caller).await
+    execute_approve(state, job_id, payload, caller).await
 }
 
 /// Handler for backward-compatible alias `POST /api/v1/staging/approve`.
@@ -117,16 +308,17 @@ pub async fn approve_staging_alias(
         ));
     };
 
-    execute_approve(state, job_id, payload.approved_node_ids, caller).await
+    execute_approve(state, job_id, payload, caller).await
 }
 
 /// Core staging approval execution logic inside a single transaction with advisory locks.
 async fn execute_approve(
     state: AppState,
     job_id: Uuid,
-    explicit_approved_node_ids: Option<Vec<Uuid>>,
+    payload: StagingApproveRequest,
     caller: AuthenticatedAgent,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let explicit_approved_node_ids = payload.approved_node_ids.clone();
     let mut client = state.pool.get().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -155,10 +347,10 @@ async fn execute_approve(
         )
     })?;
 
-    // Step 2: Fetch job row and document path.
+    // Step 2: Fetch job row, document path, document hash, and creation timestamp.
     let job_row = tx
         .query_opt(
-            "SELECT doc_path, status, attributes FROM ingestion_jobs WHERE job_id = $1 FOR UPDATE;",
+            "SELECT doc_path, status, attributes, document_hash, created_at FROM ingestion_jobs WHERE job_id = $1 FOR UPDATE;",
             &[&job_id],
         )
         .await
@@ -182,6 +374,8 @@ async fn execute_approve(
     let doc_path: String = job_row.get("doc_path");
     let status: String = job_row.get("status");
     let job_attributes: serde_json::Value = job_row.get("attributes");
+    let document_hash: String = job_row.get("document_hash");
+    let job_created_at: chrono::DateTime<chrono::Utc> = job_row.get("created_at");
 
     if status == "APPROVED" {
         return Err((
@@ -333,7 +527,7 @@ async fn execute_approve(
         }
     }
 
-    // Step 6: Supersede replaced active nodes and purge obsolete embeddings (D-47, D-55, D-59).
+    // Step 6: Supersede replaced active nodes, purge obsolete embeddings, and trigger invalidation cascade (D-47, D-55, D-59, WP-4.3).
     for row in &candidate_rows {
         let node_id: Uuid = row.get("id");
         if !approved_node_ids.contains(&node_id) {
@@ -371,10 +565,171 @@ async fn execute_approve(
                     Json(serde_json::json!({ "error": format!("Purge embeddings error: {e}") })),
                 )
             })?;
+
+            // Downward invalidation cascade on superseded node (WP-4.3)
+            let _ = execute_downward_invalidation_tx(
+                &*tx,
+                replaces_id,
+                "Node superseded during document re-ingestion approval",
+                batch_id,
+                &caller.agent_id,
+                &caller.actor_type,
+                &caller.token_fingerprint(),
+            )
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(
+                        serde_json::json!({ "error": format!("Downward invalidation error: {e}") }),
+                    ),
+                )
+            })?;
+        }
+    }
+
+    // Step 6.5: Process confirmed omitted nodes (D-102, D-109, WP-4.3).
+    let nodes_to_omit: Vec<Uuid> = if payload.confirm_omissions == Some(true) {
+        job_attributes
+            .get("omitted_node_ids")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .filter_map(|s| Uuid::parse_str(s).ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else if let Some(ref specific_ids) = payload.confirmed_omitted_node_ids {
+        specific_ids.clone()
+    } else {
+        Vec::new()
+    };
+
+    if !nodes_to_omit.is_empty() {
+        // First, mark ALL omitted nodes as SUPERSEDED atomically.
+        // This ensures recursive downward invalidation does not cascade onto fellow omitted nodes.
+        tx.execute(
+            "UPDATE graph_nodes \
+             SET lifecycle_state = 'SUPERSEDED' \
+             WHERE id = ANY($1) AND lifecycle_state IN ('ACTIVE', 'NEEDS_REVERIFICATION');",
+            &[&nodes_to_omit],
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Supersede omitted nodes error: {e}") })),
+            )
+        })?;
+
+        // Purge obsolete embeddings for all omitted nodes
+        tx.execute(
+            "DELETE FROM node_embeddings WHERE node_id = ANY($1);",
+            &[&nodes_to_omit],
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(
+                    serde_json::json!({ "error": format!("Purge omitted embeddings error: {e}") }),
+                ),
+            )
+        })?;
+
+        for omitted_id in &nodes_to_omit {
+            // Downward invalidation cascade on omitted node (targeting remaining active descendants like tasks)
+            let _ = execute_downward_invalidation_tx(
+                &*tx,
+                *omitted_id,
+                "Active node omitted from specification during re-ingestion approval",
+                batch_id,
+                &caller.agent_id,
+                &caller.actor_type,
+                &caller.token_fingerprint(),
+            )
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Downward invalidation on omitted node error: {e}") })),
+                )
+            })?;
+
+            // Audit record for omission
+            let omitted_delta = serde_json::json!({
+                "lifecycle_state": "SUPERSEDED",
+                "reason": "OMITTED_FROM_SPECIFICATION",
+            });
+            tx.execute(
+                "INSERT INTO audit_ledger ( \
+                    batch_id, event_type, entity_id, entity_type, \
+                    actor_id, actor_type, token_fingerprint, delta, snapshot \
+                 ) VALUES ($1, 'NODE_SUPERSEDED', $2, 'GRAPH_NODE', $3, $4, $5, $6, $7);",
+                &[
+                    &batch_id,
+                    omitted_id,
+                    &caller.agent_id,
+                    &caller.actor_type,
+                    &caller.token_fingerprint(),
+                    &omitted_delta,
+                    &omitted_delta,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Audit omitted node error: {e}") })),
+                )
+            })?;
         }
     }
 
     // Step 7: Dual-endpoint active presence on draft edges and orphan edge purge (D-47).
+    // (a) Delete redundant draft edges that already exist in ACTIVE state
+    tx.execute(
+        "DELETE FROM graph_edges ge_draft \
+         WHERE ge_draft.lifecycle_state = 'DRAFT' \
+           AND EXISTS ( \
+               SELECT 1 FROM graph_edges ge_active \
+               WHERE ge_active.lifecycle_state = 'ACTIVE' \
+                 AND ge_active.from_node_id = ge_draft.from_node_id \
+                 AND ge_active.to_node_id = ge_draft.to_node_id \
+                 AND ge_active.edge_type = ge_draft.edge_type \
+           );",
+        &[],
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Purge duplicate draft edges error: {e}") })),
+        )
+    })?;
+
+    // (b) Deduplicate draft edges within the draft batch itself
+    tx.execute(
+        "DELETE FROM graph_edges g1 \
+         WHERE g1.lifecycle_state = 'DRAFT' \
+           AND g1.edge_id NOT IN ( \
+               SELECT DISTINCT ON (from_node_id, to_node_id, edge_type) edge_id \
+               FROM graph_edges \
+               WHERE lifecycle_state = 'DRAFT' \
+               ORDER BY from_node_id, to_node_id, edge_type, edge_id ASC \
+           );",
+        &[],
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Dedup draft edges error: {e}") })),
+        )
+    })?;
+
+    // (c) Promote remaining valid draft edges to ACTIVE
     tx.execute(
         "UPDATE graph_edges \
          SET lifecycle_state = 'ACTIVE' \
@@ -387,7 +742,15 @@ async fn execute_approve(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": format!("Edge promotion error: {e}") })),
+            Json(serde_json::json!({
+                "error": format!(
+                    "Edge promotion error: {} (detail: {:?}, constraint: {:?}, message: {})",
+                    e,
+                    e.as_db_error().and_then(|d| d.detail()),
+                    e.as_db_error().and_then(|d| d.constraint()),
+                    e.as_db_error().map(|d| d.message()).unwrap_or("")
+                )
+            })),
         )
     })?;
 
@@ -528,6 +891,31 @@ async fn execute_approve(
         })?;
     }
 
+    // Step 11.5: Advance refs/heads/specs in Git repository if a valid Git blob exists (D-119, WP-4.3)
+    let mut git_commit_id: Option<String> = None;
+    if document_hash.len() == 40 && document_hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        match state
+            .git_write
+            .commit_approved_specs(&doc_path, &document_hash)
+            .await
+        {
+            Ok(res) => {
+                git_commit_id = Some(res.commit_id);
+            }
+            Err(e) => match e {
+                crate::storage::git::GitError::ChannelClosed => {
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": "Git actor channel closed" })),
+                    ));
+                }
+                _ => {
+                    tracing::warn!("Git commit for job {job_id} ({doc_path}): {e}");
+                }
+            },
+        }
+    }
+
     // Step 11: Write canonical APPROVED audit event into audit_ledger (D-65).
     let approved_delta = serde_json::json!({
         "approved_node_ids": approved_node_ids,
@@ -537,6 +925,7 @@ async fn execute_approve(
         "job_id": job_id,
         "doc_path": doc_path,
         "approved_count": approved_node_ids.len(),
+        "git_commit_id": git_commit_id,
     });
 
     let audit_row = tx
@@ -551,7 +940,7 @@ async fn execute_approve(
                 &job_id,
                 &caller.agent_id,
                 &caller.actor_type,
-                &caller.agent_id,
+                &caller.token_fingerprint(),
                 &approved_delta,
                 &snapshot,
                 &draft_evolution_summary,
@@ -568,12 +957,21 @@ async fn execute_approve(
     let event_seq: i64 = audit_row.get("event_seq");
     let timestamp: chrono::DateTime<chrono::Utc> = audit_row.get("created_at");
 
-    // Step 12: Transition ingestion_jobs status to APPROVED.
+    // Step 12: Transition ingestion_jobs status to APPROVED and record review duration (CAL-STEADY, H-2).
+    let review_duration = payload.review_duration_seconds.unwrap_or_else(|| {
+        (chrono::Utc::now() - job_created_at)
+            .num_milliseconds()
+            .max(0) as f64
+            / 1000.0
+    });
+
     tx.execute(
         "UPDATE ingestion_jobs \
-         SET status = 'APPROVED', updated_at = clock_timestamp() \
+         SET status = 'APPROVED', \
+             attributes = jsonb_set(attributes, '{staging_review_duration_seconds}', to_jsonb($2::float8)), \
+             updated_at = clock_timestamp() \
          WHERE job_id = $1;",
-        &[&job_id],
+        &[&job_id, &review_duration],
     )
     .await
     .map_err(|e| {
@@ -624,8 +1022,10 @@ pub async fn reject_ingestion_job(
     State(state): State<AppState>,
     Path(job_id): Path<Uuid>,
     caller: AuthenticatedAgent,
+    payload: Option<Json<StagingRejectRequest>>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    execute_reject(state, job_id, None, caller).await
+    let payload = payload.map(|p| p.0).unwrap_or_default();
+    execute_reject(state, job_id, payload, caller).await
 }
 
 /// Handler for backward-compatible alias `POST /api/v1/staging/reject`.
@@ -679,14 +1079,14 @@ pub async fn reject_staging_alias(
         ));
     };
 
-    execute_reject(state, job_id, payload.rejected_node_ids, caller).await
+    execute_reject(state, job_id, payload, caller).await
 }
 
 /// Core staging rejection execution logic (D-83).
 async fn execute_reject(
     state: AppState,
     job_id: Uuid,
-    specific_node_ids: Option<Vec<Uuid>>,
+    payload: StagingRejectRequest,
     caller: AuthenticatedAgent,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let mut client = state.pool.get().await.map_err(|e| {
@@ -703,7 +1103,38 @@ async fn execute_reject(
         )
     })?;
 
-    let purged_count = if let Some(ids) = specific_node_ids {
+    // Query job creation time for review duration baseline (CAL-STEADY, H-2)
+    let job_row = tx
+        .query_opt(
+            "SELECT created_at, status FROM ingestion_jobs WHERE job_id = $1 FOR UPDATE;",
+            &[&job_id],
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Query job error: {e}") })),
+            )
+        })?;
+
+    let job_created_at = match job_row {
+        Some(r) => r.get::<_, chrono::DateTime<chrono::Utc>>("created_at"),
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": format!("Ingestion job '{job_id}' not found") })),
+            ));
+        }
+    };
+
+    let review_duration = payload.review_duration_seconds.unwrap_or_else(|| {
+        (chrono::Utc::now() - job_created_at)
+            .num_milliseconds()
+            .max(0) as f64
+            / 1000.0
+    });
+
+    let purged_count = if let Some(ref ids) = payload.rejected_node_ids {
         // Specific draft rejection
         let rows = tx
             .query(
@@ -737,12 +1168,14 @@ async fn execute_reject(
                 )
             })?;
 
-        // Update ingestion_jobs status to REJECTED
+        // Update ingestion_jobs status to REJECTED and record review duration (CAL-STEADY, H-2)
         tx.execute(
             "UPDATE ingestion_jobs \
-             SET status = 'REJECTED', updated_at = clock_timestamp() \
+             SET status = 'REJECTED', \
+                 attributes = jsonb_set(attributes, '{staging_review_duration_seconds}', to_jsonb($2::float8)), \
+                 updated_at = clock_timestamp() \
              WHERE job_id = $1;",
-            &[&job_id],
+            &[&job_id, &review_duration],
         )
         .await
         .map_err(|e| {

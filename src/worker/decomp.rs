@@ -356,6 +356,9 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
                 "ast_anchor": chunk.ast_anchor,
                 "authority_source": auth_src,
             });
+            if let Some(ref pa) = chunk.parent_heading_chunk_id {
+                attrs["parent_anchor"] = serde_json::json!(pa);
+            }
             if let Some(ref alias) = chunk.atom_alias {
                 attrs["atom_alias"] = serde_json::json!(alias);
             }
@@ -574,10 +577,16 @@ pub async fn process_one_job(pool: &Pool, git_read: &GitReadHandle) -> Result<bo
     }
 
     // Step 7: Enforce worker concurrency hardening (TB-7.6, D-79).
-    // Record candidate re-anchoring metadata in ingestion_jobs attributes (TB-7.5).
+    // Record candidate re-anchoring metadata and omitted sections in ingestion_jobs attributes (TB-7.5, D-109).
     let reanchoring_metadata = stage_reanchoring_metadata(&plan.reanchored_spans);
+    let omitted_ids_json: Vec<String> = plan
+        .omitted_node_ids
+        .iter()
+        .map(|id| id.to_string())
+        .collect();
     let job_attributes = serde_json::json!({
         "candidate_reanchoring": reanchoring_metadata,
+        "omitted_node_ids": omitted_ids_json,
     });
 
     // Execute conditional terminal status transition:

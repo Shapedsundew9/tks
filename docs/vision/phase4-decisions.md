@@ -7,6 +7,8 @@
 | DEC-4.1 | WP-4.1 | Structural Heading Taxonomy, Atomization Scope & Compact Classification Schema | Specification Gap | architecture.md §5.1, technical-backlog.md TB-7 | Implemented |
 | DEC-4.2 | WP-4.2 | Mechanical Root Requirement Synthesis & Canonical Key Normalization for Brownfield Scaffolding | Specification Gap | architecture.md §4, §5.1, technical-backlog.md TB-11 | Implemented |
 | DEC-4.3 | WP-4.2 | Gateway Authorization Guard & Identity Attribution Protocol for Authority Auto-Promotion | Technical Trade-off | architecture.md §5.1, §9 (D-117), technical-backlog.md TB-11 | Implemented |
+| DEC-4.4 | WP-4.3 | Decoupled Bare ODB Blob Ingestion & Deferred Spec Branch Commitment | Technical Trade-off | architecture.md §5.1, §9 (D-119), technical-backlog.md TB-7.5 | Implemented |
+| DEC-4.5 | WP-4.3 | Omission Isolation & Atomic Two-Phase Invalidation Cascade for Living Graph Staging | Specification Gap | architecture.md §5.1, §9 (D-109), technical-backlog.md TB-7.5 | Implemented |
 
 ---
 
@@ -49,3 +51,30 @@
 * **Decision Taken & Rationale:** Adopted Option B. Gateway strictly gates `authority_source` acceptance to verified `HUMAN` and webhook callers, and persists caller identity to `ingestion_jobs`. The background worker inspects these credentials, directly inserts nodes and edges in `ACTIVE` state, enqueues vector embeddings, commits `SYSTEM_AUTHORITY_IMPORT` audit ledger entries with caller credentials, and transitions job status to `APPROVED`.
 * **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-117), `technical-backlog.md` TB-11. Feedback: Formalize the two-tier gateway authorization guard and caller credential forwarding protocol across asynchronous worker boundaries.
 * **Status:** Implemented
+
+### DEC-4.4: Decoupled Bare ODB Blob Ingestion & Deferred Spec Branch Commitment
+
+* **Work Package:** WP-4.3
+* **Category:** Technical Trade-off
+* **Context & Problem:** Phase 1 committed uploaded specification files directly onto `refs/heads/specs` at upload time in `POST /api/v1/documents/ingest`, creating provisional Git commits before human or supervisory review approved candidate changes. If candidate drafts were rejected or revised during staging review, Git history accumulated orphaned or rolled-back commits, violating the invariant that `refs/heads/specs` strictly represents the canonical approved truth.
+* **Options Considered:**
+  * *Option A:* Retain immediate branch commits on upload, and generate compensating revert commits if an ingestion job is rejected or revised. Pros: Reuses existing libgit2 `commit_document` logic without actor changes. Cons: Pollutes Git repository history with unreviewed proposals and rollbacks, creates branch ref contention under concurrent document submissions, and complicates auditability.
+  * *Option B:* Decouple raw Git ODB blob creation from branch commitment (D-119). On document upload in `src/gateway/routes/documents.rs`, invoke `write_blob` (`git_blob_create_from_buffer`), which writes the raw buffer directly into the bare repository object database and returns the immutable 40-character blob SHA, leaving `refs/heads/specs` untouched. Store this blob hash in `ingestion_jobs.document_hash`. Strictly upon staging approval (`execute_approve`), invoke `commit_approved_specs(&doc_path, &document_hash)` to build the tree from the existing ODB blob and advance `refs/heads/specs`. Pros: Guarantees `refs/heads/specs` strictly tracks approved specification state, decouples upload throughput from branch lock contention, and preserves an immutable Git ODB blob for candidate span inspection prior to commit. Cons: Requires dual-method Git actor protocol (`WriteBlob` vs `CommitApprovedSpecs`).
+* **Decision Taken & Rationale:** Adopted Option B. Decoupled Git blob creation guarantees that `refs/heads/specs` advances strictly upon staging approval. Ingested raw blobs remain immediately inspectable in Git ODB for verbatim draft span verification without moving branch pointers or polluting history.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-119), `technical-backlog.md` TB-7.5. Feedback: Update §5.1 and D-119 documenting decoupled blob creation via `git_blob_create_from_buffer` and deferred branch commitment in `execute_approve`.
+* **Status:** Implemented
+
+### DEC-4.5: Omission Isolation & Atomic Two-Phase Invalidation Cascade for Living Graph Staging
+
+* **Work Package:** WP-4.3
+* **Category:** Specification Gap
+* **Context & Problem:** When re-ingesting revised specification documents that omit sections previously in `ACTIVE` state, two critical failure modes arose:
+  1. *Premature Deprecation Hazard:* If omitted active nodes were immediately mutated to `PENDING_DEPRECATION` or `SUPERSEDED` upon document submission, unapproved revisions broke active downstream task dependencies and query results before supervisory review (violating D-109).
+  2. *Cascade Invalidation Collisions:* When an omitted section contained parent and child nodes (e.g. a section heading and nested sub-clauses), sequential omission processing caused the parent heading's downward invalidation cascade to overwrite child omitted nodes with `NEEDS_REVERIFICATION` before their own omission step ran, causing unique constraint violations or corrupted lifecycle state.
+* **Options Considered:**
+  * *Option A:* Deprecate active nodes immediately upon upload and process omissions sequentially. Pros: Simple single-pass loop. Cons: Violates D-109 omission isolation; corrupts active production queries during drafting; causes cascade race conditions where omitted children get marked `NEEDS_REVERIFICATION` instead of `SUPERSEDED`.
+  * *Option B:* Omission Isolation & Atomic Two-Phase Invalidation. During re-ingestion, active nodes absent from the revised candidate set remain untouched in `ACTIVE` state in `graph_nodes`; their UUIDs are recorded strictly as an array in `ingestion_jobs.attributes->'omitted_node_ids'`. During staging approval under global advisory lock (`pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`), if omissions are confirmed (`confirm_omissions: true`): (1) In Phase 1, atomically transition ALL confirmed omitted node IDs to `SUPERSEDED` in a single batch query; (2) In Phase 2, execute downward invalidation sweeps (`execute_downward_invalidation_tx`) on superseded and omitted roots, ensuring only remaining active descendants (e.g. downstream execution tasks) are cascaded to `NEEDS_REVERIFICATION`, while all omitted nodes remain permanently `SUPERSEDED`. Additionally, delete redundant draft edges before edge promotion to prevent `idx_graph_edges_active_unique` constraint violations. Pros: Guarantees zero disruption to active graph nodes during document review, provides explicit supervisor control via `--confirm-omissions`, eliminates invalidation cascade state collisions, and cleanly cascades staleness to external tasks. Cons: Requires two-phase transactional staging logic.
+* **Decision Taken & Rationale:** Adopted Option B. Omission isolation keeps active requirements stable until formal review, and two-phase batch supersession guarantees that all omitted entities achieve clean `SUPERSEDED` state while external downstream tasks receive appropriate downward invalidation cascades.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-109), `technical-backlog.md` TB-7.5. Feedback: Document two-phase omission processing and redundant draft edge deduplication in §5.1 and D-109.
+* **Status:** Implemented
+

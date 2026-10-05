@@ -472,7 +472,10 @@ async fn test_phase1_dogfooding_gate1_mvd_acceptance() {
 
     // Also verify CLI staging list subcommand
     let cli_list_res = run_staging(
-        StagingSubcommand::List(StagingListArgs { job_id: job1_id }),
+        StagingSubcommand::List(StagingListArgs {
+            job_id: job1_id,
+            triage_anomalies: false,
+        }),
         &ctx.base_url,
         dev_token,
     )

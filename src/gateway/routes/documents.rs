@@ -155,15 +155,15 @@ pub async fn ingest_document(
         })?;
     }
 
-    // Step 2: Synchronous Git commit onto refs/heads/specs via dedicated write actor (TB-1).
-    let commit_res = state
+    // Step 2: Decoupled Git blob creation in repository ODB without moving branch refs (D-119).
+    let blob_hash = state
         .git_write
-        .commit_document(&doc_path, &payload.content)
+        .write_blob(&payload.content)
         .await
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Git commit error: {e}") })),
+                Json(serde_json::json!({ "error": format!("Git blob write error: {e}") })),
             )
         })?;
 
@@ -190,7 +190,7 @@ pub async fn ingest_document(
         &[
             &job_id,
             &doc_path,
-            &commit_res.blob_hash,
+            &blob_hash,
             &caller.agent_id,
             &token_fingerprint,
             &verified_authority,
