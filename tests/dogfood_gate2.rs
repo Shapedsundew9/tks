@@ -246,6 +246,116 @@ async fn test_phase2_dogfooding_gate2_mvd_acceptance() {
         "Precondition nodes established: REQ-005 (AUTONOMOUS_ELABORATION) and REQ-006 (HUMAN_REVIEW_REQUIRED)."
     );
 
+    // 1.5 Wire Protocol Conformance: Verify MCP tools/list returns camelCase inputSchema across all tools (D-95, Gate 2 Re-Verification)
+    let list_req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+        "params": {}
+    });
+    let list_resp = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&list_req)
+        .send()
+        .await
+        .expect("Failed to call tools/list");
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let list_text = list_resp.text().await.unwrap();
+    assert!(
+        !list_text.contains("\"input_schema\""),
+        "Wire payload must contain zero snake_case input_schema occurrences"
+    );
+    let list_json: serde_json::Value = serde_json::from_str(&list_text).unwrap();
+    let tools = list_json
+        .get("result")
+        .and_then(|r| r.get("tools"))
+        .and_then(|t| t.as_array())
+        .expect("Must have result.tools array");
+    assert!(tools.len() >= 8, "Must expose all registered MCP tools");
+    for tool in tools {
+        let name = tool.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        assert!(
+            tool.get("inputSchema").is_some(),
+            "Tool '{name}' must serialize parameter schema strictly as camelCase inputSchema"
+        );
+    }
+    println!(
+        "inputSchema wire validation PASSED: {} tools verified with camelCase inputSchema and zero snake_case.",
+        tools.len()
+    );
+
+    // 1.6 Relational Edge Target Pre-Validation: Reject raw Git SHA target with ERR_INVALID_EDGE_TARGET (D-96, D-97, Gate 2 Re-Verification)
+    let raw_git_sha = "c0ffee1234567890abcdef1234567890abcdef12";
+    let bad_edge_req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 199,
+        "method": "tools/call",
+        "params": {
+            "name": "create_subtask",
+            "arguments": {
+                "parent_node_id": raw_git_sha,
+                "title": "Subtask targeting raw Git SHA",
+                "auth_token": agent42_token
+            }
+        }
+    });
+    let bad_edge_resp = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&bad_edge_req)
+        .send()
+        .await
+        .expect("Failed to call create_subtask with bad edge target");
+    assert_eq!(bad_edge_resp.status(), StatusCode::OK);
+    let bad_edge_json: serde_json::Value = bad_edge_resp.json().await.unwrap();
+    let err_obj = bad_edge_json
+        .get("error")
+        .expect("Must return JSON-RPC error");
+    assert_eq!(err_obj.get("code").and_then(|c| c.as_i64()), Some(-32000));
+    let err_msg = err_obj
+        .get("message")
+        .and_then(|m| m.as_str())
+        .unwrap_or("");
+    assert!(
+        err_msg.contains("ERR_INVALID_EDGE_TARGET"),
+        "Error message must specify ERR_INVALID_EDGE_TARGET: {err_msg}"
+    );
+
+    // Also verify REST mutation rejection with HTTP 422 remediation envelope
+    let rest_bad_mutate_req = serde_json::json!({
+        "target_node_id": raw_git_sha,
+        "mutation_type": "TASK",
+        "title": "REST Task on raw SHA"
+    });
+    let rest_bad_resp = http
+        .post(format!("{}/api/v1/nodes/mutate", ctx.base_url))
+        .header(AUTHORIZATION, format!("Bearer {agent42_token}"))
+        .header(CONTENT_TYPE, "application/json")
+        .json(&rest_bad_mutate_req)
+        .send()
+        .await
+        .expect("Failed to post REST mutate with bad edge target");
+    assert_eq!(
+        rest_bad_resp.status(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "REST mutation on raw Git SHA must return HTTP 422"
+    );
+    let rest_bad_json: serde_json::Value = rest_bad_resp.json().await.unwrap();
+    assert_eq!(
+        rest_bad_json.get("code").and_then(|c| c.as_str()),
+        Some("ERR_INVALID_EDGE_TARGET")
+    );
+    assert_eq!(
+        rest_bad_json.get("invalid_value").and_then(|v| v.as_str()),
+        Some(raw_git_sha)
+    );
+    assert!(rest_bad_json.get("suggested_repairs").is_some());
+
+    println!(
+        "ERR_INVALID_EDGE_TARGET pre-validation rejection PASSED: rejected raw Git SHA with 422 remediation envelope."
+    );
+
     // -------------------------------------------------------------------------
     // STEP 2: Autonomous Elaboration under REQ-005
     // -------------------------------------------------------------------------

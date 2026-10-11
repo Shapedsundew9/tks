@@ -564,7 +564,7 @@ pub fn parse_markdown_blocks_with_trust(
 
                     if is_heading {
                         let level_u8 = heading_level_to_u8(current_heading_level);
-                        let title = heading_text_buf.trim().to_string();
+                        let title = sanitize_ast_block(heading_text_buf.trim());
                         let base_slug = slugify(&title);
 
                         while let Some(top) = heading_stack.last() {
@@ -799,8 +799,16 @@ pub fn parse_markdown_blocks_with_trust(
                                 .any(|k| k.starts_with("DEC-") || k.starts_with("D-"))
                             {
                                 "DECISION".to_string()
-                            } else if canonical_keys.iter().any(|k| k.starts_with("TASK-")) {
+                            } else if canonical_keys
+                                .iter()
+                                .any(|k| k.starts_with("TASK-") || k.starts_with("WP-"))
+                            {
                                 "TASK".to_string()
+                            } else if canonical_keys
+                                .iter()
+                                .any(|k| k.starts_with("SPEC-") || k.starts_with("S-"))
+                            {
+                                "SPECIFICATION".to_string()
                             } else if !rfc2119_keywords.is_empty()
                                 || canonical_keys.iter().any(|k| {
                                     k.starts_with("REQ-")

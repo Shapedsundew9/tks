@@ -15,6 +15,7 @@
 | DEC-4.9 | WP-4.5 | Task Attribute Pre-Merge Verification Ingestion and Circular Gating Deadlock Resolution | Specification Gap | architecture.md §5.1, §9 (D-107), technical-backlog.md TB-10 | Implemented |
 | DEC-4.10 | WP-4.5 | Upward Canonical Merge Commit Lineage (CODE_COMMIT -IMPLEMENTS-> TASK) and Two-Scope Release Readiness Gating | Architecture Invariant | architecture.md §5.1, §9 (D-108, D-113, D-120), technical-backlog.md TB-10, TB-13.3 | Implemented |
 | DEC-4.11 | WP-4.5 | Code-Side Contract Drift Detection via Unified Diff Parsing and Specification Path Attribution | Specification Gap | architecture.md §5.1, §9 (D-114), technical-backlog.md TB-10 | Implemented |
+| DEC-4.12 | WP-4.6 | Fallback Heading Classification Preservation and AST Title Sanitization | Specification Gap | architecture.md §5.1, §5.2, §10 | Implemented |
 
 ---
 
@@ -83,7 +84,7 @@
 * **Decision Taken & Rationale:** Adopted Option B. Omission isolation keeps active requirements stable until formal review, and two-phase batch supersession guarantees that all omitted entities achieve clean `SUPERSEDED` state while external downstream tasks receive appropriate downward invalidation cascades.
 * **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-109), `technical-backlog.md` TB-7.5. Feedback: Document two-phase omission processing and redundant draft edge deduplication in §5.1 and D-109.
 * **Status:** Implemented
- 
+
 ### DEC-4.6: MCP Official Wire Conformance & CamelCase inputSchema Serialization
 
 * **Work Package:** WP-4.4
@@ -156,4 +157,17 @@
 * **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-114), `technical-backlog.md` TB-10. Feedback: Document deterministic unified diff drift detection heuristics and `ERR_CONTRACT_DRIFT` remediation envelopes in §5.1 and D-114.
 * **Status:** Implemented
 
+### DEC-4.12: Fallback Heading Classification Preservation and AST Title Sanitization
 
+* **Work Package:** WP-4.6
+* **Category:** Specification Gap
+* **Context & Problem:** Formal Gate 1 and Gate 2 re-verification and threat-model Spike 9 validation uncovered two subtle pipeline gaps:
+  1. Gate 1 Defect Root Cause: When ingesting real project documents (`docs/vision/vision.md` and `docs/vision/strategic-planning-backlog.md`), Tier 1 AST parsing correctly classified Level 1 and Level 2 headings as `node_type = "REQUIREMENT"`. However, during 3-tier delta reconciliation in `src/ingest/reconcile.rs`, `classify_chunk_fallback` was invoked for unmatched chunks and reset `node_type` to `"UNCLASSIFIED"` unless an explicit RFC 2119 keyword existed in the heading text itself. Subsequently, during staging approval (`src/storage/staging.rs`), unclassified candidates defaulted to `"SPECIFICATION"`, leaving 0 active requirement nodes in the live property graph out-of-the-box.
+  2. Content Trust Delimiter Leakage (Spike 9): Prompt injection delimiter tokens (e.g. `<|im_start|>`, `[SYSTEM]`, `<!-- PROMPT_INJECTION -->`) in heading text were sanitized in `chunk.content` via `sanitize_ast_block`, but heading titles (`chunk.heading` / `node.title`) were stored using the raw heading buffer, allowing unescaped control delimiters to survive in node titles and downstream context envelopes.
+  3. Canonical Substrate Prefix Support: Canonical key regex in `matcher.rs` omitted `SPEC-*`, causing valid specification keys (`SPEC-MVD-SUB-01`) to lose identifier bindings and fall back to `<no-key>`.
+* **Options Considered:**
+  * *Option A:* Require all headings to include explicit RFC 2119 keywords (`SHALL`, `MUST`) or require manual classification override in staging for every document. Pros: Minimal code change. Cons: Completely breaks Milestone Gate 1 requirement to extract $\ge 20$ active `REQUIREMENT` nodes out-of-the-box from natural markdown documents; forces unnatural keyword repetition into document titles; leaves control tokens un-sanitized in node titles.
+  * *Option B:* Update `classify_chunk_fallback` to preserve pre-existing `chunk.node_type` if already assigned by AST structural hierarchy convention or frontmatter (`!= "UNCLASSIFIED"`), and add canonical key support for `SPEC-*` in `matcher.rs` and `fallback.rs`. Sanitize heading titles using `sanitize_ast_block` during AST parsing. Pros: Preserves structural heading taxonomy (H1/H2 $\rightarrow$ `REQUIREMENT`, H3+ $\rightarrow$ `SPECIFICATION`) through all 3 reconciliation tiers, ensures $\ge 20$ active `REQUIREMENT` root anchors are extracted out-of-the-box from real documents (producing 369 active requirements in Gate 1), and guarantees 100% passive text containment across node titles and content against prompt injections. Cons: None.
+* **Decision Taken & Rationale:** Adopted Option B. Preserving parser-assigned structural heading taxonomy in `classify_chunk_fallback` resolves the known Gate 1 defect deterministically, while sanitizing heading titles guarantees comprehensive content trust boundary enforcement across both node titles and bodies.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §5.2, §10, `technical-backlog.md` TB-7, TB-7.5. Feedback: Document that fallback classification preserves AST structural heading types through delta reconciliation, and note heading title sanitization under content trust boundaries.
+* **Status:** Implemented

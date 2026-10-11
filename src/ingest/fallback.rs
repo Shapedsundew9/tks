@@ -57,6 +57,19 @@ pub fn fallback_classify(chunks: &[ExtractedChunk]) -> Vec<ClassificationResult>
 /// Evaluates default node type and governance policy for an individual chunk.
 #[must_use]
 pub fn classify_chunk_fallback(chunk: &ExtractedChunk) -> (String, String) {
+    // 0. Respect explicit structural heading taxonomy and frontmatter overrides for non-candidate chunks
+    if !chunk.is_candidate
+        && let Some(ref nt) = chunk.node_type
+        && nt != "UNCLASSIFIED"
+    {
+        let gov = if nt == "TASK" {
+            "AUTONOMOUS_ELABORATION".to_string()
+        } else {
+            "HUMAN_REVIEW_REQUIRED".to_string()
+        };
+        return (nt.clone(), gov);
+    }
+
     // 1. Check primary canonical key for explicit Decision prefixes
     if let Some(key) = chunk.primary_node_key()
         && (key.starts_with("DEC-") || key.starts_with("D-"))

@@ -72,7 +72,7 @@ impl ScaffoldingAdapter for OpenApiAdapter {
 
         let root_key = canonical_key_slug("API", raw_title);
         let root_anchor = format!("{path}#root");
-        let root_heading = format!("{raw_title} (v{version})");
+        let root_heading = sanitize_ast_block(&format!("{raw_title} (v{version})"));
 
         let root_content = if description.is_empty() {
             format!("{root_heading} specification root requirement.")
@@ -130,7 +130,7 @@ impl ScaffoldingAdapter for OpenApiAdapter {
                             .or_else(|| op_val.get("description").and_then(|d| d.as_str()))
                             .unwrap_or("");
 
-                        let op_heading = format!("{method_upper} {path_name}");
+                        let op_heading = sanitize_ast_block(&format!("{method_upper} {path_name}"));
                         let op_slug =
                             format!("{}-{}", method.to_ascii_lowercase(), slugify(path_name));
                         let op_anchor = format!("{path}#{op_slug}");
@@ -180,7 +180,7 @@ impl ScaffoldingAdapter for OpenApiAdapter {
                 let schema_canonical_key = canonical_key_slug("SCHEMA", schema_name);
                 let schema_slug = slugify(schema_name);
                 let schema_anchor = format!("{path}#schema-{schema_slug}");
-                let schema_heading = format!("Schema: {schema_name}");
+                let schema_heading = sanitize_ast_block(&format!("Schema: {schema_name}"));
 
                 let desc = schema_val
                     .get("description")

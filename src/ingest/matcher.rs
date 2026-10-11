@@ -13,9 +13,9 @@ static RFC2119_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Regex pattern matching canonical substrate identifiers:
-/// `REQ-*`, `INV-*`, `DR-*`, `C-*`, `TB-*`, `TASK-*`, `WP-*`, `DEC-*`.
+/// `REQ-*`, `INV-*`, `DR-*`, `C-*`, `TB-*`, `TASK-*`, `WP-*`, `DEC-*`, `SPEC-*`.
 static CANONICAL_KEY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b((?:REQ|INV|DR|C|TB|TASK|WP|DEC)-[A-Za-z0-9]+(?:[-_\.][A-Za-z0-9]+)*)\b")
+    Regex::new(r"\b((?:REQ|INV|DR|C|TB|TASK|WP|DEC|SPEC)-[A-Za-z0-9]+(?:[-_\.][A-Za-z0-9]+)*)\b")
         .expect("valid canonical key regex")
 });
 

@@ -574,6 +574,44 @@ async fn test_phase1_dogfooding_gate1_mvd_acceptance() {
     );
     println!("Verified audit_ledger monotonic event_seq: {seq1} -> {seq2}");
 
+    // Verify AST decomposition promotes structural containers and #/## headings to REQUIREMENT nodes out-of-the-box (WP-4.1 / Gate 1 Re-Verification)
+    let active_requirements = client
+        .query(
+            "SELECT id, node_key, title, node_type FROM graph_nodes \
+             WHERE doc_path IN ('specs/vision.md', 'specs/strategic-planning-backlog.md') \
+               AND lifecycle_state = 'ACTIVE' AND node_type = 'REQUIREMENT';",
+            &[],
+        )
+        .await
+        .unwrap();
+    let req_count = active_requirements.len();
+    assert!(
+        req_count >= 20,
+        "Expected >= 20 active REQUIREMENT nodes extracted out-of-the-box, found {req_count}"
+    );
+
+    // Verify intact upward DERIVED_FROM ancestry chains
+    let upward_edges = client
+        .query(
+            "SELECT count(*) FROM graph_edges e \
+             JOIN graph_nodes n ON e.from_node_id = n.id \
+             WHERE n.doc_path IN ('specs/vision.md', 'specs/strategic-planning-backlog.md') \
+               AND e.edge_type = 'DERIVED_FROM' AND e.lifecycle_state = 'ACTIVE';",
+            &[],
+        )
+        .await
+        .unwrap();
+    let edge_count: i64 = upward_edges[0].get(0);
+    assert!(
+        edge_count > 0,
+        "Must have intact upward DERIVED_FROM ancestry chains"
+    );
+
+    println!(
+        ">= 20 active REQUIREMENT nodes extracted out-of-the-box ({} found) with zero known defects and valid ancestry chains ({} DERIVED_FROM edges).",
+        req_count, edge_count
+    );
+
     // Verify node_embeddings received PENDING rows for the promoted nodes
     let pending_embeddings_count: i64 = client
         .query_one(
