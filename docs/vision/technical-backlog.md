@@ -26,7 +26,7 @@ This document captures vital component-level designs, library evaluation tasks, 
 * **ID:** TB-2
 * **Title:** Mechanical CommonMark AST Parsing, Structural Hierarchy Edge Generation, RFC 2119 Lexical Extraction Benchmark, and Zero-Copy Byte Slicing (`pulldown-cmark`)
 * **Origin:** LD-1, iteration 2; LD-2, iteration 3; LD-3, LD-9, iteration 7; LD-8, iteration 8; LD-6, iteration 10; phase0-decisions.md DEC-0.2, DEC-0.3, DEC-0.4, DEC-0.5, DEC-0.7
-* **Status:** Active
+* **Status:** Implemented (Phase 4)
 * **Description/Tactical Details:**
   1. **Streaming CommonMark Parser Implementation:** In the document ingestion module (`src/ingest/parser.rs`), implement a streaming Markdown parser using `pulldown-cmark`. Traverse the CommonMark event stream to segment ingested documents along structural boundaries (headings H1–H4, tables, blockquotes, and bulleted lists).
   2. **Zero-Token Deterministic Byte Span Capture & In-Memory Content Retention:** For each structural block event, extract exact 0-based byte offsets (`byte_start`, `byte_end`) directly from the source stream offset tracking provided by `pulldown-cmark`'s `OffsetIter`. Pointers are pinned with 100% precision without LLM inference cost. `ExtractedChunk` retains in-memory UTF-8 text via `pub content: Option<String>` alongside byte offsets for zero-source classification prompting (`build_classification_prompt(chunks: &[ExtractedChunk])`) without re-reading source files (DEC-0.5).
@@ -60,7 +60,7 @@ This document captures vital component-level designs, library evaluation tasks, 
 * **ID:** TB-4
 * **Title:** CLI Stdio Adapter Connection Resilience, Backoff Retry, and Structured Initialization Error Formatting
 * **Origin:** LD-9, iteration 3
-* **Status:** Active
+* **Status:** Implemented (Phase 4)
 * **Description/Tactical Details:**
   1. **Resilient Connection Check with Backoff:** In the `tks mcp-stdio` CLI proxy implementation (`src/bin/mcp_stdio.rs`), implement a graceful startup check when connecting to the `tks serve` daemon. If the HTTP/SSE connection fails initially, poll with exponential backoff (e.g. initial 50ms up to 2 seconds total) or inspect a local daemon lock/PID file before declaring the service unavailable.
   2. **Structured JSON-RPC Initialization Error:** If `tks serve` remains unreachable after the retry window, avoid abruptly terminating the process with a non-zero exit code (which causes external agent harnesses such as Claude Code, Cursor, and Windsurf to treat the adapter as crashed and disable the integration). Instead, wait for the agent's incoming JSON-RPC `initialize` request on `stdin` and respond on `stdout` with a valid JSON-RPC error response containing clear, actionable remediation guidance:
@@ -128,7 +128,7 @@ This document captures vital component-level designs, library evaluation tasks, 
 * **ID:** TB-7
 * **Title:** Canonical Node Key Lexical Extraction, Polymorphic Identifier Resolution, Query Sanitization, and Document Revision Reconciliation
 * **Origin:** LD-2, LD-5, iteration 6; LD-7, LD-8, LD-9, LD-11, iteration 7; LD-1, LD-6, LD-8, LD-9, iteration 8; LD-3, iteration 10; LD-7, LD-9, iteration 11
-* **Status:** Active
+* **Status:** Implemented (Phase 4)
 * **Description/Tactical Details:**
   1. **Canonical Node Key Extraction & Ingestion Tagging:** In `src/ingest/parser.rs`, extend the deterministic RFC 2119 keyword scanner (TB-2) to extract human-readable canonical identifiers (`REQ-*`, `INV-*`, `DR-*`, `C-*`, `TASK-*`) from section headings and block labels, populating `graph_nodes.node_key VARCHAR(64)` during mechanical decomposition.
   2. **Polymorphic Identifier Resolution:** In `src/storage/envelope.rs` and MCP tool handlers (`get_context_envelope`, `query_requirements`, `propose_node_mutation`), implement polymorphic resolution supporting both UUID and string `node_key`: inspect input string; if valid UUID syntax, query `WHERE id = $1::uuid`; otherwise, query `WHERE node_key = $1` utilizing the partial unique index `idx_graph_nodes_node_key_active`.
@@ -214,7 +214,7 @@ This document captures vital component-level designs, library evaluation tasks, 
 * **ID:** TB-11
 * **Title:** Brownfield Intent Scaffolding Adapters, Root Requirement Synthesis, and Authority Inheritance Pipeline
 * **Origin:** LD-6, iteration 9; LD-4, iteration 10; LD-3, iteration 11
-* **Status:** Active
+* **Status:** Implemented (Phase 4)
 * **Description/Tactical Details:**
   1. **Pluggable ScaffoldingAdapter Trait:** In `src/ingest/scaffolding.rs`, define a pluggable `ScaffoldingAdapter` trait supporting format-specific mechanical parsing:
 
@@ -237,7 +237,7 @@ This document captures vital component-level designs, library evaluation tasks, 
 * **ID:** TB-12
 * **Title:** Pre-Merge CI Test-Run Task Attribute Reporting, Merge Commit Materialization, and Scoped Release Readiness
 * **Origin:** LD-1, LD-12, iteration 9; LD-1, LD-2, LD-7, iteration 10; LD-6, iteration 11
-* **Status:** Active
+* **Status:** Implemented (Phase 4)
 * **Description/Tactical Details:**
   1. **Pre-Merge Test Run Ingestion (`POST /api/v1/verification/test-run`):** In `src/gateway/routes/verification.rs`, implement `POST /api/v1/verification/test-run` accepting test suite execution payloads (`test_suite: String`, `passed: bool`, `pr_commit_sha: String`, `target_task_ids: Vec<Uuid>`, `duration_ms: u64`, `manifest_hash: String`). Because `graph_edges` does not have edge attributes and `TASK` is a single endpoint, pre-merge test runs must not create relationally invalid `VERIFIED_BY` edges on `TASK`. Instead, for each targeted active `TASK` node, the handler atomically appends the test run object directly to the task's JSONB array in `graph_nodes.attributes->'pre_merge_verification'` (mirroring `attributes->'vcs_commits'`). Standardizes pre-merge verification without polluting the property graph with provisional `CODE_COMMIT` nodes or violating edge relational integrity (addressing LD-1, iteration 10; D-107).
   2. **Canonical Merge Commit Materialization (`POST /api/v1/vcs/commits`):** In `src/gateway/routes/vcs.rs`, implement the VCS commit webhook handler. When a pull request merges into `main` (or when a release tag is pushed), the endpoint creates a permanent `CODE_COMMIT` node in `graph_nodes` (`node_type = 'CODE_COMMIT'`, `lifecycle_state = 'ACTIVE'`) with commit SHA, author, and timestamp. It queries task execution attributes (`attributes->'vcs_commits'`) or correlates PR commit history, atomically generating upward directed `IMPLEMENTS` edges pointing from the newly created `CODE_COMMIT` node to resolved `TASK` entities (`from_node_id = commit_id, to_node_id = task_id, edge_type = 'IMPLEMENTS'`) under `pg_advisory_xact_lock`. This reorients commit lineage upward, ensuring that every active `CODE_COMMIT` maintains an unbroken path to an active `REQUIREMENT` without inverting the root-directed invariant INV-1 (addressing LD-2, iteration 10; D-108).
@@ -252,7 +252,7 @@ This document captures vital component-level designs, library evaluation tasks, 
 * **ID:** TB-13
 * **Title:** MCP camelCase Wire Protocol Conformance, Multi-Axis Planning Context Handler (`get_elaboration_context`), Edge Target Pre-Validation, and Actionable Remediation Envelope Builder
 * **Origin:** LD-3, LD-4, LD-5, iteration 9; LD-5, iteration 10; LD-1, LD-8, LD-11, iteration 11
-* **Status:** Active
+* **Status:** Partially Implemented (Phase 4: TB-13.1, TB-13.3; Phase 5: TB-13.2)
 * **Description/Tactical Details:**
   1. **MCP Wire Protocol camelCase Serialization:** In `src/gateway/mcp/mod.rs` and `src/bin/mcp_stdio.rs`, audit all JSON-RPC serialization structs. Ensure tool definition schemas serialize parameter schemas strictly under `inputSchema` (camelCase) rather than `input_schema` (snake_case), adhering to the official MCP 2024-11-05 specification.
   2. **Multi-Axis Planning Dossier Endpoint (`get_elaboration_context`), Schema Consolidation, and Deterministic Token Clamping:** In `src/storage/envelope.rs` and `src/gateway/mcp/tools.rs`, implement `get_elaboration_context(node_id: String, max_tokens: Option<u32>)`. When an agent requests elaboration context for a parent requirement or deliverable:
