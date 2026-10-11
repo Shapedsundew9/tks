@@ -520,6 +520,47 @@ impl StorageRepo {
         )
         .await
     }
+
+    /// Appends pre-merge CI test run execution metadata to an active task's attributes (D-107, TB-12.1).
+    pub async fn record_pre_merge_verification(
+        &self,
+        task_id: Uuid,
+        test_run: &serde_json::Value,
+        actor_id: &str,
+        actor_type: &str,
+        token_fingerprint: &str,
+    ) -> Result<GraphNode, MutationError> {
+        let client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::mutation::record_pre_merge_verification(
+            &**client,
+            task_id,
+            test_run,
+            actor_id,
+            actor_type,
+            token_fingerprint,
+        )
+        .await
+    }
+
+    /// Materializes a canonical merge commit as a typed `CODE_COMMIT` node in `graph_nodes`
+    /// and establishes upward directed `IMPLEMENTS` edges to specified tasks (D-108, TB-12.2).
+    pub async fn materialize_code_commit(
+        &self,
+        payload: &crate::storage::mutation::CodeCommitPayload,
+        actor_id: &str,
+        actor_type: &str,
+        token_fingerprint: &str,
+    ) -> Result<crate::storage::mutation::MaterializedCommitResult, MutationError> {
+        let mut client = self.pool.get().await.map_err(MutationError::Pool)?;
+        crate::storage::mutation::materialize_code_commit(
+            &mut client,
+            payload,
+            actor_id,
+            actor_type,
+            token_fingerprint,
+        )
+        .await
+    }
 }
 
 /// Acquires the global transaction advisory lock:

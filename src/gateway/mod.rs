@@ -147,6 +147,22 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/nodes/{id}/reverify",
             post(routes::mutation::reverify_node_route),
         )
+        // Pre-merge verification and CI test run routes (WP-4.5, TB-12.1, D-107)
+        .route(
+            "/api/v1/verification/test-run",
+            post(routes::verification::record_test_run),
+        )
+        .route(
+            "/api/v1/verification/check-drift",
+            post(routes::verification::check_drift_route),
+        )
+        // VCS merge commit materialization routes (WP-4.5, TB-12.2, D-108)
+        .route("/api/v1/vcs/commits", post(routes::vcs::materialize_commit))
+        // Disambiguated release readiness routes (WP-4.5, TB-12.3, D-113, D-120)
+        .route(
+            "/api/v1/release/readiness",
+            get(routes::release::get_release_readiness),
+        )
         // Multi-agent workspace routes (WP-3.2, PHASE3-003)
         .route(
             "/api/v1/workspaces",

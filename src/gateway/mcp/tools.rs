@@ -559,7 +559,12 @@ pub async fn handle_propose_node_mutation(
     let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
 
     if let Some(from_id) = args.get("from_node_id").and_then(|v| v.as_str()) {
-        crate::storage::mutation::pre_validate_edge_target_endpoint(&**client, "from_node_id", from_id).await?;
+        crate::storage::mutation::pre_validate_edge_target_endpoint(
+            &**client,
+            "from_node_id",
+            from_id,
+        )
+        .await?;
     }
 
     let mut_type_upper = mutation_type.to_uppercase();
@@ -896,8 +901,10 @@ mod tests {
         let tools = list_tools();
         assert_eq!(tools.len(), 8, "Expected exactly 8 MCP tools");
 
-        let serialized_value = serde_json::to_value(&tools).expect("Failed to serialize tools list");
-        let serialized_str = serde_json::to_string(&tools).expect("Failed to serialize tools string");
+        let serialized_value =
+            serde_json::to_value(&tools).expect("Failed to serialize tools list");
+        let serialized_str =
+            serde_json::to_string(&tools).expect("Failed to serialize tools string");
 
         // Verify zero occurrences of snake_case input_schema in serialized JSON
         assert!(
@@ -906,11 +913,16 @@ mod tests {
         );
 
         // Verify 100% of tools serialize with camelCase inputSchema
-        let tools_array = serialized_value.as_array().expect("Tools must be a JSON array");
+        let tools_array = serialized_value
+            .as_array()
+            .expect("Tools must be a JSON array");
         assert_eq!(tools_array.len(), 8);
 
         for tool in tools_array {
-            let tool_name = tool.get("name").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            let tool_name = tool
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("<unknown>");
             assert!(
                 tool.get("inputSchema").is_some(),
                 "Tool '{tool_name}' must serialize schema under camelCase 'inputSchema'"

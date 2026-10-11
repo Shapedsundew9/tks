@@ -88,7 +88,12 @@ impl JsonRpcResponse {
     }
 
     #[must_use]
-    pub fn error_with_data(id: Value, code: i32, message: impl Into<String>, data: Option<Value>) -> Self {
+    pub fn error_with_data(
+        id: Value,
+        code: i32,
+        message: impl Into<String>,
+        data: Option<Value>,
+    ) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
             id,
@@ -237,7 +242,9 @@ pub async fn process_jsonrpc_request(
         | "reverify_node" => {
             let mut params = request.params;
             if let (Some(token), Some(param_obj)) = (&request.auth_token, params.as_object_mut()) {
-                param_obj.entry("auth_token").or_insert_with(|| Value::String(token.clone()));
+                param_obj
+                    .entry("auth_token")
+                    .or_insert_with(|| Value::String(token.clone()));
             }
             dispatch_tool_call(state, id, &request.method, params, caller).await
         }
@@ -600,10 +607,6 @@ fn format_mutation_error(id: Value, err: MutationError) -> JsonRpcResponse {
             }
             err_resp
         }
-        other => JsonRpcResponse::error(
-            id,
-            -32000,
-            format!("{}: {other}", other.code()),
-        ),
+        other => JsonRpcResponse::error(id, -32000, format!("{}: {other}", other.code())),
     }
 }

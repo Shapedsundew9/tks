@@ -168,7 +168,10 @@ async fn test_mcp_wire_protocol_camel_case_input_schema() {
 
     let resp_val: Value = serde_json::from_str(&resp_text).expect("Valid JSON response");
     let result = resp_val.get("result").expect("Must contain result object");
-    let tools = result.get("tools").and_then(Value::as_array).expect("Tools must be an array");
+    let tools = result
+        .get("tools")
+        .and_then(Value::as_array)
+        .expect("Tools must be an array");
 
     // Proof Criterion 2: Exactly 8 tools returned, each using camelCase inputSchema
     assert_eq!(tools.len(), 8, "Must return exactly 8 registered MCP tools");
@@ -223,7 +226,8 @@ async fn test_mcp_edge_prevalidation_rejects_raw_git_sha() {
     register_test_agent(&state, agent_id, token).await;
 
     // Seed an active requirement in graph_nodes
-    let valid_req_id = insert_test_requirement(&state, "REQ-WP44-001", "Core Gateway Security").await;
+    let valid_req_id =
+        insert_test_requirement(&state, "REQ-WP44-001", "Core Gateway Security").await;
 
     let raw_git_sha = "c0ffee1234567890abcdef1234567890abcdef12";
 
@@ -256,14 +260,19 @@ async fn test_mcp_edge_prevalidation_rejects_raw_git_sha() {
     let err = resp_val.get("error").expect("Must return JSON-RPC error");
     assert_eq!(err.get("code").and_then(Value::as_i64), Some(-32000));
 
-    let err_msg = err.get("message").and_then(Value::as_str).unwrap_or_default();
+    let err_msg = err
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     assert!(
         err_msg.contains("ERR_INVALID_EDGE_TARGET"),
         "Error message must specify ERR_INVALID_EDGE_TARGET: {err_msg}"
     );
 
     // Verify Actionable Remediation Envelope in data (INV-8, INV-9, TB-13.3)
-    let err_data = err.get("data").expect("Error data must contain remediation envelope");
+    let err_data = err
+        .get("data")
+        .expect("Error data must contain remediation envelope");
     assert_eq!(
         err_data.get("code").and_then(Value::as_str),
         Some("ERR_INVALID_EDGE_TARGET")
@@ -417,7 +426,8 @@ async fn test_mcp_dual_authentication_extraction() {
     let token = "test_wp44_dual_auth_secret_999";
     register_test_agent(&state, agent_id, token).await;
 
-    let valid_req_id = insert_test_requirement(&state, "REQ-WP44-002", "Dual Auth Test Requirement").await;
+    let valid_req_id =
+        insert_test_requirement(&state, "REQ-WP44-002", "Dual Auth Test Requirement").await;
 
     // 1. Unauthenticated attempt fails with code -32000 and ERR_AUTH_FAILED
     let unauth_req = json!({
@@ -561,7 +571,10 @@ async fn test_mcp_stdio_resilience_and_offline_initialization_error() {
     let mut output_writer = Vec::new();
 
     let res = run_mcp_stdio_io(args, input_reader, &mut output_writer).await;
-    assert!(res.is_ok(), "run_mcp_stdio_io must exit cleanly with Ok(()) when daemon is offline");
+    assert!(
+        res.is_ok(),
+        "run_mcp_stdio_io must exit cleanly with Ok(()) when daemon is offline"
+    );
 
     let out_str = String::from_utf8(output_writer).expect("Valid UTF-8 output");
     let err_json: Value = serde_json::from_str(out_str.trim()).expect("Valid JSON-RPC output");

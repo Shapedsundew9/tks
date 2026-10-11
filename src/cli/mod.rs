@@ -5,9 +5,11 @@ pub mod explorer;
 pub mod identity;
 pub mod ingest;
 pub mod mcp_stdio;
+pub mod release;
 pub mod serve;
 pub mod staging;
 pub mod task;
+pub mod verification;
 pub mod workspace;
 
 pub use admin::{AdminReverifyArgs, AdminRevertArgs, AdminSubcommand, run_admin};
@@ -15,12 +17,16 @@ pub use explorer::{ExplorerServeArgs, ExplorerSubcommand, run_explorer};
 pub use identity::{CreateIdentityArgs, IdentitySubcommand, RevokeIdentityArgs, run_identity};
 pub use ingest::{IngestArgs, run_ingest};
 pub use mcp_stdio::{McpStdioArgs, run_mcp_stdio};
+pub use release::{ReleaseReadinessArgs, ReleaseSubcommand, run_release};
 pub use serve::{ServeArgs, run_serve};
 pub use staging::{
     StagingApproveArgs, StagingInspectArgs, StagingListArgs, StagingRejectArgs, StagingSubcommand,
     run_staging,
 };
-pub use task::{CreateTaskArgs, ListTasksArgs, TaskSubcommand, UpdateTaskArgs, run_task};
+pub use task::{
+    CreateTaskArgs, ListTasksArgs, TaskSubcommand, TestRunArgs, UpdateTaskArgs, run_task,
+};
+pub use verification::{CheckDriftArgs, VerificationSubcommand, run_verification};
 pub use workspace::{
     CreateWorkspaceArgs, DiscardWorkspaceArgs, InspectWorkspaceArgs, ListWorkspacesArgs,
     MergeWorkspaceArgs, RebaseWorkspaceArgs, WorkspaceSubcommand, run_workspace,

@@ -12,6 +12,9 @@
 | DEC-4.6 | WP-4.4 | MCP Official Wire Conformance & CamelCase inputSchema Serialization | Specification Gap | architecture.md §6, §7, §9 (D-95), technical-backlog.md TB-4 | Implemented |
 | DEC-4.7 | WP-4.4 | Relational Edge Target Pre-Validation & Actionable Remediation Envelopes | Architecture Invariant | architecture.md §5.2, §6.2, §9 (D-96, D-97), technical-backlog.md TB-13.3 | Implemented |
 | DEC-4.8 | WP-4.4 | Asynchronous Stdio Proxy Streaming & Non-Blocking Initialization Fallback | Technical Trade-off | architecture.md §7, technical-backlog.md TB-4, TB-13.1 | Implemented |
+| DEC-4.9 | WP-4.5 | Task Attribute Pre-Merge Verification Ingestion and Circular Gating Deadlock Resolution | Specification Gap | architecture.md §5.1, §9 (D-107), technical-backlog.md TB-10 | Implemented |
+| DEC-4.10 | WP-4.5 | Upward Canonical Merge Commit Lineage (CODE_COMMIT -IMPLEMENTS-> TASK) and Two-Scope Release Readiness Gating | Architecture Invariant | architecture.md §5.1, §9 (D-108, D-113, D-120), technical-backlog.md TB-10, TB-13.3 | Implemented |
+| DEC-4.11 | WP-4.5 | Code-Side Contract Drift Detection via Unified Diff Parsing and Specification Path Attribution | Specification Gap | architecture.md §5.1, §9 (D-114), technical-backlog.md TB-10 | Implemented |
 
 ---
 
@@ -116,4 +119,41 @@
 * **Decision Taken & Rationale:** Adopted Option B. Non-blocking async I/O with timed initial read eliminates stdin deadlocks while maintaining full MCP stdio proxy capabilities.
 * **Upstream Impact & Target Document:** `architecture.md` §7, `technical-backlog.md` TB-4, TB-13.1.
 * **Status:** Implemented
+
+### DEC-4.9: Task Attribute Pre-Merge Verification Ingestion and Circular Gating Deadlock Resolution
+
+* **Work Package:** WP-4.5
+* **Category:** Specification Gap
+* **Context & Problem:** In pre-merge CI pipelines, test runs and verification results must be validated against a task before pull request approval and merge. However, if pre-merge test runs materialized provisional commit nodes or graph edges (`VERIFIES`), this would either create provisional unmerged commits in the graph before merge or require a canonical Git merge commit SHA that does not yet exist. Furthermore, if release readiness gating required canonical commit nodes prior to merge, a circular dependency deadlock would occur: the merge cannot proceed without release readiness approval, but release readiness cannot pass without the merge commit.
+* **Options Considered:**
+  * *Option A:* Materialize provisional `TEST_RUN` or provisional `CODE_COMMIT` graph nodes and provisional `VERIFIES` edges during pre-merge CI. Pros: Retains uniform node/edge representation for all test events. Cons: Pollutes graph topology with unmerged branch states, violates Invariant INV-1 (Ancestry) because provisional commits might never be merged or rebased, and requires complex reconciliation or deletion upon PR revision.
+  * *Option B:* Ingest pre-merge CI verification results directly into `TASK.attributes->'pre_merge_verification'` as an atomically appended JSONB array via `POST /api/v1/verification/test-run` and `tks task test-run` (D-107), without materializing provisional commit nodes or graph edges. Bifurcate release readiness inspection (`GET /api/v1/release/readiness`) into explicit scopes: `scope=pre-merge` checks task status and `pre_merge_verification` test passes; `scope=release` requires canonical materialized `CODE_COMMIT` nodes. Pros: Maintains clean, immutable graph topology, completely avoids dangling provisional nodes, decouples pre-merge CI gating from Git graph mutation, and resolves the circular gating deadlock. Cons: Pre-merge test runs are queried via JSONB attributes rather than graph edge traversals until canonical merge commit materialization.
+* **Decision Taken & Rationale:** Adopted Option B. Recording pre-merge test verification directly in task JSONB attributes prevents premature graph pollution and guarantees CI gates can verify and enforce task test passes prior to pull request merge without circular dependency deadlocks.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-107), `technical-backlog.md` TB-10. Feedback: Document JSONB array structure `TASK.attributes->'pre_merge_verification'` and pre-merge CI ingestion protocol in §5.1 and D-107.
+* **Status:** Implemented
+
+### DEC-4.10: Upward Canonical Merge Commit Lineage (CODE_COMMIT -IMPLEMENTS-> TASK) and Two-Scope Release Readiness Gating
+
+* **Work Package:** WP-4.5
+* **Category:** Architecture Invariant
+* **Context & Problem:** Tracking post-merge code lineage and verifying complete traceability from code to root requirements requires materializing canonical merge commits as graph nodes. The directionality of the commit-task relationship must satisfy Invariant INV-1 (Ancestry must strictly flow upward toward root `REQUIREMENT` nodes via structural edge types). In addition, release readiness must distinguish between PR pre-merge CI validation (which tests candidate branch code before merge) and release deployment gating (which requires merged canonical `CODE_COMMIT` nodes to implement all tasks fulfilling requirements).
+* **Options Considered:**
+  * *Option A:* Downward edges from `TASK` to `CODE_COMMIT` (`TASK -IMPLEMENTS-> CODE_COMMIT` or `TASK -COMMITTED_IN-> CODE_COMMIT`) with a single readiness evaluation endpoint. Pros: Intuitive task-to-artifact mapping. Cons: Violates Invariant INV-1 graph traversal, where ancestry walks trace from downstream artifacts upward to root requirements; breaks structural DAG cycle detection and ancestry recursion. A single readiness mode also confuses pre-merge checks (where commits are not yet materialized) with post-merge release gating.
+  * *Option B:* Upward directed `IMPLEMENTS` edges from `CODE_COMMIT` to `TASK` (`CODE_COMMIT -IMPLEMENTS-> TASK`, D-108). Materialize canonical commits via `POST /api/v1/vcs/commits` inside an atomic structural mutation transaction that creates the `CODE_COMMIT` node, creates `IMPLEMENTS` edges, updates `vcs_commits.graph_node_id`, logs `COMMIT_MATERIALIZED` audit event, and verifies INV-1 ancestry to root requirements. Implement two explicit evaluation scopes in `GET /api/v1/release/readiness?scope=pre-merge|release` (D-113, D-120): `pre-merge` checks task status and `pre_merge_verification` attribute; `release` checks full downward CTE ensuring every requirement has active specifications, completed tasks, and materialized `CODE_COMMIT` nodes. Edge target pre-validation enforces INV-8/INV-9 by rejecting non-existent tasks or raw commit SHAs with HTTP 422 `InvalidEdgeTargetEnvelope`. Pros: Strictly preserves Invariant INV-1 upward ancestry walk consistency across the entire property graph, provides clear separation between pre-merge gating and post-merge deployment readiness, and provides actionable remediation envelopes for invalid target references. Cons: Requires `is_structural_edge_type`, `check_dag_cycle`, and `validate_ancestor_path` to include `IMPLEMENTS`.
+* **Decision Taken & Rationale:** Adopted Option B. Materializing canonical merge commits with upward `IMPLEMENTS` edges to tasks guarantees unbroken INV-1 ancestry paths to root requirements, while two-scope release readiness gating cleanly enforces both pre-merge CI quality gates and post-merge deployment verification.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-108, D-113, D-120), `technical-backlog.md` TB-10, TB-13.3. Feedback: Document canonical merge commit materialization, `IMPLEMENTS` edge directionality, and `GET /api/v1/release/readiness?scope=pre-merge|release` semantics.
+* **Status:** Implemented
+
+### DEC-4.11: Code-Side Contract Drift Detection via Unified Diff Parsing and Specification Path Attribution
+
+* **Work Package:** WP-4.5
+* **Category:** Specification Gap
+* **Context & Problem:** Agents and developers may modify public interfaces or contract files without updating the corresponding specification documents or tasks in the knowledge graph. The system required a fast, zero-token, code-side contract drift detection engine capable of analyzing git diffs or commit changesets and detecting unmapped public interface modifications or specification path mismatches before or during merge.
+* **Options Considered:**
+  * *Option A:* Send every git diff patch to an LLM to evaluate whether code modifications alter contracts or drift from specifications. Pros: Semantically aware drift reasoning. Cons: Excessive latency, high token cost, non-deterministic drift reports, and violates zero-token Tier 1 extraction principles.
+  * *Option B:* Deterministic code-side contract drift engine using unified diff parsing and regex-based interface inspection (`POST /api/v1/verification/check-drift` and CLI `tks verification check-drift`, D-114). Parses diff touched files, matches contract file patterns (`specs/`, `proto/`, `openapi/`, `schema/`, `contract/`), detects public export alterations (`pub fn`, `pub struct`, `export interface`, `public class`), and queries `graph_nodes` to verify whether modified files correspond to active specification nodes or tasks. Detects contract drift and identifies unmapped changes with actionable remediation envelopes (`ERR_CONTRACT_DRIFT`). Pros: Deterministic, sub-10ms execution, zero token cost, reproducible across CI pipelines, and provides actionable remediation guidance for contract updates. Cons: Relies on pattern heuristics for interface export identification rather than full AST compilation.
+* **Decision Taken & Rationale:** Adopted Option B. Deterministic diff analysis provides instantaneous (<10ms), zero-token, reliable detection of public contract modifications and unmapped file drifts, enforcing rigorous specification-first governance.
+* **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-114), `technical-backlog.md` TB-10. Feedback: Document deterministic unified diff drift detection heuristics and `ERR_CONTRACT_DRIFT` remediation envelopes in §5.1 and D-114.
+* **Status:** Implemented
+
 

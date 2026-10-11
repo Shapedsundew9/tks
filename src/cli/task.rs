@@ -14,6 +14,8 @@ pub enum TaskSubcommand {
     Update(UpdateTaskArgs),
     /// List execution tasks, optionally filtered by parent or status.
     List(ListTasksArgs),
+    /// Ingest a pre-merge CI test run execution result onto active tasks.
+    TestRun(TestRunArgs),
 }
 
 /// Arguments for `tks task create --parent <id_or_key> --title <title> [--content <text>]`.
@@ -61,6 +63,34 @@ pub struct ListTasksArgs {
     /// Maximum number of tasks to return (default: 50).
     #[arg(long, default_value = "50")]
     pub limit: u32,
+}
+
+/// Arguments for `tks task test-run [--suite <suite>] [--passed] --pr-commit-sha <sha> --task-ids <ids> [--duration-ms <ms>] [--manifest-hash <hash>]`.
+#[derive(Debug, Args, Clone)]
+pub struct TestRunArgs {
+    /// Test suite name (e.g. cargo_test).
+    #[arg(long, default_value = "cargo_test")]
+    pub suite: String,
+
+    /// Whether the test run passed.
+    #[arg(long)]
+    pub passed: bool,
+
+    /// Candidate pull request commit SHA.
+    #[arg(long)]
+    pub pr_commit_sha: String,
+
+    /// Target task identifiers (comma-separated UUIDs).
+    #[arg(long, value_delimiter = ',')]
+    pub task_ids: Vec<String>,
+
+    /// Execution duration in milliseconds.
+    #[arg(long)]
+    pub duration_ms: Option<u64>,
+
+    /// Cryptographic hash of test manifest or suite configuration.
+    #[arg(long)]
+    pub manifest_hash: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -239,6 +269,79 @@ pub async fn run_task(
                 );
             }
         }
+
+        TaskSubcommand::TestRun(args) => {
+            run_test_run_inner(&client, base_url, auth_token, args).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Helper executing pre-merge test run submission.
+pub async fn run_test_run_inner(
+    client: &reqwest::Client,
+    base_url: &str,
+    auth_token: &str,
+    args: TestRunArgs,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let url = format!("{base_url}/api/v1/verification/test-run");
+    let payload = serde_json::json!({
+        "test_suite": args.suite,
+        "passed": args.passed,
+        "pr_commit_sha": args.pr_commit_sha,
+        "target_task_ids": args.task_ids,
+        "duration_ms": args.duration_ms,
+        "manifest_hash": args.manifest_hash,
+    });
+
+    let resp = client
+        .post(&url)
+        .header(AUTHORIZATION, format!("Bearer {auth_token}"))
+        .header(CONTENT_TYPE, "application/json")
+        .json(&payload)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let err_text = resp.text().await.unwrap_or_default();
+        eprintln!("Failed to record test run ({status}): {err_text}");
+        return Err(format!("Server returned {status}: {err_text}").into());
+    }
+
+    let result: Value = resp.json().await?;
+    println!("Pre-merge test run recorded successfully:");
+    println!(
+        "  status:        {}",
+        result
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("RECORDED")
+    );
+    println!(
+        "  test_suite:    {}",
+        result
+            .get("test_suite")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&args.suite)
+    );
+    println!(
+        "  passed:        {}",
+        result
+            .get("passed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(args.passed)
+    );
+    println!(
+        "  pr_commit_sha: {}",
+        result
+            .get("pr_commit_sha")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&args.pr_commit_sha)
+    );
+    if let Some(tasks) = result.get("recorded_task_ids").and_then(|v| v.as_array()) {
+        println!("  recorded_tasks: {:?}", tasks);
     }
 
     Ok(())

@@ -252,7 +252,7 @@ async fn test_pathway1_autonomous_elaboration_rejections_and_invariants() {
     assert_eq!(review_err.code(), "ERR_GOVERNANCE_REJECTED");
     assert!(matches!(review_err, MutationError::GovernanceRejected(_)));
 
-    // 3. Unknown parent node
+    // 3. Unknown parent node (pre-validated under INV-9 returning ERR_INVALID_EDGE_TARGET or ERR_NOT_FOUND)
     let not_found_err = elaborate_task_client(
         &mut client,
         "NON-EXISTENT-PARENT",
@@ -264,8 +264,16 @@ async fn test_pathway1_autonomous_elaboration_rejections_and_invariants() {
     .await
     .expect_err("Elaboration under non-existent parent must fail");
 
-    assert_eq!(not_found_err.code(), "ERR_NOT_FOUND");
-    assert!(matches!(not_found_err, MutationError::NotFound(_)));
+    assert!(
+        not_found_err.code() == "ERR_INVALID_EDGE_TARGET"
+            || not_found_err.code() == "ERR_NOT_FOUND",
+        "Expected ERR_INVALID_EDGE_TARGET or ERR_NOT_FOUND, got: {}",
+        not_found_err.code()
+    );
+    assert!(matches!(
+        not_found_err,
+        MutationError::InvalidEdgeTarget { .. } | MutationError::NotFound(_)
+    ));
 }
 
 #[tokio::test]

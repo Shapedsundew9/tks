@@ -41,13 +41,15 @@ pub use governance::{
     GovernanceAction, GovernancePolicy, MutationPathway, TaskStatus, evaluate_governance_action,
 };
 pub use mutation::{
-    DraftMutationResult, DraftProposalResult, EdgeMutationPayload, ElaboratedTaskResult,
-    MutationError, MutationResult, NodeMutationPayload, StructuralMutationTx, TaskUpdateResult,
+    CodeCommitPayload, DraftMutationResult, DraftProposalResult, EdgeMutationPayload,
+    ElaboratedTaskResult, MaterializedCommitResult, MutationError, MutationResult,
+    NodeMutationPayload, PreMergeVerificationPayload, StructuralMutationTx, TaskUpdateResult,
     assert_ancestor_path, assert_no_dag_cycle, begin_structural_mutation, check_dag_cycle,
     elaborate_task, elaborate_task_client, insert_audit_event, insert_audit_event_full,
-    insert_structural_edge, mutate_draft_entity, mutate_draft_entity_client,
-    propose_normative_draft, propose_normative_draft_client, resolve_node_polymorphic,
-    update_leaf_attributes_locked, update_task_status, update_task_status_client,
+    insert_structural_edge, materialize_code_commit, mutate_draft_entity,
+    mutate_draft_entity_client, propose_normative_draft, propose_normative_draft_client,
+    record_pre_merge_verification, resolve_node_polymorphic, update_leaf_attributes_locked,
+    update_task_status, update_task_status_client,
 };
 pub use repo::{StorageRepo, acquire_structural_lock, lookup_node_polymorphic};
 pub use reverify::{ReverifyResult, reverify_node, reverify_node_client};

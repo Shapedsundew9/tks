@@ -585,10 +585,10 @@ pub async fn validate_ancestor_path(
         ),
         non_requirements AS (
             SELECT id FROM candidate_nodes
-            WHERE node_type IN ('TASK', 'SPECIFICATION')
+            WHERE node_type IN ('TASK', 'SPECIFICATION', 'CODE_COMMIT')
               AND (
-                  node_type = 'TASK'
-                  OR id IN (SELECT from_node_id FROM graph_edges WHERE edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM'))
+                  node_type IN ('TASK', 'CODE_COMMIT')
+                  OR id IN (SELECT from_node_id FROM graph_edges WHERE edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS'))
               )
         ),
         path_walk AS (
@@ -599,7 +599,7 @@ pub async fn validate_ancestor_path(
                 1 AS depth
             FROM non_requirements nr
             JOIN graph_edges e ON e.from_node_id = nr.id
-            WHERE e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM')
+            WHERE e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS')
               AND (
                   e.lifecycle_state = 'ACTIVE'
                   OR $2 = true
@@ -617,7 +617,7 @@ pub async fn validate_ancestor_path(
             WHERE curr.node_type NOT IN ('REQUIREMENT')
               AND NOT (e.to_node_id = ANY(pw.visited))
               AND pw.depth < 20
-              AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM')
+              AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS')
               AND (
                   e.lifecycle_state = 'ACTIVE'
                   OR $2 = true

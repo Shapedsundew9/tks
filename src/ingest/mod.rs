@@ -1,6 +1,7 @@
 //! Document ingestion, AST decomposition, and span extraction modules.
 
 pub mod classify;
+pub mod drift;
 pub mod fallback;
 pub mod matcher;
 pub mod parser;
@@ -9,6 +10,7 @@ pub mod scaffolding;
 pub mod span;
 
 pub use classify::*;
+pub use drift::*;
 pub use fallback::*;
 pub use matcher::*;
 pub use parser::*;

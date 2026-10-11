@@ -379,7 +379,7 @@ pub async fn check_dag_cycle(
                 ARRAY[$1, e.to_node_id] AS visited
             FROM graph_edges e
             WHERE e.from_node_id = $1
-              AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM')
+              AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS')
               AND e.lifecycle_state IN ('ACTIVE', 'DRAFT')
             UNION ALL
             SELECT
@@ -388,7 +388,7 @@ pub async fn check_dag_cycle(
                 uw.visited || e.to_node_id
             FROM upward_walk uw
             JOIN graph_edges e ON e.from_node_id = uw.current_id
-            WHERE e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM')
+            WHERE e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS')
               AND e.lifecycle_state IN ('ACTIVE', 'DRAFT')
               AND NOT (e.to_node_id = ANY(uw.visited))
               AND uw.depth < 100
@@ -434,7 +434,9 @@ pub async fn fetch_target_candidates(
 
     let mut repairs = vec![
         serde_json::json!("Verify that target exists in graph_nodes and is in ACTIVE state"),
-        serde_json::json!("Use a registered node UUID instead of a raw Git SHA or external commit reference"),
+        serde_json::json!(
+            "Use a registered node UUID instead of a raw Git SHA or external commit reference"
+        ),
     ];
 
     let mut candidates = Vec::new();
@@ -578,7 +580,9 @@ pub async fn insert_structural_edge(
         return Err(MutationError::InvalidEdgeTarget {
             invalid_field: "from_node_id".to_string(),
             invalid_value: from_id.to_string(),
-            message: format!("Edge endpoint 'from_node_id' is not a registered node UUID: {from_id}"),
+            message: format!(
+                "Edge endpoint 'from_node_id' is not a registered node UUID: {from_id}"
+            ),
             suggested_repairs: repairs,
             valid_target_candidates: candidates,
         });
@@ -616,7 +620,10 @@ pub async fn insert_structural_edge(
 /// Returns true if `edge_type` participates in structural requirement lineage and DAG cycle checks.
 #[must_use]
 pub fn is_structural_edge_type(edge_type: &str) -> bool {
-    matches!(edge_type, "FULFILLS" | "CONSTRAINED_BY" | "DERIVED_FROM")
+    matches!(
+        edge_type,
+        "FULFILLS" | "CONSTRAINED_BY" | "DERIVED_FROM" | "IMPLEMENTS"
+    )
 }
 
 /// Writes an event record to `audit_ledger` with generated or supplied `batch_id`, monotonic `event_seq`,
@@ -1655,5 +1662,309 @@ pub async fn mutate_draft_entity_client(
         status: "UPDATED".to_string(),
         revisions_count: revisions.len(),
         node: updated_node,
+    })
+}
+
+/// Payload describing a pre-merge test run execution to record on tasks (D-107, TB-12.1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreMergeVerificationPayload {
+    pub test_suite: String,
+    pub passed: bool,
+    pub pr_commit_sha: String,
+    pub target_task_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
+    #[serde(default)]
+    pub manifest_hash: Option<String>,
+    #[serde(default)]
+    pub log_summary: Option<String>,
+}
+
+/// Appends a pre-merge test run execution record directly to `attributes->'pre_merge_verification'`
+/// on specified active `TASK` entities without creating provisional nodes or single-ended edges (D-107, TB-12.1).
+///
+/// # Errors
+///
+/// - Returns `MutationError::InvalidEdgeTarget` if target task ID does not exist or is not an active `TASK`.
+/// - Returns `MutationError::Database` on query execution error.
+pub async fn record_pre_merge_verification(
+    client: &(impl tokio_postgres::GenericClient + ?Sized),
+    task_id: Uuid,
+    test_run: &serde_json::Value,
+    actor_id: &str,
+    actor_type: &str,
+    token_fingerprint: &str,
+) -> Result<GraphNode, MutationError> {
+    // 1. Fetch node and verify it is an active TASK
+    let row_opt = client
+        .query_opt(
+            "SELECT id, node_key, node_type, title, content, lifecycle_state, \
+                    governance_policy, created_by, job_id, doc_path, doc_hash, \
+                    byte_start, byte_end, attributes, trust_tier \
+             FROM graph_nodes \
+             WHERE id = $1;",
+            &[&task_id],
+        )
+        .await?;
+
+    let row = match row_opt {
+        Some(r) => r,
+        None => {
+            let (repairs, candidates) = fetch_target_candidates(client).await;
+            return Err(MutationError::InvalidEdgeTarget {
+                invalid_field: "target_task_id".to_string(),
+                invalid_value: task_id.to_string(),
+                message: format!("Target task ID not found in graph_nodes: {task_id}"),
+                suggested_repairs: repairs,
+                valid_target_candidates: candidates,
+            });
+        }
+    };
+
+    let node_type: String = row.get("node_type");
+    let state: String = row.get("lifecycle_state");
+
+    if node_type != "TASK" || state != "ACTIVE" {
+        let (repairs, candidates) = fetch_target_candidates(client).await;
+        return Err(MutationError::InvalidEdgeTarget {
+            invalid_field: "target_task_id".to_string(),
+            invalid_value: task_id.to_string(),
+            message: format!(
+                "Target node '{task_id}' is not an active TASK (type: {node_type}, state: {state})"
+            ),
+            suggested_repairs: repairs,
+            valid_target_candidates: candidates,
+        });
+    }
+
+    // 2. Atomically append test_run to attributes->'pre_merge_verification' JSONB array
+    let updated_row = client
+        .query_one(
+            "UPDATE graph_nodes \
+             SET attributes = jsonb_set( \
+                 COALESCE(attributes, '{}'::jsonb), \
+                 '{pre_merge_verification}', \
+                 COALESCE(attributes->'pre_merge_verification', '[]'::jsonb) || jsonb_build_array($2::jsonb) \
+             ) \
+             WHERE id = $1 \
+             RETURNING id, node_key, node_type, title, content, lifecycle_state, \
+                       governance_policy, created_by, job_id, doc_path, doc_hash, \
+                       byte_start, byte_end, attributes, trust_tier;",
+            &[&task_id, &test_run],
+        )
+        .await?;
+
+    let updated_node = GraphNode::from_row(&updated_row);
+
+    // 3. Record audit event
+    let batch_id = Uuid::new_v4();
+    let _ = insert_audit_event(
+        client,
+        batch_id,
+        "PRE_MERGE_VERIFICATION_RECORDED",
+        task_id,
+        "TASK",
+        actor_id,
+        actor_type,
+        token_fingerprint,
+        serde_json::json!({ "test_run": test_run }),
+        serde_json::to_value(&updated_node).unwrap_or_default(),
+    )
+    .await;
+
+    Ok(updated_node)
+}
+
+/// Payload for materializing canonical merge commits as `CODE_COMMIT` graph nodes (D-108, TB-12.2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeCommitPayload {
+    pub commit_sha: String,
+    pub author: String,
+    pub message: String,
+    #[serde(default)]
+    pub timestamp: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub task_ids: Vec<Uuid>,
+}
+
+/// Result returned after materializing a merge commit and linking upward `IMPLEMENTS` edges.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaterializedCommitResult {
+    pub commit_node: GraphNode,
+    pub implemented_edges: Vec<GraphEdge>,
+    pub batch_id: Uuid,
+    pub event_seq: i64,
+}
+
+/// Materializes a canonical merge commit as a typed `CODE_COMMIT` node in `graph_nodes`
+/// and creates upward directed `IMPLEMENTS` edges pointing to specified active `TASK` entities (D-108, INV-1, TB-12.2).
+///
+/// Runs under PostgreSQL transaction holding the global structural advisory lock
+/// `pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`.
+pub async fn materialize_code_commit(
+    client: &mut Client,
+    payload: &CodeCommitPayload,
+    actor_id: &str,
+    actor_type: &str,
+    token_fingerprint: &str,
+) -> Result<MaterializedCommitResult, MutationError> {
+    if payload.task_ids.is_empty() {
+        let (repairs, candidates) = fetch_target_candidates(client).await;
+        return Err(MutationError::InvalidEdgeTarget {
+            invalid_field: "task_ids".to_string(),
+            invalid_value: "[]".to_string(),
+            message: "materialize_code_commit requires at least one target task_id (INV-1)"
+                .to_string(),
+            suggested_repairs: repairs,
+            valid_target_candidates: candidates,
+        });
+    }
+
+    // 1. Pre-validate all target task IDs before opening transaction and acquiring locks (INV-8, INV-9, D-97)
+    for task_id in &payload.task_ids {
+        let task_str = task_id.to_string();
+        pre_validate_edge_target_endpoint(client, "task_id", &task_str).await?;
+
+        let row_opt = client
+            .query_opt(
+                "SELECT node_type, lifecycle_state FROM graph_nodes WHERE id = $1;",
+                &[task_id],
+            )
+            .await?;
+        if let Some(row) = row_opt {
+            let ntype: String = row.get("node_type");
+            let state: String = row.get("lifecycle_state");
+            if ntype != "TASK" || (state != "ACTIVE" && state != "NEEDS_REVERIFICATION") {
+                let (repairs, candidates) = fetch_target_candidates(client).await;
+                return Err(MutationError::InvalidEdgeTarget {
+                    invalid_field: "task_id".to_string(),
+                    invalid_value: task_id.to_string(),
+                    message: format!(
+                        "Referenced task target '{task_id}' must be an active TASK (found type: {ntype}, state: {state})"
+                    ),
+                    suggested_repairs: repairs,
+                    valid_target_candidates: candidates,
+                });
+            }
+        }
+    }
+
+    // 2. Begin structural mutation transaction holding global advisory lock (C-19, D-66)
+    let tx = begin_structural_mutation(client).await?;
+
+    let commit_id = Uuid::new_v4();
+    let batch_id = Uuid::new_v4();
+    let branch = payload.branch.as_deref().unwrap_or("main");
+    let timestamp = payload.timestamp.as_deref().unwrap_or("");
+    let node_key = format!("COMMIT-{}", payload.commit_sha);
+
+    let title = payload
+        .message
+        .lines()
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("VCS Merge Commit");
+
+    let attributes = serde_json::json!({
+        "commit_sha": payload.commit_sha,
+        "author": payload.author,
+        "message": payload.message,
+        "branch": branch,
+        "timestamp": timestamp,
+        "implemented_task_ids": payload.task_ids,
+    });
+
+    // 3. Insert CODE_COMMIT node in graph_nodes
+    let commit_row = tx
+        .client()
+        .query_one(
+            "INSERT INTO graph_nodes ( \
+                 id, node_key, node_type, title, content, lifecycle_state, \
+                 governance_policy, created_by, attributes, trust_tier \
+             ) VALUES ($1, $2, 'CODE_COMMIT', $3, $4, 'ACTIVE', 'LOCKED', $5, $6, 'HUMAN_APPROVED') \
+             RETURNING id, node_key, node_type, title, content, lifecycle_state, \
+                       governance_policy, created_by, job_id, doc_path, doc_hash, \
+                       byte_start, byte_end, attributes, trust_tier;",
+            &[
+                &commit_id,
+                &node_key,
+                &title,
+                &payload.message,
+                &payload.author,
+                &attributes,
+            ],
+        )
+        .await?;
+
+    let commit_node = GraphNode::from_row(&commit_row);
+
+    // 4. Create upward directed IMPLEMENTS edges pointing from commit_id to task_id (D-108, INV-1)
+    let mut implemented_edges = Vec::with_capacity(payload.task_ids.len());
+
+    for task_id in &payload.task_ids {
+        // Assert DAG cycle prevention
+        assert_no_dag_cycle(tx.client(), commit_id, *task_id).await?;
+
+        let edge_row = tx
+            .client()
+            .query_one(
+                "INSERT INTO graph_edges (from_node_id, to_node_id, edge_type, created_by, lifecycle_state) \
+                 VALUES ($1, $2, 'IMPLEMENTS', $3, 'ACTIVE') \
+                 RETURNING edge_id, from_node_id, to_node_id, edge_type, created_by, lifecycle_state;",
+                &[&commit_id, task_id, &payload.author],
+            )
+            .await?;
+
+        implemented_edges.push(GraphEdge::from_row(&edge_row));
+
+        // Mirror commit_sha into task's attributes->'vcs_commits'
+        let _ = tx
+            .client()
+            .execute(
+                "UPDATE graph_nodes \
+                 SET attributes = jsonb_set( \
+                     COALESCE(attributes, '{}'::jsonb), \
+                     '{vcs_commits}', \
+                     COALESCE(attributes->'vcs_commits', '[]'::jsonb) || jsonb_build_array($2::text) \
+                 ) \
+                 WHERE id = $1;",
+                &[task_id, &payload.commit_sha],
+            )
+            .await?;
+    }
+
+    // 5. Invariant INV-1 ancestry verification (commit maintains upward path to active requirement)
+    assert_ancestor_path(tx.client(), &[commit_id], false).await?;
+
+    // 6. Record audit event
+    let event_seq = insert_audit_event(
+        tx.client(),
+        batch_id,
+        "CODE_COMMIT_MATERIALIZED",
+        commit_id,
+        "CODE_COMMIT",
+        actor_id,
+        actor_type,
+        token_fingerprint,
+        serde_json::json!({
+            "commit_sha": payload.commit_sha,
+            "implemented_task_ids": payload.task_ids,
+        }),
+        serde_json::to_value(&commit_node).unwrap_or_default(),
+    )
+    .await
+    .map_err(MutationError::from)?;
+
+    // 7. Commit transaction
+    tx.commit().await?;
+
+    Ok(MaterializedCommitResult {
+        commit_node,
+        implemented_edges,
+        batch_id,
+        event_seq,
     })
 }

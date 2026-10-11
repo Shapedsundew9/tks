@@ -11,10 +11,11 @@ pub mod storage;
 pub mod worker;
 
 use cli::{
-    AdminSubcommand, ExplorerSubcommand, IdentitySubcommand, IngestArgs, McpStdioArgs, ServeArgs,
-    StagingSubcommand, TaskSubcommand, WorkspaceSubcommand, resolve_auth_token, resolve_server_url,
-    run_admin, run_explorer, run_identity, run_ingest, run_mcp_stdio, run_serve, run_staging,
-    run_task, run_workspace,
+    AdminSubcommand, ExplorerSubcommand, IdentitySubcommand, IngestArgs, McpStdioArgs,
+    ReleaseSubcommand, ServeArgs, StagingSubcommand, TaskSubcommand, VerificationSubcommand,
+    WorkspaceSubcommand, resolve_auth_token, resolve_server_url, run_admin, run_explorer,
+    run_identity, run_ingest, run_mcp_stdio, run_release, run_serve, run_staging, run_task,
+    run_verification, run_workspace,
 };
 
 /// Command-line arguments for the TKS CLI.
@@ -78,6 +79,14 @@ pub enum Commands {
     /// Launch or inspect the Real-Time Substrate Web Explorer.
     #[command(subcommand)]
     Explorer(ExplorerSubcommand),
+
+    /// Release readiness inspection operations (pre-merge and release scope).
+    #[command(subcommand)]
+    Release(ReleaseSubcommand),
+
+    /// CI verification test runs and contract drift detection operations.
+    #[command(subcommand)]
+    Verification(VerificationSubcommand),
 }
 
 /// Returns the default greeting message.
@@ -186,6 +195,18 @@ pub async fn run_with_args(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let server_url = resolve_server_url(cli.server_url.as_deref());
             let auth_token = resolve_auth_token(cli.auth_token.as_deref());
             run_explorer(subcmd, &server_url, &auth_token).await
+        }
+
+        Some(Commands::Release(subcmd)) => {
+            let server_url = resolve_server_url(cli.server_url.as_deref());
+            let auth_token = resolve_auth_token(cli.auth_token.as_deref());
+            run_release(subcmd, &server_url, &auth_token).await
+        }
+
+        Some(Commands::Verification(subcmd)) => {
+            let server_url = resolve_server_url(cli.server_url.as_deref());
+            let auth_token = resolve_auth_token(cli.auth_token.as_deref());
+            run_verification(subcmd, &server_url, &auth_token).await
         }
 
         None => {
