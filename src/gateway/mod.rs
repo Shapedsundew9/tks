@@ -1,6 +1,7 @@
 //! Unified Axum HTTP, REST, and Model Context Protocol (MCP) server gateway (WP-1.5, D-19, D-53).
 
 pub mod auth;
+pub mod error;
 pub mod explorer;
 pub mod mcp;
 pub mod routes;
@@ -19,6 +20,7 @@ use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 pub use auth::{AuthState, AuthenticatedAgent};
+pub use error::InvalidEdgeTargetEnvelope;
 pub use server::run_server;
 
 use crate::storage::StorageRepo;

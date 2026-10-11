@@ -354,6 +354,50 @@ pub async fn elaborate_in_workspace_client(
     attributes: Option<Value>,
     actor: &AuthenticatedAgent,
 ) -> Result<ElaboratedTaskResult, MutationError> {
+    // 0. Pre-transaction edge target endpoint validation (INV-9, D-97)
+    let ws_id_str = workspace_id.to_string();
+    let trimmed = parent_id.trim();
+    if trimmed.is_empty() {
+        let (repairs, candidates) = crate::storage::mutation::fetch_target_candidates(client).await;
+        return Err(MutationError::InvalidEdgeTarget {
+            invalid_field: "to_node_id".to_string(),
+            invalid_value: parent_id.to_string(),
+            message: "Edge endpoint identifier cannot be empty".to_string(),
+            suggested_repairs: repairs,
+            valid_target_candidates: candidates,
+        });
+    }
+
+    let parent_valid = if let Ok(uuid) = Uuid::parse_str(trimmed) {
+        let ids = vec![uuid];
+        let rows = client
+            .query(
+                "SELECT id FROM graph_nodes WHERE id = ANY($1::uuid[]) AND (lifecycle_state = 'ACTIVE' OR (lifecycle_state = 'DRAFT' AND (attributes->>'workspace_id') = $2));",
+                &[&ids, &ws_id_str],
+            )
+            .await?;
+        !rows.is_empty()
+    } else {
+        let row_opt = client
+            .query_opt(
+                "SELECT id FROM graph_nodes WHERE node_key = $1 AND (lifecycle_state = 'ACTIVE' OR (lifecycle_state = 'DRAFT' AND (attributes->>'workspace_id') = $2));",
+                &[&trimmed, &ws_id_str],
+            )
+            .await?;
+        row_opt.is_some()
+    };
+
+    if !parent_valid {
+        let (repairs, candidates) = crate::storage::mutation::fetch_target_candidates(client).await;
+        return Err(MutationError::InvalidEdgeTarget {
+            invalid_field: "to_node_id".to_string(),
+            invalid_value: parent_id.to_string(),
+            message: "Edge endpoint is not a registered node UUID".to_string(),
+            suggested_repairs: repairs,
+            valid_target_candidates: candidates,
+        });
+    }
+
     let tx = client.transaction().await?;
     // Note: STRICTLY DO NOT ACQUIRE pg_advisory_xact_lock (bypassing global structural advisory lock)
 

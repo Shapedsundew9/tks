@@ -34,6 +34,8 @@ pub struct JsonRpcRequest {
     pub method: String,
     #[serde(default)]
     pub params: Value,
+    #[serde(default, alias = "token")]
+    pub auth_token: Option<String>,
 }
 
 fn default_jsonrpc_version() -> String {
@@ -81,6 +83,20 @@ impl JsonRpcResponse {
                 code,
                 message: message.into(),
                 data: None,
+            }),
+        }
+    }
+
+    #[must_use]
+    pub fn error_with_data(id: Value, code: i32, message: impl Into<String>, data: Option<Value>) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id,
+            result: None,
+            error: Some(JsonRpcError {
+                code,
+                message: message.into(),
+                data,
             }),
         }
     }
@@ -179,15 +195,21 @@ pub async fn process_jsonrpc_request(
                 .cloned()
                 .unwrap_or(Value::Null);
 
-            // Forward auth_token from params to arguments if present
-            if let (Some(token), Some(arg_obj)) = (
-                request
-                    .params
-                    .get("auth_token")
-                    .or_else(|| request.params.get("token")),
-                arguments.as_object_mut(),
-            ) {
-                arg_obj.entry("auth_token").or_insert_with(|| token.clone());
+            // Forward auth_token from top-level or params to arguments if present (TB-4)
+            let token_opt = request
+                .auth_token
+                .as_ref()
+                .map(|s| Value::String(s.clone()))
+                .or_else(|| {
+                    request
+                        .params
+                        .get("auth_token")
+                        .or_else(|| request.params.get("token"))
+                        .cloned()
+                });
+
+            if let (Some(token), Some(arg_obj)) = (token_opt, arguments.as_object_mut()) {
+                arg_obj.entry("auth_token").or_insert(token);
             }
 
             let tool_name = match tool_name {
@@ -213,7 +235,11 @@ pub async fn process_jsonrpc_request(
         | "update_node_status"
         | "revert_mutations"
         | "reverify_node" => {
-            dispatch_tool_call(state, id, &request.method, request.params, caller).await
+            let mut params = request.params;
+            if let (Some(token), Some(param_obj)) = (&request.auth_token, params.as_object_mut()) {
+                param_obj.entry("auth_token").or_insert_with(|| Value::String(token.clone()));
+            }
+            dispatch_tool_call(state, id, &request.method, params, caller).await
         }
 
         _ => Some(JsonRpcResponse::error(
@@ -357,11 +383,7 @@ async fn dispatch_tool_call(
                     });
                     Some(JsonRpcResponse::success(id, result))
                 }
-                Err(err) => Some(JsonRpcResponse::error(
-                    id,
-                    -32000,
-                    format!("{}: {err}", err.code()),
-                )),
+                Err(err) => Some(format_mutation_error(id, err)),
             }
         }
 
@@ -395,11 +417,7 @@ async fn dispatch_tool_call(
                     });
                     Some(JsonRpcResponse::success(id, result))
                 }
-                Err(err) => Some(JsonRpcResponse::error(
-                    id,
-                    -32000,
-                    format!("{}: {err}", err.code()),
-                )),
+                Err(err) => Some(format_mutation_error(id, err)),
             }
         }
 
@@ -435,11 +453,7 @@ async fn dispatch_tool_call(
                     });
                     Some(JsonRpcResponse::success(id, result))
                 }
-                Err(err) => Some(JsonRpcResponse::error(
-                    id,
-                    -32000,
-                    format!("{}: {err}", err.code()),
-                )),
+                Err(err) => Some(format_mutation_error(id, err)),
             }
         }
 
@@ -496,29 +510,7 @@ async fn dispatch_tool_call(
                     };
                     Some(JsonRpcResponse::success(id, result))
                 }
-                Err(MutationError::ConfirmationRequired(preview)) => {
-                    let mut err_resp = JsonRpcResponse::error(
-                        id,
-                        -32000,
-                        format!(
-                            "ERR_CONFIRMATION_REQUIRED: cross-agent dependent tasks detected: {:?}, total affected nodes: {}",
-                            preview.cross_agent_dependencies,
-                            preview.affected_nodes.len()
-                        ),
-                    );
-                    if let Some(ref mut e) = err_resp.error {
-                        e.data = Some(serde_json::json!({
-                            "code": "ERR_CONFIRMATION_REQUIRED",
-                            "preview": preview
-                        }));
-                    }
-                    Some(err_resp)
-                }
-                Err(err) => Some(JsonRpcResponse::error(
-                    id,
-                    -32000,
-                    format!("{}: {err}", err.code()),
-                )),
+                Err(err) => Some(format_mutation_error(id, err)),
             }
         }
 
@@ -554,11 +546,7 @@ async fn dispatch_tool_call(
                     });
                     Some(JsonRpcResponse::success(id, result))
                 }
-                Err(err) => Some(JsonRpcResponse::error(
-                    id,
-                    -32000,
-                    format!("{}: {err}", err.code()),
-                )),
+                Err(err) => Some(format_mutation_error(id, err)),
             }
         }
 
@@ -567,5 +555,55 @@ async fn dispatch_tool_call(
             -32601,
             format!("Unknown tool: {tool_name}"),
         )),
+    }
+}
+
+/// Formats a `MutationError` into a structured JSON-RPC error response (INV-8, INV-9, TB-13.3).
+fn format_mutation_error(id: Value, err: MutationError) -> JsonRpcResponse {
+    match err {
+        MutationError::InvalidEdgeTarget {
+            invalid_field,
+            invalid_value,
+            message,
+            suggested_repairs,
+            valid_target_candidates,
+        } => {
+            let envelope = crate::gateway::error::InvalidEdgeTargetEnvelope::new(
+                invalid_field,
+                invalid_value,
+                &message,
+                suggested_repairs,
+                valid_target_candidates,
+            );
+            JsonRpcResponse::error_with_data(
+                id,
+                -32000,
+                format!("ERR_INVALID_EDGE_TARGET: {message}"),
+                Some(serde_json::to_value(&envelope).unwrap_or_default()),
+            )
+        }
+        MutationError::ConfirmationRequired(preview) => {
+            let mut err_resp = JsonRpcResponse::error(
+                id,
+                -32000,
+                format!(
+                    "ERR_CONFIRMATION_REQUIRED: cross-agent dependent tasks detected: {:?}, total affected nodes: {}",
+                    preview.cross_agent_dependencies,
+                    preview.affected_nodes.len()
+                ),
+            );
+            if let Some(ref mut e) = err_resp.error {
+                e.data = Some(serde_json::json!({
+                    "code": "ERR_CONFIRMATION_REQUIRED",
+                    "preview": preview
+                }));
+            }
+            err_resp
+        }
+        other => JsonRpcResponse::error(
+            id,
+            -32000,
+            format!("{}: {other}", other.code()),
+        ),
     }
 }

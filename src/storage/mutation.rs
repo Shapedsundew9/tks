@@ -53,6 +53,14 @@ pub enum MutationError {
     ConfirmationRequired(Box<RevertPreview>),
     /// Node reverification failed because direct upstream dependencies are not active.
     DependencyInactive(String),
+    /// Invariant INV-9 violated: referenced edge target is not a registered node UUID or not active.
+    InvalidEdgeTarget {
+        invalid_field: String,
+        invalid_value: String,
+        message: String,
+        suggested_repairs: Vec<serde_json::Value>,
+        valid_target_candidates: Vec<serde_json::Value>,
+    },
     /// Workspace merge conflict detected during merge analysis, rebase, or promotion.
     MergeConflict(Vec<MergeConflict>),
     /// General storage mutation error.
@@ -75,6 +83,7 @@ impl MutationError {
             Self::Pool(_) => "ERR_POOL",
             Self::ConfirmationRequired(_) => "ERR_CONFIRMATION_REQUIRED",
             Self::DependencyInactive(_) => "ERR_DEPENDENCY_INACTIVE",
+            Self::InvalidEdgeTarget { .. } => "ERR_INVALID_EDGE_TARGET",
             Self::MergeConflict(_) => "ERR_MERGE_CONFLICT",
             Self::Other(_) => "ERR_MUTATION_FAILED",
         }
@@ -125,6 +134,17 @@ impl std::fmt::Display for MutationError {
                 )
             }
             Self::DependencyInactive(msg) => write!(f, "ERR_DEPENDENCY_INACTIVE: {msg}"),
+            Self::InvalidEdgeTarget {
+                invalid_field,
+                invalid_value,
+                message,
+                ..
+            } => {
+                write!(
+                    f,
+                    "ERR_INVALID_EDGE_TARGET: {message} (field: '{invalid_field}', value: '{invalid_value}')"
+                )
+            }
             Self::MergeConflict(conflicts) => {
                 write!(
                     f,
@@ -400,6 +420,125 @@ pub async fn assert_no_dag_cycle(
     }
 }
 
+/// Queries candidate target nodes from `graph_nodes` to populate Actionable Remediation Envelopes (INV-8, INV-9, D-96, D-97).
+pub async fn fetch_target_candidates(
+    client: &(impl tokio_postgres::GenericClient + ?Sized),
+) -> (Vec<serde_json::Value>, Vec<serde_json::Value>) {
+    let rows = client
+        .query(
+            "SELECT id, node_key, title FROM graph_nodes WHERE lifecycle_state = 'ACTIVE' ORDER BY id LIMIT 5;",
+            &[],
+        )
+        .await
+        .unwrap_or_default();
+
+    let mut repairs = vec![
+        serde_json::json!("Verify that target exists in graph_nodes and is in ACTIVE state"),
+        serde_json::json!("Use a registered node UUID instead of a raw Git SHA or external commit reference"),
+    ];
+
+    let mut candidates = Vec::new();
+
+    for row in rows {
+        let id: Uuid = row.get("id");
+        let node_key: Option<String> = row.get("node_key");
+        let title: Option<String> = row.get("title");
+
+        candidates.push(serde_json::json!({
+            "node_id": id.to_string(),
+            "node_key": node_key,
+            "title": title,
+        }));
+
+        repairs.push(serde_json::json!({
+            "repair_type": "SUBSTITUTE_TARGET",
+            "replacement_target_id": id.to_string(),
+            "replacement_node_key": node_key,
+            "rationale": "Active node in graph_nodes eligible as edge target"
+        }));
+    }
+
+    (repairs, candidates)
+}
+
+/// Pre-validates edge target endpoints prior to opening transactions or acquiring advisory locks (INV-9, D-97).
+///
+/// Verifies that the endpoint identifier either:
+/// 1. Parses as a valid UUID and exists in `graph_nodes` in `ACTIVE` or `DRAFT` state.
+/// 2. Or resolves to an existing active node by canonical `node_key`.
+///
+/// If validation fails (e.g. malformed UUID, raw Git commit SHA string, or non-existent node),
+/// returns `MutationError::InvalidEdgeTarget` containing an Actionable Remediation Envelope.
+pub async fn pre_validate_edge_target_endpoint(
+    client: &(impl tokio_postgres::GenericClient + ?Sized),
+    invalid_field: &str,
+    target_identifier: &str,
+) -> Result<Uuid, MutationError> {
+    let trimmed = target_identifier.trim();
+    if trimmed.is_empty() {
+        let (repairs, candidates) = fetch_target_candidates(client).await;
+        return Err(MutationError::InvalidEdgeTarget {
+            invalid_field: invalid_field.to_string(),
+            invalid_value: target_identifier.to_string(),
+            message: "Edge endpoint identifier cannot be empty".to_string(),
+            suggested_repairs: repairs,
+            valid_target_candidates: candidates,
+        });
+    }
+
+    if let Ok(target_uuid) = Uuid::parse_str(trimmed) {
+        // Run lightweight pre-validation query using ANY($1::uuid[]) (TB-13.3, WP-4.4)
+        let ids = vec![target_uuid];
+        let rows = client
+            .query(
+                "SELECT id, lifecycle_state FROM graph_nodes WHERE id = ANY($1::uuid[]);",
+                &[&ids],
+            )
+            .await?;
+
+        if let Some(row) = rows.first() {
+            let state: String = row.get("lifecycle_state");
+            if state == "ACTIVE" || state == "DRAFT" {
+                return Ok(target_uuid);
+            }
+            // Target exists but is inactive (e.g. SUPERSEDED, ARCHIVED)
+            let (repairs, candidates) = fetch_target_candidates(client).await;
+            return Err(MutationError::InvalidEdgeTarget {
+                invalid_field: invalid_field.to_string(),
+                invalid_value: target_identifier.to_string(),
+                message: format!(
+                    "Referenced edge target node '{invalid_field}' resides in an inactive state ({state})."
+                ),
+                suggested_repairs: repairs,
+                valid_target_candidates: candidates,
+            });
+        }
+    } else {
+        // Check if identifier matches an active node by canonical node_key
+        let row_opt = client
+            .query_opt(
+                "SELECT id, lifecycle_state FROM graph_nodes WHERE node_key = $1 AND lifecycle_state = 'ACTIVE';",
+                &[&trimmed],
+            )
+            .await?;
+
+        if let Some(row) = row_opt {
+            let id: Uuid = row.get("id");
+            return Ok(id);
+        }
+    }
+
+    // Endpoint failed validation (invalid UUID, raw Git SHA, or non-existent target)
+    let (repairs, candidates) = fetch_target_candidates(client).await;
+    Err(MutationError::InvalidEdgeTarget {
+        invalid_field: invalid_field.to_string(),
+        invalid_value: target_identifier.to_string(),
+        message: "Edge endpoint is not a registered node UUID".to_string(),
+        suggested_repairs: repairs,
+        valid_target_candidates: candidates,
+    })
+}
+
 /// Inserts a directed structural edge between `from_id` and `to_id`, enforcing DAG cycle prevention.
 ///
 /// If `edge_type` is one of `FULFILLS`, `CONSTRAINED_BY`, or `DERIVED_FROM`, executes `check_dag_cycle`
@@ -408,7 +547,7 @@ pub async fn assert_no_dag_cycle(
 ///
 /// # Errors
 ///
-/// - Returns `MutationError::NotFound` if either `from_id` or `to_id` does not exist in `graph_nodes`.
+/// - Returns `MutationError::InvalidEdgeTarget` if either `from_id` or `to_id` does not exist in `graph_nodes`.
 /// - Returns `MutationError::CycleDetected` if the edge would introduce a directed cycle.
 /// - Returns `MutationError::Database` on query or constraint violations.
 pub async fn insert_structural_edge(
@@ -422,23 +561,38 @@ pub async fn insert_structural_edge(
     let edge_type_norm = edge_type.trim().to_uppercase();
     let state_norm = state.trim().to_uppercase();
 
-    // 1. Verify existence of both endpoints
-    let from_exists = client
-        .query_opt("SELECT id FROM graph_nodes WHERE id = $1;", &[&from_id])
+    // 1. Verify existence of both endpoints via pre-validation query (INV-9, D-97)
+    let ids = vec![from_id, to_id];
+    let rows = client
+        .query(
+            "SELECT id FROM graph_nodes WHERE id = ANY($1::uuid[]);",
+            &[&ids],
+        )
         .await?;
-    if from_exists.is_none() {
-        return Err(MutationError::NotFound(format!(
-            "Source node does not exist: {from_id}"
-        )));
+
+    let found_from = rows.iter().any(|r| r.get::<_, Uuid>("id") == from_id);
+    let found_to = rows.iter().any(|r| r.get::<_, Uuid>("id") == to_id);
+
+    if !found_from {
+        let (repairs, candidates) = fetch_target_candidates(client).await;
+        return Err(MutationError::InvalidEdgeTarget {
+            invalid_field: "from_node_id".to_string(),
+            invalid_value: from_id.to_string(),
+            message: format!("Edge endpoint 'from_node_id' is not a registered node UUID: {from_id}"),
+            suggested_repairs: repairs,
+            valid_target_candidates: candidates,
+        });
     }
 
-    let to_exists = client
-        .query_opt("SELECT id FROM graph_nodes WHERE id = $1;", &[&to_id])
-        .await?;
-    if to_exists.is_none() {
-        return Err(MutationError::NotFound(format!(
-            "Target node does not exist: {to_id}"
-        )));
+    if !found_to {
+        let (repairs, candidates) = fetch_target_candidates(client).await;
+        return Err(MutationError::InvalidEdgeTarget {
+            invalid_field: "to_node_id".to_string(),
+            invalid_value: to_id.to_string(),
+            message: format!("Edge endpoint 'to_node_id' is not a registered node UUID: {to_id}"),
+            suggested_repairs: repairs,
+            valid_target_candidates: candidates,
+        });
     }
 
     // 2. Cycle prevention check for structural edge types
@@ -833,6 +987,9 @@ pub async fn elaborate_task_client(
     attributes: Option<serde_json::Value>,
     actor: &AuthenticatedAgent,
 ) -> Result<ElaboratedTaskResult, MutationError> {
+    // 0. Pre-transaction edge target endpoint validation (INV-9, D-97, WP-4.4)
+    pre_validate_edge_target_endpoint(client, "to_node_id", parent_id).await?;
+
     let tx = client.transaction().await?;
 
     // 1. Enforce strict lock hierarchy (C-19, D-66): global transaction advisory lock
@@ -1195,6 +1352,9 @@ pub async fn propose_normative_draft_client(
     attributes: Option<serde_json::Value>,
     actor: &AuthenticatedAgent,
 ) -> Result<DraftProposalResult, MutationError> {
+    // 0. Pre-transaction edge target endpoint validation (INV-9, D-97, WP-4.4)
+    pre_validate_edge_target_endpoint(client, "to_node_id", target_id).await?;
+
     let tx = client.transaction().await?;
 
     // 1. Structural advisory lock (C-19, D-66)

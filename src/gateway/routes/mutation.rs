@@ -62,6 +62,30 @@ pub fn mutation_error_to_response(err: MutationError) -> (StatusCode, Json<Value
                 "message": msg
             })),
         ),
+        MutationError::InvalidEdgeTarget {
+            invalid_field,
+            invalid_value,
+            message,
+            suggested_repairs,
+            valid_target_candidates,
+        } => {
+            let envelope = crate::gateway::error::InvalidEdgeTargetEnvelope::new(
+                invalid_field,
+                invalid_value,
+                message,
+                suggested_repairs,
+                valid_target_candidates,
+            );
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::to_value(&envelope).unwrap_or_else(|_| {
+                    serde_json::json!({
+                        "code": "ERR_INVALID_EDGE_TARGET",
+                        "error": "ERR_INVALID_EDGE_TARGET"
+                    })
+                })),
+            )
+        }
         MutationError::ConfirmationRequired(preview) => (
             StatusCode::CONFLICT,
             Json(serde_json::json!({
@@ -129,6 +153,8 @@ pub struct NodeMutateRequest {
     pub target_node_id: Option<String>,
     pub node_id: Option<String>,
     pub target_id: Option<String>,
+    pub to_node_id: Option<String>,
+    pub from_node_id: Option<String>,
     pub mutation_type: String,
     pub proposed_title: Option<String>,
     pub title: Option<String>,
@@ -184,6 +210,7 @@ pub async fn mutate_node(
 ) -> Result<Response, (StatusCode, Json<Value>)> {
     let target = payload
         .target_node_id
+        .or(payload.to_node_id)
         .or(payload.node_id)
         .or(payload.target_id)
         .ok_or_else(|| {

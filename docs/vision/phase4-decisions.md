@@ -9,6 +9,9 @@
 | DEC-4.3 | WP-4.2 | Gateway Authorization Guard & Identity Attribution Protocol for Authority Auto-Promotion | Technical Trade-off | architecture.md §5.1, §9 (D-117), technical-backlog.md TB-11 | Implemented |
 | DEC-4.4 | WP-4.3 | Decoupled Bare ODB Blob Ingestion & Deferred Spec Branch Commitment | Technical Trade-off | architecture.md §5.1, §9 (D-119), technical-backlog.md TB-7.5 | Implemented |
 | DEC-4.5 | WP-4.3 | Omission Isolation & Atomic Two-Phase Invalidation Cascade for Living Graph Staging | Specification Gap | architecture.md §5.1, §9 (D-109), technical-backlog.md TB-7.5 | Implemented |
+| DEC-4.6 | WP-4.4 | MCP Official Wire Conformance & CamelCase inputSchema Serialization | Specification Gap | architecture.md §6, §7, §9 (D-95), technical-backlog.md TB-4 | Implemented |
+| DEC-4.7 | WP-4.4 | Relational Edge Target Pre-Validation & Actionable Remediation Envelopes | Architecture Invariant | architecture.md §5.2, §6.2, §9 (D-96, D-97), technical-backlog.md TB-13.3 | Implemented |
+| DEC-4.8 | WP-4.4 | Asynchronous Stdio Proxy Streaming & Non-Blocking Initialization Fallback | Technical Trade-off | architecture.md §7, technical-backlog.md TB-4, TB-13.1 | Implemented |
 
 ---
 
@@ -76,5 +79,41 @@
   * *Option B:* Omission Isolation & Atomic Two-Phase Invalidation. During re-ingestion, active nodes absent from the revised candidate set remain untouched in `ACTIVE` state in `graph_nodes`; their UUIDs are recorded strictly as an array in `ingestion_jobs.attributes->'omitted_node_ids'`. During staging approval under global advisory lock (`pg_advisory_xact_lock(hashtext('tks_structural_mutation'))`), if omissions are confirmed (`confirm_omissions: true`): (1) In Phase 1, atomically transition ALL confirmed omitted node IDs to `SUPERSEDED` in a single batch query; (2) In Phase 2, execute downward invalidation sweeps (`execute_downward_invalidation_tx`) on superseded and omitted roots, ensuring only remaining active descendants (e.g. downstream execution tasks) are cascaded to `NEEDS_REVERIFICATION`, while all omitted nodes remain permanently `SUPERSEDED`. Additionally, delete redundant draft edges before edge promotion to prevent `idx_graph_edges_active_unique` constraint violations. Pros: Guarantees zero disruption to active graph nodes during document review, provides explicit supervisor control via `--confirm-omissions`, eliminates invalidation cascade state collisions, and cleanly cascades staleness to external tasks. Cons: Requires two-phase transactional staging logic.
 * **Decision Taken & Rationale:** Adopted Option B. Omission isolation keeps active requirements stable until formal review, and two-phase batch supersession guarantees that all omitted entities achieve clean `SUPERSEDED` state while external downstream tasks receive appropriate downward invalidation cascades.
 * **Upstream Impact & Target Document:** `architecture.md` §5.1, §9 (D-109), `technical-backlog.md` TB-7.5. Feedback: Document two-phase omission processing and redundant draft edge deduplication in §5.1 and D-109.
+* **Status:** Implemented
+ 
+### DEC-4.6: MCP Official Wire Conformance & CamelCase inputSchema Serialization
+
+* **Work Package:** WP-4.4
+* **Category:** Specification Gap
+* **Context & Problem:** The official Model Context Protocol (MCP 2024-11-05 spec) mandates that tool parameter schemas serialize under the camelCase property key `inputSchema`. Prior implementations serialized tool schemas using Rust snake_case `input_schema` or inconsistent parameter formats, causing official MCP clients (e.g. Claude Code, Cursor, Windsurf) to fail tool discovery and schema validation during `tools/list`.
+* **Options Considered:**
+  * *Option A:* Maintain snake_case `input_schema` and require client-side shims or custom MCP proxies. Pros: No changes to server models. Cons: Breaks official MCP 2024-11-05 protocol conformance and ecosystem interoperability.
+  * *Option B:* Enforce strict camelCase serialization via `#[serde(rename = "inputSchema")]` across all `McpToolDefinition` structs and responses, verifying zero snake_case `input_schema` occurrences in wire payloads. Pros: 100% compliant with MCP 2024-11-05 specification across all 8 knowledge substrate tools; interoperable with Claude Code, Cursor, Windsurf out of the box. Cons: None.
+* **Decision Taken & Rationale:** Adopted Option B. All tool definitions serialize parameter schemas strictly under `inputSchema`, verified by regression test `test_mcp_wire_protocol_camel_case_input_schema`.
+* **Upstream Impact & Target Document:** `architecture.md` §6, §7, §9 (D-95), `technical-backlog.md` TB-4.
+* **Status:** Implemented
+
+### DEC-4.7: Relational Edge Target Pre-Validation & Actionable Remediation Envelopes
+
+* **Work Package:** WP-4.4
+* **Category:** Architecture Invariant
+* **Context & Problem:** When clients or sub-agents invoke task creation or draft proposal APIs referencing raw Git commit SHAs (e.g. `c0ffee...`) or non-existent entity IDs, executing PostgreSQL transactions without pre-validation caused foreign-key constraint violations, transaction aborts, and opaque database error logs. Invariants INV-8 (Actionable Remediation Envelopes) and INV-9 (Endpoint Integrity) mandate that invalid identifiers be detected and rejected before lock acquisition and transaction boundary entry.
+* **Options Considered:**
+  * *Option A:* Rely on PostgreSQL foreign key constraints to catch invalid IDs on INSERT, trapping the error and mapping to HTTP 400. Pros: Minimal application code. Cons: Incurs database transaction abort overhead, acquires advisory locks before failure, and yields opaque relational errors without candidate repair guidance.
+  * *Option B:* Pre-transaction validation query verifying that `from_node_id` and `to_node_id` parse as valid UUIDs and exist in `graph_nodes`. If invalid, immediately return HTTP 422 / JSON-RPC error `-32000` with code `ERR_INVALID_EDGE_TARGET` containing an Actionable Remediation Envelope (`invalid_field`, `invalid_value`, `suggested_repairs`, `valid_target_candidates`). Pros: Zero lock contention, prevents database error log pollution, satisfies Invariant INV-8 and INV-9, and provides automated repair options to LLM callers. Cons: Extra read query before edge insertion.
+* **Decision Taken & Rationale:** Adopted Option B. Lightweight endpoint check before transaction opening guarantees relational integrity and returns clear structured remediation envelopes.
+* **Upstream Impact & Target Document:** `architecture.md` §5.2, §6.2, §9 (D-96, D-97), `technical-backlog.md` TB-13.3.
+* **Status:** Implemented
+
+### DEC-4.8: Asynchronous Stdio Proxy Streaming & Non-Blocking Initialization Fallback
+
+* **Work Package:** WP-4.4
+* **Category:** Technical Trade-off
+* **Context & Problem:** `tks mcp-stdio` provides a stdio JSON-RPC streaming adapter for MCP clients. When the TKS daemon is unreachable or in non-interactive testing environments, synchronous blocking on `std::io::stdin().read_line()` locked the Tokio execution thread indefinitely because standard input remained open without delivering bytes.
+* **Options Considered:**
+  * *Option A:* Retain synchronous stdin locking and rely on external process killing. Pros: Minimal code changes. Cons: Test harnesses and non-interactive environments hang indefinitely; blocks asynchronous tasks on executor threads.
+  * *Option B:* Refactor stdio adapter to use asynchronous I/O (`tokio::io::AsyncBufReadExt`, `tokio::io::AsyncWriteExt`) and decouple stream handling into `run_mcp_stdio_io<R, W>`. In offline daemon mode, implement a 1-second timeout on initial request read; if no client request arrives within the window, emit standard JSON-RPC remediation error `-32000` with ID 1 and terminate cleanly with exit code 0. Pros: Eliminates executor thread blocking, prevents test lockups, allows unit testing via in-memory stream buffers, and gracefully handles unresponsive MCP clients. Cons: Requires generic async reader/writer abstractions.
+* **Decision Taken & Rationale:** Adopted Option B. Non-blocking async I/O with timed initial read eliminates stdin deadlocks while maintaining full MCP stdio proxy capabilities.
+* **Upstream Impact & Target Document:** `architecture.md` §7, `technical-backlog.md` TB-4, TB-13.1.
 * **Status:** Implemented
 

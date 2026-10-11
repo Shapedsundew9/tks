@@ -519,6 +519,7 @@ pub async fn handle_propose_node_mutation(
 ) -> Result<Value, MutationError> {
     let target_node_id = args
         .get("target_node_id")
+        .or_else(|| args.get("to_node_id"))
         .or_else(|| args.get("node_id"))
         .or_else(|| args.get("target_id"))
         .and_then(|v| v.as_str())
@@ -556,6 +557,10 @@ pub async fn handle_propose_node_mutation(
         .map_err(|e| MutationError::Other(format!("Invalid workspace_id: {e}")))?;
 
     let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
+
+    if let Some(from_id) = args.get("from_node_id").and_then(|v| v.as_str()) {
+        crate::storage::mutation::pre_validate_edge_target_endpoint(&**client, "from_node_id", from_id).await?;
+    }
 
     let mut_type_upper = mutation_type.to_uppercase();
 
@@ -880,4 +885,55 @@ pub async fn handle_reverify_node(
 
     let mut client = state.pool.get().await.map_err(MutationError::Pool)?;
     reverify_node(&mut client, node_id, rationale, updated_attributes, caller).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mcp_tools_list_serializes_camel_case_input_schema() {
+        let tools = list_tools();
+        assert_eq!(tools.len(), 8, "Expected exactly 8 MCP tools");
+
+        let serialized_value = serde_json::to_value(&tools).expect("Failed to serialize tools list");
+        let serialized_str = serde_json::to_string(&tools).expect("Failed to serialize tools string");
+
+        // Verify zero occurrences of snake_case input_schema in serialized JSON
+        assert!(
+            !serialized_str.contains("\"input_schema\""),
+            "Serialized tools JSON must not contain snake_case 'input_schema'"
+        );
+
+        // Verify 100% of tools serialize with camelCase inputSchema
+        let tools_array = serialized_value.as_array().expect("Tools must be a JSON array");
+        assert_eq!(tools_array.len(), 8);
+
+        for tool in tools_array {
+            let tool_name = tool.get("name").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+            assert!(
+                tool.get("inputSchema").is_some(),
+                "Tool '{tool_name}' must serialize schema under camelCase 'inputSchema'"
+            );
+            assert!(
+                tool.get("input_schema").is_none(),
+                "Tool '{tool_name}' must not have snake_case 'input_schema'"
+            );
+
+            let schema = tool.get("inputSchema").unwrap();
+            assert_eq!(
+                schema.get("type").and_then(|v| v.as_str()),
+                Some("object"),
+                "Tool '{tool_name}' inputSchema must be type: object"
+            );
+            assert!(
+                schema.get("properties").is_some(),
+                "Tool '{tool_name}' inputSchema must define properties"
+            );
+            assert!(
+                schema.get("required").is_some(),
+                "Tool '{tool_name}' inputSchema must define required array"
+            );
+        }
+    }
 }

@@ -4,13 +4,13 @@
 //! structured initialization error formatting with remediation code `-32000` on unreachable daemon,
 //! and complete diagnostic stream separation (logs to stderr, protocol strictly to stdout).
 
-use std::io::{BufRead, Write};
 use std::time::{Duration, Instant};
 
 use clap::Args;
 use futures_util::StreamExt;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde_json::Value;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 
 /// Arguments for `tks mcp-stdio`.
 #[derive(Debug, Args, Clone)]
@@ -30,6 +30,21 @@ pub struct McpStdioArgs {
 ///
 /// Returns an error only on unrecoverable I/O errors.
 pub async fn run_mcp_stdio(args: McpStdioArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let stdin = BufReader::new(tokio::io::stdin());
+    let stdout = tokio::io::stdout();
+    run_mcp_stdio_io(args, stdin, stdout).await
+}
+
+/// Executes the stdio proxy loop over custom async reader and writer streams.
+pub async fn run_mcp_stdio_io<R, W>(
+    args: McpStdioArgs,
+    mut reader: R,
+    mut writer: W,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let resolved_url = crate::cli::resolve_server_url(args.server_url.as_deref());
     let base_url = resolved_url.trim_end_matches('/');
     let auth_token = crate::cli::resolve_auth_token(args.auth_token.as_deref());
@@ -79,34 +94,37 @@ pub async fn run_mcp_stdio(args: McpStdioArgs) -> Result<(), Box<dyn std::error:
             "[tks-mcp-stdio] Waiting for incoming JSON-RPC on stdin to return remediation error..."
         );
 
-        let stdin = std::io::stdin();
-        let mut handle = stdin.lock();
         let mut line = String::new();
+        // Read incoming request with a timeout so non-interactive callers or tests never lock up
+        let read_result =
+            tokio::time::timeout(Duration::from_millis(1000), reader.read_line(&mut line)).await;
 
-        // Read incoming request from external MCP client (e.g. Claude Code, Cursor, Windsurf)
-        if handle.read_line(&mut line)? > 0 {
-            let req_json: Result<Value, _> = serde_json::from_str(&line);
-            let req_id = match &req_json {
-                Ok(val) => val.get("id").cloned().unwrap_or(Value::from(1)),
-                Err(_) => Value::from(1),
-            };
-
-            let err_response = serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {
-                    "code": -32000,
-                    "message": "TKS daemon is not running. Please start 'tks serve' in another terminal to enable Knowledge Substrate integration."
+        let req_id = match read_result {
+            Ok(Ok(n)) if n > 0 => {
+                let trimmed = line.trim();
+                let req_json: Result<Value, _> = serde_json::from_str(trimmed);
+                match &req_json {
+                    Ok(val) => val.get("id").cloned().unwrap_or(Value::from(1)),
+                    Err(_) => Value::from(1),
                 }
-            });
+            }
+            _ => Value::from(1),
+        };
 
-            // Write strictly to stdout and flush
-            let out_str = serde_json::to_string(&err_response)?;
-            println!("{out_str}");
-            std::io::stdout().flush()?;
-        }
+        let err_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {
+                "code": -32000,
+                "message": "TKS daemon is not running. Please start 'tks serve' in another terminal to enable Knowledge Substrate integration."
+            }
+        });
 
-        // Return exit code 0 to prevent external harnesses from marking adapter crashed
+        let mut out_bytes = serde_json::to_vec(&err_response)?;
+        out_bytes.push(b'\n');
+        writer.write_all(&out_bytes).await?;
+        writer.flush().await?;
+
         return Ok(());
     }
 
@@ -161,12 +179,9 @@ pub async fn run_mcp_stdio(args: McpStdioArgs) -> Result<(), Box<dyn std::error:
     }
 
     // Step 4: Stdio Streaming Loop
-    let stdin = std::io::stdin();
-    let mut handle = stdin.lock();
-
     loop {
         let mut line = String::new();
-        let bytes_read = handle.read_line(&mut line)?;
+        let bytes_read = reader.read_line(&mut line).await?;
         if bytes_read == 0 {
             // EOF reached
             eprintln!("[tks-mcp-stdio] Stdin EOF received, terminating proxy.");
@@ -190,8 +205,10 @@ pub async fn run_mcp_stdio(args: McpStdioArgs) -> Result<(), Box<dyn std::error:
                         "message": format!("Parse error: {e}")
                     }
                 });
-                println!("{}", serde_json::to_string(&err_resp)?);
-                std::io::stdout().flush()?;
+                let mut out_bytes = serde_json::to_vec(&err_resp)?;
+                out_bytes.push(b'\n');
+                writer.write_all(&out_bytes).await?;
+                writer.flush().await?;
                 continue;
             }
         };
@@ -216,8 +233,12 @@ pub async fn run_mcp_stdio(args: McpStdioArgs) -> Result<(), Box<dyn std::error:
                 if resp.status().is_success() {
                     let body_text = resp.text().await.unwrap_or_default();
                     if !body_text.trim().is_empty() {
-                        println!("{body_text}");
-                        std::io::stdout().flush()?;
+                        let mut out_bytes = body_text.into_bytes();
+                        if !out_bytes.ends_with(b"\n") {
+                            out_bytes.push(b'\n');
+                        }
+                        writer.write_all(&out_bytes).await?;
+                        writer.flush().await?;
                     }
                 } else {
                     let err_text = resp.text().await.unwrap_or_default();
@@ -230,8 +251,10 @@ pub async fn run_mcp_stdio(args: McpStdioArgs) -> Result<(), Box<dyn std::error:
                             "message": format!("Internal daemon error (HTTP {status}): {err_text}")
                         }
                     });
-                    println!("{}", serde_json::to_string(&err_resp)?);
-                    std::io::stdout().flush()?;
+                    let mut out_bytes = serde_json::to_vec(&err_resp)?;
+                    out_bytes.push(b'\n');
+                    writer.write_all(&out_bytes).await?;
+                    writer.flush().await?;
                 }
             }
             Err(e) => {
@@ -244,8 +267,10 @@ pub async fn run_mcp_stdio(args: McpStdioArgs) -> Result<(), Box<dyn std::error:
                         "message": format!("Failed to dispatch request to daemon: {e}")
                     }
                 });
-                println!("{}", serde_json::to_string(&err_resp)?);
-                std::io::stdout().flush()?;
+                let mut out_bytes = serde_json::to_vec(&err_resp)?;
+                out_bytes.push(b'\n');
+                writer.write_all(&out_bytes).await?;
+                writer.flush().await?;
             }
         }
     }
