@@ -3,14 +3,16 @@
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"dockerComposeFile": [
 		"docker-compose.yml",
-		"docker-compose.shared.yml"
+		"docker-compose.shared.yml",
+		"docker-compose.blender.yml"
 	],
 	"service": "app",
 	// Add "neo4j" and/or "postgres" for experiments that need them.
 	"runServices": [
 		"app",
 		"postgres",
-		"ollama"
+		"ollama",
+		"blender"
 	],
 	"workspaceFolder": "/workspace",
 	"postCreateCommand": "bash .devcontainer/post-create.sh",

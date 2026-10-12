@@ -27,3 +27,7 @@ if command -v psql >/dev/null 2>&1; then
 fi
 
 bash .shared/devcontainer/post-create.sh
+
+if ! bash scripts/blender/setup-mcp.sh; then
+    echo "Blender MCP setup failed; Rust setup is complete. Retry: bash scripts/blender/setup-mcp.sh" >&2
+fi

@@ -68,6 +68,9 @@ http://localhost:8080/explorer
 
 ## Testing & Verification
 
+For the optional GPU-accelerated Blender container and its Antigravity MCP
+integration, see [Blender development setup](docs/blender-development.md).
+
 Run tests:
 
 ```bash

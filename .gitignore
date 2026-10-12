@@ -39,3 +39,9 @@ scratchpad/*
 # Tooling and local assistant storage
 .codegraph/
 .gemini/
+
+# Shared Blender outputs
+/renders/
+/scenes/
+/.devcontainer/blender/__pycache__/
+/scripts/blender/__pycache__/

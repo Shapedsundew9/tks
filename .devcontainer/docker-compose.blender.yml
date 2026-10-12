@@ -1,0 +1,49 @@
+services:
+  blender:
+    build:
+      context: blender
+      dockerfile: Dockerfile
+    image: tks-blender:5.2.2-mcp2.1.9
+    pull_policy: if_not_present
+    restart: unless-stopped
+    shm_size: "1gb"
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: Etc/UTC
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics,display,video
+      BLENDER_MCP_DISABLE_TELEMETRY: "1"
+      START_DOCKER: "false"
+    ports:
+      - "127.0.0.1:3001:3001"
+    expose:
+      - "9876"
+    volumes:
+      - tks-blender-config:/config
+      - type: volume
+        source: blender-workspace
+        target: /workspaces/tks
+        volume:
+          nocopy: true
+          subpath: tks
+    devices:
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "/opt/tks-blender/check_ready.py", "--host", "127.0.0.1", "--timeout", "5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  tks-blender-config:
+  blender-workspace:
+    external: true
+    name: tks
