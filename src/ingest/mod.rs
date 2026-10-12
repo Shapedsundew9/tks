@@ -8,6 +8,7 @@ pub mod parser;
 pub mod reconcile;
 pub mod scaffolding;
 pub mod span;
+pub mod transcript;
 
 pub use classify::*;
 pub use drift::*;
@@ -17,6 +18,7 @@ pub use parser::*;
 pub use reconcile::*;
 pub use scaffolding::*;
 pub use span::*;
+pub use transcript::*;
 
 pub type IngestionError = IngestError;
 
