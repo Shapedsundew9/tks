@@ -10,6 +10,10 @@ RUN curl --fail --show-error --location \
       > /opt/tks-blender/blender_mcp.py \
     && rm /tmp/mcp-for-blender.tar.gz
 
+COPY extensions.lock.json fetch_extensions.py /opt/tks-blender/
+RUN python3 /opt/tks-blender/fetch_extensions.py \
+      /opt/tks-blender/extensions.lock.json /opt/tks-blender/extensions
+
 COPY bootstrap.py launch-blender.sh check_ready.py /opt/tks-blender/
 RUN chmod 755 /opt/tks-blender/launch-blender.sh \
     && printf '%s\n' '/opt/tks-blender/launch-blender.sh &' > /defaults/autostart \

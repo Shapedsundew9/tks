@@ -3,7 +3,7 @@ services:
     build:
       context: blender
       dockerfile: Dockerfile
-    image: tks-blender:5.2.2-mcp2.1.9
+    image: tks-blender:5.2.2-mcp2.1.9-ext1
     pull_policy: if_not_present
     restart: unless-stopped
     shm_size: "1gb"
@@ -14,6 +14,10 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics,display,video
       BLENDER_MCP_DISABLE_TELEMETRY: "1"
       START_DOCKER: "false"
+      # Optional asset-source keys, passed through from the caller's environment
+      # or .devcontainer/.env (gitignored). Empty disables the source.
+      BLENDERMCP_POLYPIZZA_API_KEY: ${BLENDERMCP_POLYPIZZA_API_KEY:-}
+      BLENDERMCP_SKETCHFAB_API_KEY: ${BLENDERMCP_SKETCHFAB_API_KEY:-}
     ports:
       - "127.0.0.1:3001:3001"
     expose:

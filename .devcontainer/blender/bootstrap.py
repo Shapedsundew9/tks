@@ -1,7 +1,9 @@
 import importlib
 import json
+import os
 from pathlib import Path
 import shutil
+import tomllib
 
 import addon_utils
 import bpy
@@ -34,11 +36,63 @@ def configure_gpu():
     raise RuntimeError("No NVIDIA OptiX or CUDA Cycles device found; GPU setup failed")
 
 
+EXTENSIONS_LOCK = Path("/opt/tks-blender/extensions.lock.json")
+EXTENSIONS_DIR = Path("/opt/tks-blender/extensions")
+BUNDLED_ADDONS = ("node_wrangler",)
+# Scene property -> environment variable holding the key it needs (None: keyless).
+ASSET_SOURCES = {
+    "blendermcp_use_polyhaven": None,
+    "blendermcp_use_polypizza": "BLENDERMCP_POLYPIZZA_API_KEY",
+    "blendermcp_use_sketchfab": "BLENDERMCP_SKETCHFAB_API_KEY",
+}
+
+
+def installed_version(repo_dir, package_id):
+    manifest = repo_dir / package_id / "blender_manifest.toml"
+    if not manifest.is_file():
+        return None
+    with manifest.open("rb") as handle:
+        return tomllib.load(handle).get("version")
+
+
+def install_extensions():
+    """Install pinned extensions offline and enable them; never blocks MCP startup."""
+    if not EXTENSIONS_LOCK.is_file():
+        print("TKS Blender: no extensions lock file; skipping extensions", flush=True)
+        return
+    lock = json.loads(EXTENSIONS_LOCK.read_text(encoding="utf-8"))
+    repo = lock["repository"]
+    repo_dir = Path(bpy.utils.user_resource("EXTENSIONS", path=repo, create=True))
+    report = {}
+    for package in lock["extensions"]:
+        package_id = package["id"]
+        try:
+            if installed_version(repo_dir, package_id) != package["version"]:
+                bpy.ops.extensions.package_install_files(
+                    filepath=str(EXTENSIONS_DIR / f"{package_id}.zip"),
+                    repo=repo,
+                    enable_on_install=True,
+                )
+            module = f"bl_ext.{repo}.{package_id}"
+            if module not in bpy.context.preferences.addons:
+                addon_utils.enable(module, default_set=True, persistent=True)
+            report[package_id] = installed_version(repo_dir, package_id)
+        except Exception as error:  # noqa: BLE001 - report and keep MCP available
+            report[package_id] = f"FAILED: {error}"
+    for module in BUNDLED_ADDONS:
+        if module not in bpy.context.preferences.addons:
+            addon_utils.enable(module, default_set=True, persistent=True)
+    print("TKS Blender extensions: " + json.dumps(report), flush=True)
+
+
 @persistent
 def configure_connection(_unused):
     scene = bpy.context.scene
     scene.blendermcp_port = 9876
     scene.blendermcp_auto_start_server = True
+    for prop, key_env in ASSET_SOURCES.items():
+        if hasattr(scene, prop):
+            setattr(scene, prop, key_env is None or bool(os.environ.get(key_env)))
 
 
 def main():
@@ -63,6 +117,7 @@ def main():
     if configure_connection not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.insert(0, configure_connection)
     bpy.context.preferences.inputs.use_mouse_continuous = False
+    install_extensions()
     configure_gpu()
     if not bpy.data.filepath:
         bpy.context.scene.render.engine = "CYCLES"

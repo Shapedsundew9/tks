@@ -22,6 +22,73 @@ The add-on runs in the GUI Blender process. Running background Blender does not
 start a usable MCP socket. The stdio MCP server runs inside the app and is launched
 by Antigravity, not by a separate Compose service.
 
+## Community extensions, assets, and agent skills
+
+### Extensions
+
+`.devcontainer/blender/extensions.lock.json` pins nine extensions from
+extensions.blender.org by version, URL, and sha256: A.N.T. Landscape, Sapling Tree Gen,
+Extra Mesh Objects, Extra Curve Objects, Sun Position, Node Arrange, Bool Tool,
+LoopTools, and Archimesh. Node Wrangler is bundled with Blender and is also enabled.
+The image build runs `fetch_extensions.py`, which verifies every checksum. At startup,
+`bootstrap.py` installs the archives offline into the lock's local repository and
+enables them. Blender's online access stays off.
+
+To add or update an extension:
+
+1. Edit the lock entry: `id`, `name`, `version`, `url`, `sha256`, and `license`
+   from the extensions API.
+2. Rebuild only Blender. Save live work first, because this restarts the GUI session.
+
+   ```bash
+   docker compose -p tks_devcontainer \
+     -f .devcontainer/docker-compose.yml \
+     -f .devcontainer/docker-compose.shared.yml \
+     -f .devcontainer/docker-compose.blender.yml \
+     up -d --no-deps --build blender
+   ```
+
+3. Document any new wrapper in the `blender-extensions` skill.
+
+The extensions are GPL. They are downloaded at build time and are not redistributed
+in this repository.
+
+### Assets
+
+- **Poly Haven** (CC0 HDRIs, textures, models) is enabled with no key, through the MCP
+  `search_assets` / `import_asset` tools.
+- **ambientCG** (CC0 PBR materials) is fetched from the app container:
+  `python3 scripts/blender/fetch_ambientcg.py search|download ...`. The files land in
+  `scenes/assets/ambientcg/`.
+- **Poly Pizza** and **Sketchfab** are enabled only when their keys are set. Put
+  `BLENDERMCP_POLYPIZZA_API_KEY` and/or `BLENDERMCP_SKETCHFAB_API_KEY` in
+  `.devcontainer/.env` (gitignored), then recreate the Blender service. Never commit keys.
+
+Every download is recorded in `scenes/assets/credits.json` (asset, source, licence,
+author, URL). Check that ledger before publishing a render. CC-BY assets need
+attribution.
+
+### Agent skills and helper library
+
+Antigravity loads the workspace skills in `.agents/skills/`:
+
+| Skill | Purpose |
+| --- | --- |
+| `blender-bpy-5x` | Blender 5.2 API facts and removed-API table (stops 2.8x–4.x hallucinations), the `tks_bpy` reference, and vendored MIT upstream guides |
+| `blender-extensions` | Which pinned extension to use for what, with verified gotchas |
+| `blender-assets` | Asset source choice, imports, licensing, and the credits ledger |
+| `blender-scene-director` | Staged pipeline: orient → route (outdoor / interior / product / low-poly / procedural) → plan → build with checkpoints → critique → render |
+
+Scene code runs inside Blender through the MCP `execute_blender_code` tool and imports
+`scripts/blender/tks_bpy`, a tested helper library for scenes, materials, lighting,
+world, cameras, Geometry Nodes scatter, atmosphere, extensions, assets, and render.
+The helpers are scene-scoped: they never reuse or mutate objects, collections, or
+materials that they did not create.
+
+`scripts/blender/setup-mcp.sh` pre-approves the Blender MCP tools that the skills use
+in `~/.gemini/antigravity-cli/settings.json`. It is idempotent, preserves other
+entries, and backs up the file before changing it.
+
 ## Instance-specific workspace
 
 This running workspace lives at `/workspaces/tks`, inside external Docker volume
@@ -150,6 +217,16 @@ Focused standard-library tests:
 python3 -m unittest discover -s scripts/blender -p 'test_*.py' -v
 bash -n scripts/blender/setup-mcp.sh .devcontainer/blender/launch-blender.sh
 ```
+
+When Blender is reachable, the same command also runs these live suites:
+
+- `test_tks_bpy_live.py` exercises the helper library in a temporary scene.
+- `test_recipes_live.py` runs every `# recipe:` block in the `blender-scene-director`
+  references, in order and in a fresh namespace per block. This catches drift
+  between the skills and the Blender API.
+
+Both suites restore the original scenes afterward. They skip when no Blender
+socket is reachable.
 
 Live MCP/GPU test, using the installed tool dependencies:
 

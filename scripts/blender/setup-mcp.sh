@@ -44,25 +44,69 @@ fi
 UV_PYTHON_PREFERENCE=only-managed BLENDER_MCP_DISABLE_TELEMETRY=1 \
     "$UVX" --python 3.11 mcp-for-blender==2.1.9 --help
 
+backup_config() {
+    local config="$1" backup
+    backup="$config.before-blender.$(date -u +%Y%m%dT%H%M%S).bak"
+    cp -p "$config" "$backup"
+    chmod 600 "$backup"
+    echo "Private Antigravity configuration backup: $backup"
+}
+
 SERVERS="$("$AGY" mcp list)"
 if grep -q '^blender[[:space:]]' <<< "$SERVERS"; then
     echo "Existing Blender MCP registration preserved (including its enabled/disabled state)."
-    exit 0
+else
+    for CONFIG in "$HOME/.gemini/antigravity-cli/settings.json" "$HOME/.gemini/config/mcp_config.json"; do
+        if [[ -f "$CONFIG" ]]; then
+            backup_config "$CONFIG"
+        fi
+    done
+    "$AGY" mcp add \
+        --env BLENDER_HOST=blender \
+        --env BLENDER_PORT=9876 \
+        --env UV_PYTHON_PREFERENCE=only-managed \
+        --env BLENDER_MCP_DISABLE_TELEMETRY=1 \
+        --env TMPDIR="$SHARED_TEMP" \
+        blender "$UVX" --python 3.11 mcp-for-blender==2.1.9
+    "$AGY" mcp list
 fi
 
-for CONFIG in "$HOME/.gemini/antigravity-cli/settings.json" "$HOME/.gemini/config/mcp_config.json"; do
-    if [[ -f "$CONFIG" ]]; then
-        BACKUP="$CONFIG.before-blender.$(date -u +%Y%m%dT%H%M%S).bak"
-        cp -p "$CONFIG" "$BACKUP"
-        chmod 600 "$BACKUP"
-        echo "Private Antigravity configuration backup: $BACKUP"
+# Pre-approve the Blender MCP tools the repo skills rely on (other entries are preserved).
+SETTINGS="$HOME/.gemini/antigravity-cli/settings.json"
+ALLOW_TOOLS=(get_addon_status get_scene_info execute_blender_code look search_assets import_asset
+    viewport_capture viewport_latest viewport_pick)
+if [[ -f "$SETTINGS" ]]; then
+    MISSING="$(python3 - "$SETTINGS" "${ALLOW_TOOLS[@]}" <<'PY'
+import json, sys
+settings = json.load(open(sys.argv[1]))
+allow = settings.get("permissions", {}).get("allow", [])
+print(" ".join(t for t in sys.argv[2:] if f"mcp(blender/{t})" not in allow))
+PY
+)"
+    if [[ -n "$MISSING" ]]; then
+        backup_config "$SETTINGS"
     fi
-done
-"$AGY" mcp add \
-    --env BLENDER_HOST=blender \
-    --env BLENDER_PORT=9876 \
-    --env UV_PYTHON_PREFERENCE=only-managed \
-    --env BLENDER_MCP_DISABLE_TELEMETRY=1 \
-    --env TMPDIR="$SHARED_TEMP" \
-    blender "$UVX" --python 3.11 mcp-for-blender==2.1.9
-"$AGY" mcp list
+else
+    mkdir -p "$(dirname "$SETTINGS")"
+    echo '{}' > "$SETTINGS"
+    chmod 600 "$SETTINGS"
+    MISSING="${ALLOW_TOOLS[*]}"
+fi
+if [[ -n "$MISSING" ]]; then
+    python3 - "$SETTINGS" $MISSING <<'PY'
+import json, os, sys
+path = sys.argv[1]
+settings = json.load(open(path))
+allow = settings.setdefault("permissions", {}).setdefault("allow", [])
+allow.extend(f"mcp(blender/{t})" for t in sys.argv[2:])
+tmp = f"{path}.tmp"
+with open(tmp, "w") as fh:
+    json.dump(settings, fh, indent=2)
+    fh.write("\n")
+os.chmod(tmp, os.stat(path).st_mode & 0o777)
+os.replace(tmp, path)
+PY
+    echo "Allowed Blender MCP tools in $SETTINGS: $MISSING"
+else
+    echo "Blender MCP tool permissions already present in $SETTINGS."
+fi

@@ -65,3 +65,12 @@ The devcontainer compose stack includes an isolated Ollama service for local inf
 - Keep-alive: `-1`
 - Max loaded models: `1`
 - Flash attention: enabled
+
+## Blender scenes (MCP)
+
+- Blender 5.2.2 LTS (Python 3.13) runs in the `blender` devcontainer service and is driven via the `blender` MCP server (`execute_blender_code`, `get_scene_info`, `look`, `search_assets`, `import_asset`, `viewport_*`). Never assume 2.8x–4.x APIs.
+- Before writing scene code, load the workspace skills in `.agents/skills/`: `blender-scene-director` (any scene/render request), `blender-bpy-5x` (API facts and the `tks_bpy` helper library), `blender-extensions` (pinned community add-ons), `blender-assets` (Poly Haven, ambientCG, credits).
+- Prefer `scripts/blender/tks_bpy` helpers over raw bpy; each MCP call has a fresh namespace, so re-import and look objects up with `T.scene.find`.
+- Never modify or delete the user's existing scenes, objects, or materials; build in a new scene and save work under `scenes/`, renders under `renders/`.
+- Record every downloaded asset in `scenes/assets/credits.json`; never commit asset API keys.
+- Validate changes to `tks_bpy` or skill recipes with `python3 -m unittest discover -s scripts/blender -p 'test_*.py' -v`.

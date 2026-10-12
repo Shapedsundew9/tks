@@ -1,0 +1,79 @@
+{
+  "blender_version": "5.2.2",
+  "repository": "user_default",
+  "source": "https://extensions.blender.org/api/v1/extensions/",
+  "extensions": [
+    {
+      "id": "antlandscape",
+      "name": "A.N.T.Landscape",
+      "version": "0.2.0",
+      "url": "https://extensions.blender.org/download/sha256:230571bc14c50952f3af99b70fdb365cf0cee503382975dc38149407a5a4c8c0/add-on-antlandscape-v0.2.0.zip",
+      "sha256": "230571bc14c50952f3af99b70fdb365cf0cee503382975dc38149407a5a4c8c0",
+      "license": "GPL-2.0-or-later"
+    },
+    {
+      "id": "sapling_tree_gen",
+      "name": "Sapling Tree Gen",
+      "version": "0.3.7",
+      "url": "https://extensions.blender.org/download/sha256:27a478262e1c86612a9c3daffe7f4dce2802f5bc2294033462e5adc6d9c0080f/add-on-sapling-tree-gen-v0.3.7.zip",
+      "sha256": "27a478262e1c86612a9c3daffe7f4dce2802f5bc2294033462e5adc6d9c0080f",
+      "license": "GPL-3.0-or-later"
+    },
+    {
+      "id": "extra_mesh_objects",
+      "name": "Extra Mesh Objects",
+      "version": "0.4.1",
+      "url": "https://extensions.blender.org/download/sha256:c85ce4bb2820d5af26b4dad66bf1a0fdeb4bfeffc668c5e4f098f1e416ed434b/add-on-extra-mesh-objects-v0.4.1.zip",
+      "sha256": "c85ce4bb2820d5af26b4dad66bf1a0fdeb4bfeffc668c5e4f098f1e416ed434b",
+      "license": "GPL-3.0-or-later"
+    },
+    {
+      "id": "extra_curve_objectes",
+      "name": "Extra Curve Objects",
+      "version": "0.2.0",
+      "url": "https://extensions.blender.org/download/sha256:4ca91ce5563d094694b2c7f1fc9acece8b5ba8f5dd017a49f080e9cfa5553909/add-on-extra-curve-objectes-v0.2.0.zip",
+      "sha256": "4ca91ce5563d094694b2c7f1fc9acece8b5ba8f5dd017a49f080e9cfa5553909",
+      "license": "GPL-3.0-or-later"
+    },
+    {
+      "id": "sun_position",
+      "name": "Sun Position",
+      "version": "4.4.0",
+      "url": "https://extensions.blender.org/download/sha256:b8a83c2ff04fad709687de51065faf6add52e824ec06fef22b4a95fe98955856/add-on-sun-position-v4.4.0.zip",
+      "sha256": "b8a83c2ff04fad709687de51065faf6add52e824ec06fef22b4a95fe98955856",
+      "license": "GPL-3.0-or-later"
+    },
+    {
+      "id": "node_arrange",
+      "name": "Node Arrange",
+      "version": "1.12.1",
+      "url": "https://extensions.blender.org/download/sha256:ccce3db24525e89ab7c019a550bba1adbbe6bb5ccfc78a1957c484b8bd8d6c06/add-on-node-arrange-v1.12.1.zip",
+      "sha256": "ccce3db24525e89ab7c019a550bba1adbbe6bb5ccfc78a1957c484b8bd8d6c06",
+      "license": "GPL-3.0-or-later"
+    },
+    {
+      "id": "bool_tool",
+      "name": "Bool Tool",
+      "version": "2.1.0",
+      "url": "https://extensions.blender.org/download/sha256:d3a282db25925d115dd1a7638aa28116f2f9198423b0afb6179e8127d59c06e1/add-on-bool-tool-v2.1.0.zip",
+      "sha256": "d3a282db25925d115dd1a7638aa28116f2f9198423b0afb6179e8127d59c06e1",
+      "license": "GPL-3.0-or-later"
+    },
+    {
+      "id": "looptools",
+      "name": "LoopTools",
+      "version": "4.7.7",
+      "url": "https://extensions.blender.org/download/sha256:ff1ca3b3fff73094379da8b1fa2c1acbc9d88d26b7dfc73bb9de5941a6b50108/add-on-looptools-v4.7.7.zip",
+      "sha256": "ff1ca3b3fff73094379da8b1fa2c1acbc9d88d26b7dfc73bb9de5941a6b50108",
+      "license": "GPL-2.0-or-later"
+    },
+    {
+      "id": "archimesh",
+      "name": "Archimesh",
+      "version": "1.2.5",
+      "url": "https://extensions.blender.org/download/sha256:44745a86dd472e296e06cd45c511e002a1105512a73009cb0018c87611d18d87/add-on-archimesh-v1.2.5.zip",
+      "sha256": "44745a86dd472e296e06cd45c511e002a1105512a73009cb0018c87611d18d87",
+      "license": "GPL-2.0-or-later"
+    }
+  ]
+}

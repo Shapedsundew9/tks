@@ -45,3 +45,4 @@ scratchpad/*
 /scenes/
 /.devcontainer/blender/__pycache__/
 /scripts/blender/__pycache__/
+/scripts/blender/tks_bpy/__pycache__/
