@@ -263,3 +263,21 @@ This document captures vital component-level designs, library evaluation tasks, 
      * *Deterministic Token Clamping Semantics:* When `max_tokens` is specified: (1) Use a conservative character-based heuristic budget ($1\text{ token} \approx 3.5\text{ characters UTF-8}$), eliminating external tokenizer dependencies (C-25); (2) Axis truncation priority: Axis 1 and Axis 3 are mandatory; Axis 2 and Axis 4 drop whole items; (3) If the mandatory axes alone exceed `max_tokens`, return structured error `ERR_CONTEXT_BUDGET_EXCEEDED` with the required minimum token count, preventing malformed contract slicing and agent hallucination (addressing LD-8).
   3. **Pre-Transaction Relational Edge Target Validation:** In `src/storage/mutation.rs`, before initiating any edge creation transaction (`propose_node_mutation`, `create_subtask`), execute an endpoint pre-validation check: verify that both `from_node_id` and `to_node_id` parse as valid UUIDs and exist in `graph_nodes`. If a caller supplies an invalid format or non-existent ID (such as an external Git commit SHA string), reject immediately with HTTP 422 / JSON-RPC error code `ERR_INVALID_EDGE_TARGET`, returning `{ "code": "ERR_INVALID_EDGE_TARGET", "message": "Edge endpoint is not a registered node UUID", "invalid_field": "to_node_id", "invalid_value": "<value>" }`.
   4. **Actionable Remediation Envelope Builder:** In `src/gateway/error.rs`, implement structured remediation payload generation for Invariant INV-1 ancestry failures (`ERR_INVALID_ANCESTOR_PATH`). Include the target node ID, terminal node ID, terminal node type (`SPECIFICATION`), and deterministic repair options (`PROMOTE_ANCESTOR` action with `node_id`, `target_type = 'REQUIREMENT'`, and `authorized = true/false` based on caller claims; or `REORIENT_EDGE` / `LINK_PARENT_TASK` to ensure upward directed ancestry).
+
+---
+
+## TB-14
+
+* **ID:** TB-14
+* **Title:** MCP `prompts/*` Capability for Versioned Pass Instructions (Intent Elicitation Track)
+* **Origin:** docs/plans/intent-elicitation-eb-plan.md EB-4, D-124
+* **Status:** Planned (Intent Elicitation Track EB-4)
+* **Description/Tactical Details:**
+  1. **MCP Prompts Protocol Capability (`prompts/list` & `prompts/get`):** In `src/gateway/mcp/mod.rs` and `src/bin/mcp_stdio.rs`, advertise the `prompts` capability in the MCP `initialize` handshake (`capabilities: { prompts: {} }`). Implement JSON-RPC method handlers for `prompts/list` (returning declared prompt names, descriptions, and argument schemas) and `prompts/get` (returning parameterized prompt message sequences).
+  2. **Canonical Versioned Pass Instructions for E-B Pipeline:** Implement versioned, immutable prompt templates for the Intent Elicitation pipeline passes:
+     * Pass 1: Episode Segmentation & Coreference Resolution (`elicitation/episode-segmentation/v1`).
+     * Pass 2: Schema-Constrained Technology-Agnostic Extraction (`elicitation/goal-extraction/v1`).
+     * Pass 4: Entailment Verification Judge Pass (`elicitation/entailment-judge/v1`).
+     * Pass 5: Gap Analysis & Grounded Open Question Generation (`elicitation/gap-questions/v1`).
+     Standardizing these prompts inside TKS ensures that any external MCP-capable agent CLI (Copilot CLI, Claude Code, Codex) receives byte-for-byte identical, version-governed instructions.
+  3. **Schema Parameter Validation:** Validate client prompt arguments against declared parameter schemas and interpolate variables securely, ensuring prompts enforce technology-agnostic extraction rules and verbatim grounding constraints.

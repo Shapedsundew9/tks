@@ -93,11 +93,12 @@ flowchart LR
     P3["Phase 3: Impact Analysis & Observability<br/><i>[COMPLETED]</i>"]:::completed
 
     P4["Phase 4: Foundational Ingestion & Closed-Loop Traceability<br/><i>(Heading Promotion + MCP camelCase + Edge Pre-Val + VCS/CI Traceability + Gates 1-2 Re-Verification)</i>"]:::secondary
+    PE["Intent Elicitation Track (E-A / E-B)<br/><i>(Conversational Elicitation + Grounded Goal Extraction & Gap Loop)</i>"]:::secondary
     P5["Phase 5: Cognitive Planning Rails & Governed Dogfooding<br/><i>(Multi-Axis Context + Remediation Envelopes + Bounded Gate 4)</i>"]:::secondary
     P6["Phase 6: Modular Governance Profiles & Scheduled Maintenance<br/><i>(Policy Packs + On-Demand Audit + Invalidation Cascades)</i>"]:::secondary
     PN["Phase N+: Advanced Strategic Horizons<br/><i>(Real-World Feature Extension + Self-Reimplementation POC)</i>"]:::tertiary
 
-    P0 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> PN
+    P0 --> P1 --> P2 --> P3 --> P4 --> PE --> P5 --> P6 --> PN
 ```
 
 ### Completed Phases Summary (Phases 0–3)
@@ -165,6 +166,40 @@ The foundational substrate, storage architecture, mutation engines, and supervis
      - Re-execute Milestone 1 (CommonMark AST heading classification promoting top-level containers and `#`/`##` headings to `REQUIREMENT` nodes, and MCP protocol conformance) and Gate 2 (agent mutation via MCP without SQL bypasses) under strict criteria once Phase 4 fixes land, updating the evidence ledger.
   10. **Steady-State Curation Overhead Tracking [ROADMAP / SEQUENCING]:**
       - Instrument human review workflows in CLI and Web Explorer to record supervisory time per staged batch, delta reconciliation, and invalidation triage, generating baseline empirical data for `CAL-STEADY` and H-2.
+
+---
+
+### Intent Elicitation Track: Vision Articulation & Grounded Goal Extraction
+
+- **Primary Objective:** Bridge the fuzzy intent articulation gap preceding formal requirements through externalized conversational elicitation, schema-constrained technology-agnostic goal extraction with mechanical verbatim grounding and entailment verification, and iterative gap-question loops.
+- **Core Deliverables:**
+  1. **E-A — Conversational Elicitation & Transcription (Backlogged — not yet planned):**
+     - Browser page with microphone audio capture.
+     - Speech recognition model for phonetic English transcription.
+     - Language-model cleanup of conversational disfluencies and ASR artifacts.
+     - Agent- or locally-driven Socratic questioning and boundary scoping by negation.
+     - Normalized transcript emission in `tks-transcript/v1` format (spec: [elicitation-transcript-format.md](docs/vision/elicitation-transcript-format.md)).
+     - *Open Spike:* MCP sampling vs. local Ollama offload for TKS-initiated conversations.
+  2. **E-B — Grounded Goal Extraction & Gap Analysis (Planned):**
+     - Implementation details specified in [docs/plans/intent-elicitation-eb-plan.md](docs/plans/intent-elicitation-eb-plan.md); evaluation framework and metrics defined in [elicitation-evaluation.md](docs/vision/elicitation-evaluation.md); transcript format specified in [elicitation-transcript-format.md](docs/vision/elicitation-transcript-format.md).
+     - *Pipeline Stages:*
+       - Pass 0: Mechanical transcript turn and vision document parsing (`tks-transcript/v1` and CommonMark) with exact byte spans.
+       - Pass 1: Contiguous topic episode segmentation and verbatim referent coreference resolution.
+       - Pass 2: Schema-constrained technology-agnostic extraction (hard goals, soft goals, anti-goals, stakeholder attribution, technology lint against premature concretization).
+       - Pass 3: Bidirectional mechanical grounding verification against source utterances with byte sub-span resolution.
+       - Pass 4: Entailment verification via agent judge or local NLI cross-encoder, filtering out phantom scope creep and un-entailed assertions.
+       - Pass 5: Deterministic structural gap detection and grounded open question phrasing for cycle-$n+1$.
+       - Pass 6: Staging in narrative order for human supervisory review.
+     - *Work Packages:*
+       - EB-0: Articulate track in vision, architecture, and backlog (docs only).
+       - EB-1: Ground-truth corpus (10 synthetic transcripts with planted traps + dogfood `vision.md`), label schema, metrics, and fixture integrity test.
+       - EB-2: Transcript and vision-doc parser (`src/ingest/transcript.rs`).
+       - EB-3: Schema and invariants migration `V7__goal_model.sql` (`GOAL`, `SOURCE_EXCERPT` node types, edges, INV-1 expansion).
+       - EB-4: MCP extraction session protocol tools and session state tracking.
+       - EB-5: Entailment verification spike (agent judge vs. local ONNX NLI cross-encoder).
+       - EB-6: Gap analysis engine, grounded question generator, and multi-cycle goal reconciliation.
+       - EB-7: Staging review UX in CLI and Web Explorer.
+       - EB-8: Evaluation harness and exit gate validation against calibration targets.
 
 ---
 
@@ -336,6 +371,20 @@ flowchart TD
 
 ---
 
+### Intent Elicitation E-B MVD: Grounded Goal Extraction & Gap Closure
+
+- **Preconditions:** Active property graph with Phase 4 completed; `tks serve` daemon running; MCP client configured; synthetic evaluation transcripts and `docs/vision/vision.md` available.
+- **Test Procedure:**
+  1. *Dogfood Extraction Run on `vision.md`:* Execute the E-B extraction pipeline (Passes 0 through 6) on `docs/vision/vision.md`. Verify Pass 0 parses document sentence chunks with exact byte spans, Pass 1 segments thematic episodes, and Pass 2 extracts hard goals, soft goals, and anti-goals under technology-agnostic schema constraints.
+  2. *Mechanical Grounding & Entailment Verification:* Verify that 100% of candidate goals possess mechanically verified verbatim quote substrings mapped to source spans (Pass 3), pass NLI entailment verification against hallucinations (Pass 4), and trigger zero premature-concretization warnings against the technology lexicon.
+  3. *Narrative Staging Review:* Inspect staged goals via `tks staging list` or Web Explorer in narrative document order with modality, confidence, and verification badges.
+  4. *Multi-Cycle Iteration & Gap Closure:* Ingest a cycle-2 transcript (e.g. `T10-capacity-c2.md`) that explicitly answers open questions formulated by Pass 5 gap detection from cycle 1 (`T01-capacity.md`).
+- **Expected Results:**
+  - *Dogfood Extraction:* $\ge 70$% of extracted goals approved unedited by the human supervisor; zero goals judged "invented" (phantom catch rate $\ge 0.80$); generated gap questions judged useful and actionable.
+  - *Multi-Cycle Gap Closure:* Cycle-2 ingestion resolves targeted gaps from cycle 1, closes open questions, and preserves stable UUIDs of existing unchanged goals through three-way delta reconciliation.
+
+---
+
 ### Phase 5 MVD: Cognitive Planning Rails & Bounded Dogfooding Benchmark (Gate 4)
 
 - **Preconditions:** Phase 4 active; governance policy on target parent set to `AUTONOMOUS_ELABORATION`.
@@ -403,6 +452,11 @@ flowchart TD
 | **CAL-DOWN-1** | Commercial Utility Model Guidance & Token Efficiency (Tier 1) | High-speed commercial utility model guided by `get_elaboration_context` matches unguided frontier model plan completeness and feature fidelity evaluated in a 2×2 factorial design against Canonical Agentic Baseline on Real-World Feature Extension and Long-Horizon benchmarks | Phase 5 Evaluation (Gate 4 & External Trial) |
 | **CAL-DOWN-2** | Local Commodity 8B Edge Parity (Tier 2) | Local commodity 8B model (Qwen 8B) guided by `get_elaboration_context` achieves schema compliance and task elaboration on Feature Extension Benchmark | Phase N+ Research Horizon |
 | **CAL-LONG** | Long-Horizon Token Efficiency | Sustained flat token consumption per verified change ($\pm 15$%) across a sequence of $N \ge 10$ interdependent changes on a large-scale codebase ($\ge 100\text{k}$ LOC) | Phase 5 / Phase N+ Benchmark |
+| **CAL-EB-RECALL** | E-B Goal Extraction Recall | $\ge 0.80$ non-retracted labelled goals matched by staged goals (provisional — calibrate after first baseline) | Intent Elicitation Track (EB-8) |
+| **CAL-EB-PRECISION** | E-B Goal Extraction Precision | $\ge 0.75$ staged goals matching a non-retracted label (provisional — calibrate after first baseline) | Intent Elicitation Track (EB-8) |
+| **CAL-EB-CONCRETIZATION** | Premature Concretization Rate | $\le 0.10$ staged goals flagged as premature concretizations (provisional — calibrate after first baseline) | Intent Elicitation Track (EB-8) |
+| **CAL-EB-GROUNDING** | Mechanical Grounding Validity | $= 1.00$ staged goals with mechanically verified verbatim quotes (provisional — calibrate after first baseline) | Intent Elicitation Track (EB-8) |
+| **CAL-EB-GAP-RECALL** | E-B Gap Analysis Recall | $\ge 0.80$ labelled gaps reported by gap analysis and phrased as open questions (provisional — calibrate after first baseline) | Intent Elicitation Track (EB-8) |
 
 ---
 
