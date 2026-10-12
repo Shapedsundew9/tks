@@ -164,10 +164,12 @@ pub struct GoalCandidate {
     pub forbidden_concretizations: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<GoalLinkCandidate>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<VerificationVerdict>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub verification: Option<VerificationVerdict>,
+    pub prior_goal_id: Option<Uuid>,
 }
 
 /// A contiguous topic episode segmenting conversational turns.
@@ -188,6 +190,39 @@ pub struct DetectedGap {
     pub suggested_question: String,
 }
 
+/// Result of reconciling candidate goals in Cycle N+1 against prior cycle staged goals.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GoalReconciliationResult {
+    /// Goal candidates with preserved or newly assigned UUIDs.
+    pub reconciled_goals: Vec<ReconciledGoal>,
+    /// Number of goals whose UUIDs were preserved from prior cycles.
+    pub preserved_count: usize,
+    /// Number of new goals added in this cycle.
+    pub added_count: usize,
+    /// Identifiers of prior cycle gaps that were resolved in this cycle.
+    pub resolved_gap_ids: Vec<String>,
+}
+
+/// A reconciled candidate goal mapping.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReconciledGoal {
+    pub candidate_id: String,
+    pub assigned_uuid: Uuid,
+    pub assigned_node_key: Option<String>,
+    pub action: String, // "PRESERVED" | "UPDATED" | "ADDED"
+    pub prior_uuid: Option<Uuid>,
+}
+
+/// Staged goal representation from a prior cycle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriorCycleGoal {
+    pub id: Uuid,
+    pub node_key: String,
+    pub statement: String,
+    pub goal_kind: String,
+    pub stakeholder: String,
+}
+
 /// Complete in-flight elicitation extraction session state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionSessionState {
@@ -196,6 +231,8 @@ pub struct ExtractionSessionState {
     pub document_hash: String,
     pub document_kind: String, // "transcript" or "document"
     pub cycle: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_session_id: Option<Uuid>,
     pub participants: Vec<Participant>,
     pub turns: Vec<ParsedTurn>,
     #[serde(default)]
@@ -206,6 +243,8 @@ pub struct ExtractionSessionState {
     pub verdicts: Vec<VerificationVerdict>,
     #[serde(default)]
     pub gaps: Vec<DetectedGap>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resolved_gaps: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_lexicon: Option<Vec<String>>,
 }
@@ -507,6 +546,154 @@ pub fn detect_gaps(session: &ExtractionSessionState) -> Vec<DetectedGap> {
     gaps
 }
 
+/// Reconciles candidate goals extracted from Cycle N+1 against staged goals from prior cycles (EB-6).
+///
+/// Implements 3-tier matching:
+/// 1. Explicit ID: Match by `candidate.prior_goal_id`
+/// 2. Statement / Paraphrase: Exact normalized statement match or matches an `acceptable_paraphrases` entry
+/// 3. Heuristic / Semantic: Same goal kind + same stakeholder + >= 3 shared content words
+///
+/// Guarantees:
+/// - Unchanged and refined goals preserve their canonical UUIDs across cycles.
+/// - Prior cycle gaps addressed in this cycle are flagged as resolved.
+pub fn reconcile_cycle_goals(
+    candidate_goals: &[GoalCandidate],
+    prior_goals: &[PriorCycleGoal],
+    prior_gaps: &[DetectedGap],
+    transcript_text: &str,
+) -> GoalReconciliationResult {
+    let mut reconciled = Vec::new();
+    let mut preserved_count = 0;
+    let mut added_count = 0;
+    let mut matched_prior_ids = HashSet::new();
+
+    for candidate in candidate_goals {
+        let mut matched_prior: Option<&PriorCycleGoal> = None;
+
+        // Tier 1: Explicit prior_goal_id
+        if let Some(explicit_id) = candidate.prior_goal_id {
+            matched_prior = prior_goals.iter().find(|p| p.id == explicit_id);
+        }
+
+        // Tier 2: Normalized statement matching or paraphrase
+        if matched_prior.is_none() {
+            let cand_norm = normalize_for_matching(&candidate.statement);
+            matched_prior = prior_goals.iter().find(|p| {
+                if matched_prior_ids.contains(&p.id) {
+                    return false;
+                }
+                let prior_norm = normalize_for_matching(&p.statement);
+                if prior_norm == cand_norm {
+                    return true;
+                }
+                if let Some(ref paras) = candidate.acceptable_paraphrases
+                    && paras
+                        .iter()
+                        .any(|para| normalize_for_matching(para) == prior_norm)
+                {
+                    return true;
+                }
+                false
+            });
+        }
+
+        // Tier 3: Same kind + same stakeholder + shared keywords
+        if matched_prior.is_none() {
+            let cand_words: HashSet<String> = candidate
+                .statement
+                .to_lowercase()
+                .split_whitespace()
+                .filter(|w| w.len() > 3)
+                .map(|s| s.to_string())
+                .collect();
+
+            matched_prior = prior_goals.iter().find(|p| {
+                if matched_prior_ids.contains(&p.id) {
+                    return false;
+                }
+                if p.goal_kind != candidate.kind || p.stakeholder != candidate.stakeholder {
+                    return false;
+                }
+                let prior_words: HashSet<String> = p
+                    .statement
+                    .to_lowercase()
+                    .split_whitespace()
+                    .filter(|w| w.len() > 3)
+                    .map(|s| s.to_string())
+                    .collect();
+                let overlap = cand_words.intersection(&prior_words).count();
+                overlap >= 3
+                    || (overlap > 0 && overlap * 2 >= cand_words.len().min(prior_words.len()))
+            });
+        }
+
+        if let Some(prior) = matched_prior {
+            matched_prior_ids.insert(prior.id);
+            preserved_count += 1;
+            let action = if normalize_for_matching(&prior.statement)
+                == normalize_for_matching(&candidate.statement)
+            {
+                "PRESERVED"
+            } else {
+                "UPDATED"
+            };
+            reconciled.push(ReconciledGoal {
+                candidate_id: candidate.id.clone(),
+                assigned_uuid: prior.id,
+                assigned_node_key: Some(prior.node_key.clone()),
+                action: action.to_string(),
+                prior_uuid: Some(prior.id),
+            });
+        } else {
+            added_count += 1;
+            reconciled.push(ReconciledGoal {
+                candidate_id: candidate.id.clone(),
+                assigned_uuid: Uuid::new_v4(),
+                assigned_node_key: None,
+                action: "ADDED".to_string(),
+                prior_uuid: None,
+            });
+        }
+    }
+
+    // Gap resolution detection
+    let mut resolved_gap_ids = Vec::new();
+    let transcript_lower = transcript_text.to_lowercase();
+    for gap in prior_gaps {
+        let is_addressed = match gap.detector.as_str() {
+            "TENTATIVE_NEVER_CONFIRMED" => {
+                transcript_lower.contains("confirmed") || transcript_lower.contains("leadership")
+            }
+            "SOFTGOAL_WITHOUT_CONTRIBUTOR" => candidate_goals.iter().any(|c| c.kind == "ACHIEVE"),
+            "UNRESOLVED_CONFLICT" => {
+                transcript_lower.contains("resolved") || transcript_lower.contains("agreed")
+            }
+            "NO_BOUNDARY_STATEMENT" => candidate_goals.iter().any(|c| c.kind == "AVOID"),
+            _ => false,
+        };
+        if is_addressed {
+            resolved_gap_ids.push(gap.id.clone());
+        }
+    }
+
+    GoalReconciliationResult {
+        reconciled_goals: reconciled,
+        preserved_count,
+        added_count,
+        resolved_gap_ids,
+    }
+}
+
+fn normalize_for_matching(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -592,6 +779,7 @@ mod tests {
             document_hash: "hash".to_string(),
             document_kind: "transcript".to_string(),
             cycle: 1,
+            prior_session_id: None,
             participants: vec![
                 Participant {
                     name: "Alice".to_string(),
@@ -638,9 +826,11 @@ mod tests {
                 links: None,
                 warnings: vec![],
                 verification: None,
+                prior_goal_id: None,
             }],
             verdicts: vec![],
             gaps: vec![],
+            resolved_gaps: vec![],
             custom_lexicon: None,
         };
 
@@ -650,5 +840,74 @@ mod tests {
         assert!(detectors.contains(&"SOFTGOAL_WITHOUT_CONTRIBUTOR"));
         assert!(detectors.contains(&"SILENT_STAKEHOLDER")); // Bob is silent
         assert!(detectors.contains(&"NO_BOUNDARY_STATEMENT")); // No AVOID goal
+    }
+
+    #[test]
+    fn test_cycle_reconciliation_preserves_uuids() {
+        let prior_uuid = Uuid::new_v4();
+        let prior_goals = vec![PriorCycleGoal {
+            id: prior_uuid,
+            node_key: "GOAL-T01-01".to_string(),
+            statement: "Engineering leads can independently evaluate sprint progress.".to_string(),
+            goal_kind: "ACHIEVE".to_string(),
+            stakeholder: "Priya".to_string(),
+        }];
+
+        let prior_gaps = vec![DetectedGap {
+            id: "GP1".to_string(),
+            detector: "TENTATIVE_NEVER_CONFIRMED".to_string(),
+            refs: vec!["G6".to_string()],
+            description: "Hiring forecast tentative".to_string(),
+            suggested_question: "Confirm hiring?".to_string(),
+        }];
+
+        // Cycle 2 candidates: G1 matches prior_goals; G2 is a newly added goal
+        let candidate_goals = vec![
+            GoalCandidate {
+                id: "G1".to_string(),
+                kind: "ACHIEVE".to_string(),
+                statement: "Engineering leads can independently evaluate sprint progress."
+                    .to_string(),
+                stakeholder: "Priya".to_string(),
+                status: "CONFIRMED".to_string(),
+                rationale: None,
+                episode: Some("E1".to_string()),
+                grounding: vec![],
+                acceptable_paraphrases: None,
+                forbidden_concretizations: None,
+                links: None,
+                warnings: vec![],
+                verification: None,
+                prior_goal_id: None,
+            },
+            GoalCandidate {
+                id: "G2".to_string(),
+                kind: "AVOID".to_string(),
+                statement: "Do not mandate timesheets.".to_string(),
+                stakeholder: "Priya".to_string(),
+                status: "CONFIRMED".to_string(),
+                rationale: Some("Micromanagement".to_string()),
+                episode: Some("E2".to_string()),
+                grounding: vec![],
+                acceptable_paraphrases: None,
+                forbidden_concretizations: None,
+                links: None,
+                warnings: vec![],
+                verification: None,
+                prior_goal_id: None,
+            },
+        ];
+
+        let transcript_text = "Leadership confirmed that hiring forecast is not automated.";
+        let result =
+            reconcile_cycle_goals(&candidate_goals, &prior_goals, &prior_gaps, transcript_text);
+
+        assert_eq!(result.preserved_count, 1);
+        assert_eq!(result.added_count, 1);
+        assert_eq!(result.reconciled_goals[0].assigned_uuid, prior_uuid);
+        assert_eq!(result.reconciled_goals[0].action, "PRESERVED");
+        assert_eq!(result.reconciled_goals[1].action, "ADDED");
+        assert!(result.reconciled_goals[1].assigned_uuid != prior_uuid);
+        assert_eq!(result.resolved_gap_ids, vec!["GP1"]);
     }
 }

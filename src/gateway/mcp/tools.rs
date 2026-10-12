@@ -8,8 +8,9 @@ use uuid::Uuid;
 use crate::gateway::AppState;
 use crate::gateway::auth::AuthenticatedAgent;
 use crate::ingest::elicitation::{
-    EpisodeCandidate, ExtractionSessionState, GoalCandidate, VerificationVerdict,
-    check_technology_lint, detect_gaps, validate_episodes, verify_grounding_quote,
+    EpisodeCandidate, ExtractionSessionState, GoalCandidate, PriorCycleGoal, VerificationVerdict,
+    check_technology_lint, detect_gaps, reconcile_cycle_goals, validate_episodes,
+    verify_grounding_quote,
 };
 use crate::ingest::transcript::{ParsedTranscript, parse_vision_doc_excerpts};
 use crate::storage::envelope::assemble_context_envelope_workspace;
@@ -1133,6 +1134,13 @@ pub async fn handle_open_extraction_session(
             ("document".to_string(), turns, vec![], 1)
         };
 
+    let prior_session_id = args
+        .get("prior_session_id")
+        .and_then(|v| v.as_str())
+        .map(Uuid::parse_str)
+        .transpose()
+        .map_err(|e| format!("Invalid prior_session_id: {e}"))?;
+
     let session_id = Uuid::new_v4();
     let session_state = ExtractionSessionState {
         session_id,
@@ -1140,12 +1148,14 @@ pub async fn handle_open_extraction_session(
         document_hash: doc_hash.clone(),
         document_kind: document_kind.clone(),
         cycle,
+        prior_session_id,
         participants: participants.clone(),
         turns: turns.clone(),
         episodes: Vec::new(),
         goals: Vec::new(),
         verdicts: Vec::new(),
         gaps: Vec::new(),
+        resolved_gaps: Vec::new(),
         custom_lexicon: None,
     };
 
@@ -1590,6 +1600,77 @@ pub async fn handle_stage_goals(
         .filter(|g| g.status == "CONFIRMED")
         .collect();
 
+    let prior_session_id = session.prior_session_id;
+    let prior_goals: Vec<PriorCycleGoal> = if let Some(prior_id) = prior_session_id {
+        let p_rows = tx
+            .query(
+                "SELECT id, node_key, title, attributes FROM graph_nodes WHERE node_type = 'GOAL' AND job_id = $1;",
+                &[&prior_id],
+            )
+            .await
+            .map_err(|e| format!("Database error fetching prior goals: {e}"))?;
+
+        p_rows
+            .iter()
+            .map(|r| {
+                let attrs: Value = r.get("attributes");
+                PriorCycleGoal {
+                    id: r.get("id"),
+                    node_key: r.get("node_key"),
+                    statement: r.get("title"),
+                    goal_kind: attrs
+                        .get("goal_kind")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("ACHIEVE")
+                        .to_string(),
+                    stakeholder: attrs
+                        .get("stakeholder")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let prior_gaps: Vec<crate::ingest::elicitation::DetectedGap> =
+        if let Some(prior_id) = prior_session_id {
+            let p_row = tx
+                .query_opt(
+                    "SELECT attributes FROM ingestion_jobs WHERE job_id = $1;",
+                    &[&prior_id],
+                )
+                .await
+                .map_err(|e| format!("Database error fetching prior job: {e}"))?;
+            if let Some(r) = p_row {
+                let p_attrs: Value = r.get("attributes");
+                let p_state: Result<ExtractionSessionState, _> = serde_json::from_value(p_attrs);
+                p_state.map(|s| s.gaps).unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+    let transcript_text = session
+        .turns
+        .iter()
+        .map(|t| t.utterance_text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let confirmed_owned: Vec<GoalCandidate> =
+        confirmed_goals.iter().map(|g| (*g).clone()).collect();
+    let reconciliation = reconcile_cycle_goals(
+        &confirmed_owned,
+        &prior_goals,
+        &prior_gaps,
+        &transcript_text,
+    );
+
     let session_prefix = &session_id.to_string()[..8];
     let mut candidate_to_uuid: HashMap<String, Uuid> = HashMap::new();
     let mut staged_goals_list = Vec::new();
@@ -1597,8 +1678,17 @@ pub async fn handle_stage_goals(
 
     // 1. Insert GOAL and SOURCE_EXCERPT nodes and GROUNDED_IN edges
     for (idx, goal) in confirmed_goals.iter().enumerate() {
-        let goal_uuid = Uuid::new_v4();
-        let goal_key = format!("GOAL-{session_prefix}-{:02}", idx + 1);
+        let rec = reconciliation
+            .reconciled_goals
+            .iter()
+            .find(|r| r.candidate_id == goal.id)
+            .expect("Reconciled goal match");
+
+        let goal_uuid = rec.assigned_uuid;
+        let goal_key = rec
+            .assigned_node_key
+            .clone()
+            .unwrap_or_else(|| format!("GOAL-{session_prefix}-{:02}", idx + 1));
         candidate_to_uuid.insert(goal.id.clone(), goal_uuid);
 
         let goal_attrs = serde_json::json!({
@@ -1608,25 +1698,51 @@ pub async fn handle_stage_goals(
             "grounding": goal.grounding,
             "verification": goal.verification,
             "warnings": goal.warnings,
+            "cycle_action": rec.action,
+            "previous_cycle_goal_id": rec.prior_uuid,
             "workspace_id": workspace_id.map(|w| w.to_string()),
         });
 
-        tx.execute(
-            "INSERT INTO graph_nodes (id, node_key, node_type, title, content, lifecycle_state, created_by, job_id, doc_path, attributes) \
-             VALUES ($1, $2, 'GOAL', $3, $4, 'DRAFT', $5, $6, $7, $8);",
-            &[
-                &goal_uuid,
-                &goal_key,
-                &goal.statement,
-                &goal.rationale.as_deref().unwrap_or(&goal.statement),
-                &actor,
-                &session_id,
-                &doc_path,
-                &goal_attrs,
-            ],
-        )
-        .await
-        .map_err(|e| format!("Failed to insert GOAL node: {e}"))?;
+        // If goal already exists in graph_nodes (preserved across cycles), update it; otherwise insert
+        let exists: bool = tx
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM graph_nodes WHERE id = $1);",
+                &[&goal_uuid],
+            )
+            .await
+            .map(|r| r.get(0))
+            .unwrap_or(false);
+
+        if exists {
+            tx.execute(
+                "UPDATE graph_nodes SET title = $2, content = $3, attributes = $4 WHERE id = $1;",
+                &[
+                    &goal_uuid,
+                    &goal.statement,
+                    &goal.rationale.as_deref().unwrap_or(&goal.statement),
+                    &goal_attrs,
+                ],
+            )
+            .await
+            .map_err(|e| format!("Failed to update preserved GOAL node: {e}"))?;
+        } else {
+            tx.execute(
+                "INSERT INTO graph_nodes (id, node_key, node_type, title, content, lifecycle_state, created_by, job_id, doc_path, attributes) \
+                 VALUES ($1, $2, 'GOAL', $3, $4, 'DRAFT', $5, $6, $7, $8);",
+                &[
+                    &goal_uuid,
+                    &goal_key,
+                    &goal.statement,
+                    &goal.rationale.as_deref().unwrap_or(&goal.statement),
+                    &actor,
+                    &session_id,
+                    &doc_path,
+                    &goal_attrs,
+                ],
+            )
+            .await
+            .map_err(|e| format!("Failed to insert GOAL node: {e}"))?;
+        }
 
         let mut excerpt_uuids = Vec::new();
         for (c_idx, citation) in goal.grounding.iter().enumerate() {
@@ -1707,10 +1823,15 @@ pub async fn handle_stage_goals(
         }
     }
 
-    // 3. Mark ingestion_jobs as STAGED
+    // 3. Mark ingestion_jobs as STAGED and update resolved gaps
+    let mut updated_session = session;
+    updated_session.resolved_gaps = reconciliation.resolved_gap_ids.clone();
+    let updated_attrs =
+        serde_json::to_value(&updated_session).map_err(|e| format!("Serialization error: {e}"))?;
+
     tx.execute(
-        "UPDATE ingestion_jobs SET status = 'STAGED', updated_at = NOW() WHERE job_id = $1;",
-        &[&session_id],
+        "UPDATE ingestion_jobs SET status = 'STAGED', attributes = $2, updated_at = NOW() WHERE job_id = $1;",
+        &[&session_id, &updated_attrs],
     )
     .await
     .map_err(|e| format!("Database error updating job status: {e}"))?;
@@ -1723,9 +1844,22 @@ pub async fn handle_stage_goals(
         "session_id": session_id,
         "status": "STAGED",
         "staged_goals_count": staged_goals_list.len(),
-        "staged_goals": staged_goals_list,
+        "preserved_goals_count": reconciliation.preserved_count,
+        "added_goals_count": reconciliation.added_count,
+        "resolved_gaps": reconciliation.resolved_gap_ids.clone(),
+        "staged_goals": staged_goals_list.clone(),
         "staged_excerpts_count": total_excerpts,
-        "staged_edges_count": total_edges
+        "staged_edges_count": total_edges,
+        "staging": {
+            "status": "STAGED",
+            "staged_goals_count": staged_goals_list.len(),
+            "preserved_goals_count": reconciliation.preserved_count,
+            "added_goals_count": reconciliation.added_count,
+            "resolved_gaps": reconciliation.resolved_gap_ids,
+            "staged_goals": staged_goals_list,
+            "staged_excerpts_count": total_excerpts,
+            "staged_edges_count": total_edges
+        }
     }))
 }
 

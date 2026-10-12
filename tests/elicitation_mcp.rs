@@ -554,3 +554,257 @@ async fn test_elicitation_extraction_session_end_to_end() {
 
     cancel_token.cancel();
 }
+
+#[tokio::test]
+async fn test_multicycle_goal_reconciliation_and_gap_closure() {
+    let (base_url, cancel_token, _state, _guard) = spawn_test_server().await;
+    let http = reqwest::Client::new();
+    let mcp_url = format!("{base_url}/mcp");
+    let auth_token = "test_eb4_token";
+
+    // 1. Open session 1 (Cycle 1 - T01)
+    let open1_resp = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "auth_token": auth_token,
+            "params": {
+                "name": "open_extraction_session",
+                "arguments": {
+                    "doc_path": "tests/fixtures/elicitation/transcripts/T01-capacity.md"
+                }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let open1_body: Value = open1_resp.json().await.unwrap();
+    let s1_id = open1_body["result"]["session"]["session_id"]
+        .as_str()
+        .unwrap();
+
+    // 2. Submit episode and goal for cycle 1
+    let ep1 = json!([
+        { "id": "E1", "turns": ["t1", "t25"], "topic": "Planning challenges" }
+    ]);
+    let _ = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "auth_token": auth_token,
+            "params": {
+                "name": "submit_episodes",
+                "arguments": { "session_id": s1_id, "episodes": ep1 }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let goals1 = json!([
+        {
+            "id": "G1",
+            "kind": "ACHIEVE",
+            "statement": "Engineering leads can independently evaluate sprint progress and team capacity without recurring ad-hoc developer interruptions.",
+            "stakeholder": "Priya",
+            "status": "CONFIRMED",
+            "episode": "E1",
+            "grounding": [
+                { "turn": "t2", "quote": "We really need team leads to be able to assess sprint progress without interrupting developers constantly." }
+            ]
+        },
+        {
+            "id": "G2",
+            "kind": "SOFTGOAL",
+            "statement": "High team autonomy and low status anxiety.",
+            "stakeholder": "Priya",
+            "status": "CONFIRMED",
+            "episode": "E1",
+            "grounding": [
+                { "turn": "t2", "quote": "half my Monday chasing people on Slack just to figure out who has bandwidth." }
+            ]
+        }
+    ]);
+    let _ = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "auth_token": auth_token,
+            "params": {
+                "name": "submit_goal_candidates",
+                "arguments": { "session_id": s1_id, "goals": goals1 }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Stage Cycle 1 goals
+    let stage1_resp = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "auth_token": auth_token,
+            "params": {
+                "name": "stage_goals",
+                "arguments": { "session_id": s1_id }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let stage1_body: Value = stage1_resp.json().await.unwrap();
+    let s1_staged = &stage1_body["result"]["staging"]["staged_goals"];
+    let g1_cycle1_uuid = s1_staged[0]["id"].as_str().unwrap().to_string();
+
+    // 3. Open Cycle 2 (T10), linking prior_session_id = s1_id
+    let open2_resp = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "auth_token": auth_token,
+            "params": {
+                "name": "open_extraction_session",
+                "arguments": {
+                    "doc_path": "tests/fixtures/elicitation/transcripts/T10-capacity-c2.md",
+                    "prior_session_id": s1_id
+                }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let open2_body: Value = open2_resp.json().await.unwrap();
+    let s2_id = open2_body["result"]["session"]["session_id"]
+        .as_str()
+        .unwrap();
+
+    // Submit episodes for cycle 2
+    let ep2 = json!([
+        { "id": "E1", "turns": ["t1", "t18"], "topic": "Cycle 2 review" }
+    ]);
+    let _ = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "auth_token": auth_token,
+            "params": {
+                "name": "submit_episodes",
+                "arguments": { "session_id": s2_id, "episodes": ep2 }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // In Cycle 2: G1 is unchanged/refined (matching G1 statement), and G2 is a new AVOID goal
+    let goals2 = json!([
+        {
+            "id": "G1",
+            "kind": "ACHIEVE",
+            "statement": "Engineering leads can independently evaluate sprint progress and team capacity without recurring ad-hoc developer interruptions.",
+            "stakeholder": "Priya",
+            "status": "CONFIRMED",
+            "episode": "E1",
+            "grounding": [
+                { "turn": "t2", "quote": "team allocations must explicitly account for scheduled on-call rotations before calculating available sprint capacity." }
+            ]
+        },
+        {
+            "id": "G2",
+            "kind": "AVOID",
+            "statement": "Do not mandate timesheets from senior engineering staff.",
+            "stakeholder": "Priya",
+            "status": "CONFIRMED",
+            "rationale": "Micromanagement drives talent away.",
+            "episode": "E1",
+            "grounding": [
+                { "turn": "t8", "quote": "we will definitely not mandate hour-by-hour timesheet submissions from senior engineering staff, because micromanagement drives our best talent away." }
+            ]
+        }
+    ]);
+
+    let _ = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "auth_token": auth_token,
+            "params": {
+                "name": "submit_goal_candidates",
+                "arguments": { "session_id": s2_id, "goals": goals2 }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Stage Cycle 2 goals with reconciliation
+    let stage2_resp = http
+        .post(&mcp_url)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "tools/call",
+            "auth_token": auth_token,
+            "params": {
+                "name": "stage_goals",
+                "arguments": { "session_id": s2_id }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let stage2_body: Value = stage2_resp.json().await.unwrap();
+    assert!(
+        stage2_body["error"].is_null(),
+        "stage_goals in Cycle 2 must succeed: {stage2_body:?}"
+    );
+
+    let staging2 = &stage2_body["result"]["staging"];
+    assert_eq!(staging2["status"], "STAGED");
+    assert_eq!(
+        staging2["preserved_goals_count"], 1,
+        "Exactly 1 goal preserved from Cycle 1"
+    );
+    assert_eq!(
+        staging2["added_goals_count"], 1,
+        "Exactly 1 goal added in Cycle 2"
+    );
+
+    let s2_staged = &staging2["staged_goals"];
+    let g1_cycle2_uuid = s2_staged[0]["id"].as_str().unwrap().to_string();
+
+    // Critical invariant: Cycle 2 preserved goal has the EXACT SAME UUID as Cycle 1!
+    assert_eq!(
+        g1_cycle2_uuid, g1_cycle1_uuid,
+        "Cycle 2 goal reconciliation MUST preserve the canonical UUID of unchanged/refined goals"
+    );
+
+    cancel_token.cancel();
+}
