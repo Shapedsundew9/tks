@@ -1,0 +1,527 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "document",
+    "path": "docs/vision/vision.md",
+    "sha256": "4b121e624e908e777b0211a962f518b2e9d392052429ac5daa55b82a07950a6b"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Dogfood grounded goal extraction for docs/vision/vision.md pinned at commit a27d248."
+  },
+  "episodes": [],
+  "goals": [
+    {
+      "id": "VG1",
+      "kind": "AVOID",
+      "statement": "TKS avoids building document editing UX, IDE markdown editors, or prompt canvases.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Explicit Non-Goals",
+          "quote": "TKS does not build Markdown editing environments, IDE extensions for authoring, or prompt-crafting canvases that compete with Spec Kit, Kiro, or native IDEs."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Do not develop rich text document editors or authoring interfaces."
+      ],
+      "forbidden_concretizations": [
+        "WYSIWYG editor",
+        "VS Code markdown extension"
+      ],
+      "links": []
+    },
+    {
+      "id": "VG2",
+      "kind": "AVOID",
+      "statement": "TKS avoids speculative code-level reverse engineering or inventing unwritten requirements from ASTs.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Explicit Non-Goals",
+          "quote": "TKS does not parse raw programming language ASTs to speculate about architectural intent, reverse-engineer unwritten requirements, or invent business contracts from code heuristics."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Never infer business intent speculatively from raw source code syntax."
+      ],
+      "forbidden_concretizations": [
+        "Tree-sitter heuristic extractor"
+      ],
+      "links": []
+    },
+    {
+      "id": "VG3",
+      "kind": "AVOID",
+      "statement": "TKS avoids seeking formal regulated-industry ALM certification or replacing conformity assessment bodies.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Explicit Non-Goals",
+          "quote": "TKS does not seek formal certification or replace accredited third-party conformity assessment bodies"
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Do not attempt accredited DOORS or ISO 26262 replacement."
+      ],
+      "forbidden_concretizations": [
+        "DOORS certified plugin"
+      ],
+      "links": []
+    },
+    {
+      "id": "VG4",
+      "kind": "AVOID",
+      "statement": "The core substrate engine avoids in-engine generative text ghostwriting or unconstrained documentation generation.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Explicit Non-Goals",
+          "quote": "The core TKS engine and background services do not generate, paraphrase, or ghostwrite engineering documentation."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Core engine must not autonomously author prose documentation."
+      ],
+      "forbidden_concretizations": [
+        "GPT copywriter",
+        "auto-summarizer daemon"
+      ],
+      "links": []
+    },
+    {
+      "id": "VG5",
+      "kind": "AVOID",
+      "statement": "TKS avoids premature multi-tenant cloud hosting and organization billing complexity in early phases.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Explicit Non-Goals",
+          "quote": "TKS avoids the operational and architectural overhead of multi-tenant cloud hosting, organization partitioning, and billing systems during early phases, prioritizing single-engine local or containerized deployments."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Prioritize local containerized deployment over cloud SaaS multi-tenancy."
+      ],
+      "forbidden_concretizations": [
+        "Stripe billing",
+        "multi-tenant IAM"
+      ],
+      "links": []
+    },
+    {
+      "id": "VG6",
+      "kind": "SOFTGOAL",
+      "statement": "Human supervisory oversight remains grounded in tractable cognitive review granularity rather than fatigue.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Monolithic Diff Dilemma (The Human Review Bottleneck)",
+          "quote": "human oversight must be grounded in tractable supervisory granularity."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Supervisory workload remains cognitively manageable for human engineers."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG7",
+      "kind": "SOFTGOAL",
+      "statement": "Curation effort is strictly bounded, preserving human supervisory capacity across engineering cycles.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Foundational Principle: Governance Altitude",
+          "quote": "Curation effort is strictly bounded, preserving the Supervisory Queue Economy and preventing human review exhaustion."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Prevent human reviewer burnout through bounded curation demand."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG8",
+      "kind": "SOFTGOAL",
+      "statement": "Adopters retain absolute ownership and data portability over their engineering intent without vendor lock-in.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Enterprise Trust Prerequisites & Open-Source Stewardship",
+          "quote": "Adopters retain absolute ownership of their engineering intent and audit trails, with zero vendor lock-in."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Users maintain unconstrained sovereignty and exportability over stored intent."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG9",
+      "kind": "SOFTGOAL",
+      "statement": "TKS coexists harmoniously with legacy enterprise systems of record rather than requiring disruptive replacement.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Enterprise Trust Prerequisites & Open-Source Stewardship",
+          "quote": "TKS is designed to coexist with these systems, establishing bridges to open interchange standards (such as OMG ReqIF and OASIS OSLC) while serving as the high-speed operational intent substrate for autonomous agents."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Support interoperability and bridge integration with existing ALM platforms."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG10",
+      "kind": "SOFTGOAL",
+      "statement": "Structured intent elicitation rails empower users to articulate and ground their own engineering goals.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Vision Articulation Gap (Fuzzy Intent Before Requirements)",
+          "quote": "bridging it requires structured intent elicitation rails that help users articulate and ground their own goals."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Elicitation scaffolding assists users in externalizing their latent system intent."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG11",
+      "kind": "SOFTGOAL",
+      "statement": "Autonomous agents retain full creative freedom during code synthesis without generating graph curation noise.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Foundational Principle: Governance Altitude",
+          "quote": "Agents retain full creative freedom during implementation without generating spurious graph bookkeeping or curation noise."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Preserve agent flexibility beneath governed design boundaries."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG12",
+      "kind": "MAINTAIN",
+      "statement": "TKS maintains standardized, backward-compatible MCP and REST contracts to prevent interface churn.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Enterprise Trust Prerequisites & Open-Source Stewardship",
+          "quote": "Standardized, versioned, and backward-compatible Model Context Protocol (MCP) and REST contracts, ensuring external agent runtimes, CI pipelines, and IDE integrations never experience breaking schema churn."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Keep public API and MCP schemas stable across releases."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG13",
+      "kind": "MAINTAIN",
+      "statement": "TKS models and governs intent down to the architecture and design boundary while leaving lower-level code unmodeled.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Foundational Principle: Governance Altitude",
+          "quote": "TKS models and governs intent down to the architecture and design boundary: requirements, decisions, interface and service contracts, invariants, and process obligations."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Restrict graph governance to architectural and contract boundaries."
+      ],
+      "forbidden_concretizations": [],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "VG7"
+        }
+      ]
+    },
+    {
+      "id": "VG14",
+      "kind": "MAINTAIN",
+      "statement": "Intent flows unidirectionally from documented specifications to code, with reverse drift detected via verification signals.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Explicit Non-Goals",
+          "quote": "Intent flows from documented artifacts to code, with reverse drift detected strictly through verification signals."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Detect code drift through tests and CI verification rather than reverse AST parsing."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG15",
+      "kind": "MAINTAIN",
+      "statement": "Property graph scale remains proportional to architectural contracts rather than raw lines of source code.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Foundational Principle: Governance Altitude",
+          "quote": "Graph size scales with architectural complexity and contract surface area, rather than raw lines of code."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Ensure graph size scales with architectural complexity rather than code volume."
+      ],
+      "forbidden_concretizations": [],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "VG7"
+        }
+      ]
+    },
+    {
+      "id": "VG16",
+      "kind": "ACHIEVE",
+      "statement": "Engineer an agent-agnostic knowledge substrate anchoring external agents to a unified version-governed property graph.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Core Vision Statement",
+          "quote": "Engineer an agent-agnostic knowledge substrate that anchors external AI agents and human teams to a unified, version-governed property graph, establishing end-to-end traceability and bidirectional coherence across institutional knowledge, operational processes, architectural requirements, and executable code"
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Construct an authoritative property graph linking specifications, processes, and code."
+      ],
+      "forbidden_concretizations": [
+        "Neo4j cloud",
+        "GraphQL endpoint"
+      ],
+      "links": []
+    },
+    {
+      "id": "VG17",
+      "kind": "ACHIEVE",
+      "statement": "Extract baseline requirements and specifications from brownfield artifacts via zero-token mechanical parsers.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Specification Void & The Cold-Start Adoption Barrier (The Upstream Intent Prerequisite)",
+          "quote": "TKS directly confronts the cold-start adoption barrier through **Brownfield Intent Scaffolding**: leveraging zero-token mechanical parsers to extract baseline requirement, decision, and specification nodes directly from these existing artifacts."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Scaffold initial graph nodes from existing ADRs and API schemas without LLM tokens."
+      ],
+      "forbidden_concretizations": [
+        "LLM summarizer"
+      ],
+      "links": []
+    },
+    {
+      "id": "VG18",
+      "kind": "ACHIEVE",
+      "statement": "Supply cognitive planning rails to ground human-directed agent task elaboration within architectural contracts.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Planning Desert & Cognitive Rail Vacuum (Strategic Elaboration Blindness)",
+          "quote": "the substrate must supply **cognitive planning rails**: structured multi-axis planning context that bounds and grounds human-directed task elaboration, ensuring that agent proposals adhere strictly to architectural invariants, schema contracts, and implementation precedents."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Provide multi-axis context rails for agent planning and task breakdown."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG19",
+      "kind": "ACHIEVE",
+      "statement": "Bind static analysis and compliance tool outputs directly to governed requirements and process obligations in the graph.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Build-vs-Leverage Imperative (Operational Intent Substrate vs. Code Orchestration, Spec-Driven Development & Retrospective ALM)",
+          "quote": "binding those tools' outputs directly to governed architectural requirements, interface contracts, and process obligations** within the version-governed property graph."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Link external scanner and verification results to architectural nodes."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG20",
+      "kind": "ACHIEVE",
+      "statement": "Operate strictly on externalized intent artifacts to avoid speculative reverse-engineering hallucinations.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Specification Void & The Cold-Start Adoption Barrier (The Upstream Intent Prerequisite)",
+          "quote": "TKS operates on externalized intent artifacts, avoiding the fragility and hallucination risks of speculative code-level reverse-engineering."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Anchor reasoning strictly to recorded intent documents and schemas."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG21",
+      "kind": "ACHIEVE",
+      "statement": "Scaffold requirements mechanically from Spec-Driven Development files including Spec Kit and Kiro steering files.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Build-vs-Leverage Imperative (Operational Intent Substrate vs. Code Orchestration, Spec-Driven Development & Retrospective ALM)",
+          "quote": "deliberately *embracing and leveraging* SDD artifacts as native input sources via Brownfield Intent Scaffolding rather than competing on authoring UX."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Ingest SDD markdown files as first-class input sources for requirement nodes."
+      ],
+      "forbidden_concretizations": [],
+      "links": [
+        {
+          "type": "REFINES",
+          "target": "VG17"
+        }
+      ]
+    },
+    {
+      "id": "VG22",
+      "kind": "ACHIEVE",
+      "statement": "Model and govern institutional operational engineering procedures alongside functional software requirements.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Procedural & Topological Void (Absence of Process and Cross-Layer Gap Blindness)",
+          "quote": "Software engineering is fundamentally more than a static cascade of functional requirements; it is equally governed by operational procedures, engineering workflows, and cross-layer architectural coherence."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Incorporate procedural obligations and workflows into the living knowledge graph."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG23",
+      "kind": "ACHIEVE",
+      "statement": "Detect topological architectural gaps where presentation actions lack corresponding domain logic and contracts.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "The Procedural & Topological Void (Absence of Process and Cross-Layer Gap Blindness)",
+          "quote": "When traversing a user workflow, engineering teams expect presentation-layer actions to link systematically to corresponding functional specifications, domain logic, and service contracts."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Flag missing cross-layer links and systemic omissions in the architecture graph."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "VG24",
+      "kind": "ACHIEVE",
+      "statement": "Provide traceable compliance evidence across the entire requirement-to-release commit lifecycle.",
+      "stakeholder": "Lead Architect",
+      "status": "CONFIRMED",
+      "episode": null,
+      "grounding": [
+        {
+          "section": "Explicit Non-Goals",
+          "quote": "TKS serves as an authoritative, version-governed system of record for **traceable compliance evidence** (requirement \u2192 decision \u2192 interface contract \u2192 verification run \u2192 release commit, bound to institutional process obligations)"
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Maintain an immutable audit trail from intent through test runs to release commits."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    }
+  ],
+  "traps": [],
+  "gaps": [
+    {
+      "id": "VGP1",
+      "detector": "SOFTGOAL_WITHOUT_CONTRIBUTOR",
+      "refs": [
+        "VG8"
+      ],
+      "description": "Data portability softgoal VG8 has no operational export format verification test suite."
+    },
+    {
+      "id": "VGP2",
+      "detector": "UNRESOLVED_CONFLICT",
+      "refs": [
+        "VG1",
+        "VG21"
+      ],
+      "description": "Tension between strict non-goal on editor authoring VG1 and native SDD file parsing support VG21."
+    }
+  ],
+  "entailment_cases": []
+}

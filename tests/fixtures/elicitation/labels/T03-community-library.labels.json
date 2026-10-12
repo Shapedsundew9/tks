@@ -1,0 +1,263 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T03-community-library.md",
+    "sha256": "ad1c265565950c5189f324b8b2bef2e8c3b1cc213441d1c8327ee6736df76d36"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Transcript deliberately lacks a boundary statement, satisfying NO_BOUNDARY_STATEMENT corpus requirement."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t5"
+      ],
+      "topic": "Community borrowing purpose and check-out simplicity"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t6",
+        "t10"
+      ],
+      "topic": "Equipment safety inspections and welcoming community atmosphere"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t11",
+        "t14"
+      ],
+      "topic": "Late returns, donations, and missing repair volunteers"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t15",
+        "t18"
+      ],
+      "topic": "Safety instruction guidance and seasonal equipment waitlists"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "Community volunteers track tool check-out status, borrower identity, and scheduled return dates.",
+      "stakeholder": "Tom",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "Our community volunteers need to track who checked out each tool and when it is due back."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Volunteers maintain loan records including borrower information and due dates."
+      ],
+      "forbidden_concretizations": [
+        "bowling shoes",
+        "barcode scanner",
+        "RFID tag"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G4"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "MAINTAIN",
+      "statement": "The library conducts and records mandatory safety inspections before motorized tools are reissued to borrowers.",
+      "stakeholder": "Tom",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t6",
+          "quote": "We must record safety inspections before any motorized equipment is reissued to another borrower."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Verify equipment safety status prior to releasing power tools."
+      ],
+      "forbidden_concretizations": [
+        "UL certification",
+        "compliance checklist app"
+      ],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "ACHIEVE",
+      "statement": "Desk volunteers flag damaged or compromised tools as out of service until repaired.",
+      "stakeholder": "Tom",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t8",
+          "quote": "The desk volunteer logs maintenance requests so damaged gear is flagged as out of service until repaired."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Mark broken equipment unavailable until maintenance is completed."
+      ],
+      "forbidden_concretizations": [
+        "work order ticketing system"
+      ],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "SOFTGOAL",
+      "statement": "Borrowers experience the check-out process as welcoming, warm, and community-centered rather than transactional.",
+      "stakeholder": "Tom",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t10",
+          "quote": "Above all, the check-out process should feel warm and welcoming to neighbors rather than feeling like a sterile financial transaction."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "The lending atmosphere fosters neighborhood trust and hospitality."
+      ],
+      "forbidden_concretizations": [
+        "gamified smile rating",
+        "POS terminal"
+      ],
+      "links": []
+    },
+    {
+      "id": "G5",
+      "kind": "ACHIEVE",
+      "statement": "The library provides manufacturer operating guidelines and safety instructions to borrowers checking out high-risk tools.",
+      "stakeholder": "Tom",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t16",
+          "quote": "Borrowers should receive basic safety guidelines and manufacturer operating instructions when taking high-risk tools."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Deliver equipment instruction sheets when lending power tools."
+      ],
+      "forbidden_concretizations": [
+        "QR code PDF viewer"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G2"
+        }
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "ANALOGY",
+      "turns": [
+        "t4"
+      ],
+      "expected": "NO_MECHANISM_GOAL",
+      "note": "Tom compares the borrowing experience to renting bowling shoes, which is an informal analogy."
+    },
+    {
+      "id": "TR2",
+      "type": "IMPLICIT_SOFTGOAL",
+      "turns": [
+        "t10"
+      ],
+      "expected": "ABSTRACT_GOAL",
+      "note": "Tom expresses a subjective desire for warmth and community feeling over sterile transactions."
+    },
+    {
+      "id": "TR3",
+      "type": "MISSING_STAKEHOLDER",
+      "turns": [
+        "t14"
+      ],
+      "expected": "GAP_REPORTED",
+      "note": "Tom acknowledges repair specialist volunteers perform maintenance but none have been consulted."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "NO_BOUNDARY_STATEMENT",
+      "refs": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "description": "Transcript contains no negative boundary or explicit anti-goal discussing what the system will not do."
+    },
+    {
+      "id": "GP2",
+      "detector": "SOFTGOAL_WITHOUT_CONTRIBUTOR",
+      "refs": [
+        "G4"
+      ],
+      "description": "Welcoming community atmosphere softgoal G4 lacks dedicated operational subgoals."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "Community volunteers need to record which neighborhood resident borrows equipment and when returns are expected.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t4"
+      ],
+      "hypothesis": "The library desk must store borrower driver licenses in physical shoe cubbies behind the check-out counter.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t6"
+      ],
+      "hypothesis": "Motorized tools may be reissued immediately upon return without inspection if the prior borrower reports no issues.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t16",
+        "t18"
+      ],
+      "hypothesis": "All borrowers must pass a certified thirty-minute written OSHA tool safety exam before borrowing drills.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

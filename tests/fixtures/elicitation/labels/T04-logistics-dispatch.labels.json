@@ -1,0 +1,325 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T04-logistics-dispatch.md",
+    "sha256": "740a0568e07234d4dc462cf4c9a00fde513ae25a9bba255752580d15c348391b"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Cross-stakeholder contradiction between Elena and Marcus over telemetry frequency explicitly modeled."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t5"
+      ],
+      "topic": "Cargo thermal integrity and dispatcher visualization"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t6",
+        "t10"
+      ],
+      "topic": "Compressor breakdown routing and safety retraction"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t11",
+        "t16"
+      ],
+      "topic": "Telemetry update frequency and cellular dead-zone contradiction"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t17",
+        "t22"
+      ],
+      "topic": "Chain-of-custody delivery logs and carrier auction boundaries"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "Dispatchers monitor temperature integrity during transit to trigger corrective action on thermal excursions.",
+      "stakeholder": "Elena",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "Our dispatchers must monitor temperature integrity so excursions trigger immediate corrective action."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Dispatch monitors reefer temperature to respond promptly to temperature deviations."
+      ],
+      "forbidden_concretizations": [
+        "3D spinning globe",
+        "glowing trucks",
+        "WebGL map"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G6"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "ACHIEVE",
+      "statement": "The logistics system re-routes freight vehicles to nearby authorized repair depots when refrigeration units fail.",
+      "stakeholder": "Marcus",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t7",
+          "quote": "the system needs to re-route the truck to the nearest authorized refrigeration repair depot."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Redirect compromised refrigerated trucks to certified service centers."
+      ],
+      "forbidden_concretizations": [
+        "Google Maps API",
+        "Turn-by-turn GPS app"
+      ],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "ACHIEVE",
+      "statement": "Remote telemetry hardware automatically disables vehicle ignition upon critical thermal excursion.",
+      "stakeholder": "Marcus",
+      "status": "RETRACTED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t9",
+          "quote": "forget the remote engine cut-off idea. If a driver is on an interstate at sixty miles an hour, cutting the engine remotely is a catastrophic safety hazard."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Remotely kill vehicle engine when temperature limits are breached."
+      ],
+      "forbidden_concretizations": [
+        "CAN bus kill switch",
+        "remote relay"
+      ],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "ACHIEVE",
+      "statement": "The dispatch system receives continuous live temperature telemetry every ten seconds without interruption.",
+      "stakeholder": "Elena",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t13",
+          "quote": "Dispatch must receive continuous live temperature telemetry every ten seconds without exception so we never miss a sudden thermal runaway."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Stream sensor readings to central monitoring at ten-second intervals."
+      ],
+      "forbidden_concretizations": [
+        "MQTT broker",
+        "5G cellular streaming"
+      ],
+      "links": [
+        {
+          "type": "CONFLICTS_WITH",
+          "target": "G5"
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "kind": "ACHIEVE",
+      "statement": "On-board vehicle sensors cache sensor telemetry locally during network dead zones and upload batches on reconnection.",
+      "stakeholder": "Marcus",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t15",
+          "quote": "trucks routinely drive through four-hour cellular dead zones, so batch caching and uploading on reconnect must be the baseline."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Buffer telemetry locally in offline corridors and upload upon restoring cellular connectivity."
+      ],
+      "forbidden_concretizations": [
+        "SQLite local cache",
+        "store-and-forward queue"
+      ],
+      "links": [
+        {
+          "type": "CONFLICTS_WITH",
+          "target": "G4"
+        }
+      ]
+    },
+    {
+      "id": "G6",
+      "kind": "MAINTAIN",
+      "statement": "The logistics operation preserves cargo thermal integrity and vehicle safety as top operational priorities.",
+      "stakeholder": "Marcus",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t22",
+          "quote": "Fleet safety and cargo thermal integrity must always take precedence over delivery speed."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Maintain cold-chain compliance and driver safety above transit schedule optimization."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "G7",
+      "kind": "ACHIEVE",
+      "statement": "The delivery workflow produces signed temperature chain-of-custody verification logs upon cargo delivery.",
+      "stakeholder": "Elena",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t17",
+          "quote": "cargo receivers require signed temperature chain-of-custody logs upon freight delivery."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Generate audited proof of temperature compliance for cargo recipients upon arrival."
+      ],
+      "forbidden_concretizations": [
+        "digital signature tablet",
+        "blockchain audit trail"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G6"
+        }
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "UI_METAPHOR",
+      "turns": [
+        "t5"
+      ],
+      "expected": "NO_MECHANISM_GOAL",
+      "note": "Elena requests an interactive 3D spinning globe with glowing green trucks, which is an aesthetic UI metaphor."
+    },
+    {
+      "id": "TR2",
+      "type": "RETRACTION",
+      "turns": [
+        "t9"
+      ],
+      "expected": "RETRACTED_NOT_STAGED",
+      "note": "Marcus firmly retracts the remote engine cut-off idea due to highway safety hazards; must not be staged."
+    },
+    {
+      "id": "TR3",
+      "type": "CROSS_TURN_CONTRADICTION",
+      "turns": [
+        "t13",
+        "t15"
+      ],
+      "expected": "CONFLICT_LINK",
+      "note": "Elena's requirement for 10-second continuous streaming directly contradicts Marcus's requirement for offline batch caching."
+    },
+    {
+      "id": "TR4",
+      "type": "FACILITATOR_LEADING",
+      "turns": [
+        "t19",
+        "t20"
+      ],
+      "expected": "FACILITATOR_NOT_SOURCE",
+      "note": "Dan proposes an automated machine learning carrier auction; Elena deflects, so no goal should be extracted."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "UNRESOLVED_CONFLICT",
+      "refs": [
+        "G4",
+        "G5"
+      ],
+      "description": "Contradiction between continuous ten-second streaming G4 and offline dead-zone batch caching G5 is unresolved."
+    },
+    {
+      "id": "GP2",
+      "detector": "TENTATIVE_NEVER_CONFIRMED",
+      "refs": [
+        "G3"
+      ],
+      "description": "Engine cutoff goal G3 was retracted and leaves high-risk thermal excursion response procedures unstated."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "Logistics dispatchers need to track cargo refrigeration temperatures to detect spoiling risks quickly.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t5"
+      ],
+      "hypothesis": "The central dispatch system must render a spinning ThreeJS three-dimensional globe with green polygon truck icons.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t9"
+      ],
+      "hypothesis": "Dispatchers must possess the ability to cut vehicle engine power remotely when driving at sixty miles per hour.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t17",
+        "t22"
+      ],
+      "hypothesis": "Every freight manifest must record carbon credit offset tokens verified by an environmental auditor.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

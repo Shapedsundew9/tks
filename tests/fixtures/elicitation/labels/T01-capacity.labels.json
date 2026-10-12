@@ -1,0 +1,297 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T01-capacity.md",
+    "sha256": "0b1ff55114bcab8f7d4796edf8f9f0dc22b2408ee100403f52bf682cb6f378ae"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Paired with T10-capacity-c2.md as Cycle 1 baseline; tentative hiring forecast and platform dependency gaps remain open."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t5"
+      ],
+      "topic": "Status visibility and allocation reporting pain"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t6",
+        "t10"
+      ],
+      "topic": "On-call coverage and team bottleneck management"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t11",
+        "t15"
+      ],
+      "topic": "Workload monitoring boundaries and developer privacy"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t16",
+        "t20"
+      ],
+      "topic": "Sprint commitment predictability and platform dependencies"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "Engineering leads can independently evaluate sprint progress and team capacity without recurring ad-hoc developer interruptions.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "We really need team leads to be able to assess sprint progress without interrupting developers constantly."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Managers can inspect sprint progress without messaging engineers."
+      ],
+      "forbidden_concretizations": [
+        "Excel",
+        "pivot table",
+        "Slack bot",
+        "spreadsheet"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G4"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "MAINTAIN",
+      "statement": "Engineering teams maintain dependable production on-call coverage without over-allocating individual engineers.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t6",
+          "quote": "we have to maintain dependable on-call coverage without burning out the three people who know the deployment pipeline."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "On-call rotations remain staffed while distributing workload fairly across engineers."
+      ],
+      "forbidden_concretizations": [
+        "PagerDuty",
+        "calendar invites"
+      ],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "AVOID",
+      "statement": "The capacity planning system avoids tracking individual developer keystrokes, active hours, or surveillance metrics.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t14",
+          "quote": "we definitely do not want to track individual keystrokes or active hours, because surveillance destroys engineering trust."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "System does not monitor personal developer activity or keystroke metrics."
+      ],
+      "forbidden_concretizations": [
+        "keylogger",
+        "webcam tracker",
+        "Slack status scraper"
+      ],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "SOFTGOAL",
+      "statement": "The engineering organization experiences sustained predictability and reduced stress during sprint cycles.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t18",
+          "quote": "The whole engineering organization should feel a sense of calm and predictability rather than constant panic."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Sprint planning promotes team confidence and psychological comfort."
+      ],
+      "forbidden_concretizations": [
+        "burndown chart",
+        "velocity dashboard"
+      ],
+      "links": []
+    },
+    {
+      "id": "G5",
+      "kind": "ACHIEVE",
+      "statement": "Team leads detect projected capacity deficits across teams before sprint commitments are finalized.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t16",
+          "quote": "Our engineering leads need to detect team overcommitments before sprint kickoff so commitments remain realistic."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Identify oversubscribed team workloads prior to sprint start."
+      ],
+      "forbidden_concretizations": [
+        "Gantt chart",
+        "Jira plugin"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G4"
+        }
+      ]
+    },
+    {
+      "id": "G6",
+      "kind": "ACHIEVE",
+      "statement": "Engineering management forecasts quarterly hiring needs directly from historical team velocity deficits.",
+      "stakeholder": "Priya",
+      "status": "TENTATIVE",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t8",
+          "quote": "maybe we could forecast our quarterly hiring needs from velocity deficits, but we have not agreed on that yet."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Estimate future team headcount requirements using past sprint deficits."
+      ],
+      "forbidden_concretizations": [
+        "AI neural net",
+        "linear regression model"
+      ],
+      "links": []
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "ANALOGY",
+      "turns": [
+        "t4"
+      ],
+      "expected": "NO_MECHANISM_GOAL",
+      "note": "Priya mentions an Excel sheet with pivot tables as a mental model analogy, not a hard software requirement."
+    },
+    {
+      "id": "TR2",
+      "type": "MULTI_TURN_COREFERENCE",
+      "turns": [
+        "t6",
+        "t8"
+      ],
+      "expected": "RESOLVED_REFERENT",
+      "note": "'That bottleneck' in t8 resolves to the unstaffed on-call rotation causing delivery slippage in t6."
+    },
+    {
+      "id": "TR3",
+      "type": "FACILITATOR_LEADING",
+      "turns": [
+        "t10",
+        "t11"
+      ],
+      "expected": "FACILITATOR_NOT_SOURCE",
+      "note": "Marcus suggests automated background bots inspecting Slack statuses; Priya's hesitant reply must not produce a confirmed goal."
+    },
+    {
+      "id": "TR4",
+      "type": "BOUNDARY_BY_NEGATION",
+      "turns": [
+        "t14"
+      ],
+      "expected": "ANTIGOAL",
+      "note": "Priya defines a sharp negative boundary rejecting keystroke and active-hour surveillance."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "TENTATIVE_NEVER_CONFIRMED",
+      "refs": [
+        "G6"
+      ],
+      "description": "Quarterly hiring forecast goal G6 was proposed tentatively in t8 but never confirmed by stakeholders."
+    },
+    {
+      "id": "GP2",
+      "detector": "SOFTGOAL_WITHOUT_CONTRIBUTOR",
+      "refs": [
+        "G4"
+      ],
+      "description": "Softgoal G4 (predictability and calm) has only high-level contributors without operational on-call mitigation."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "Engineering managers require capacity visibility without having to disrupt individual engineers repeatedly.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t4"
+      ],
+      "hypothesis": "The capacity planning system must be built as an Excel spreadsheet workbook with embedded Visual Basic pivot tables.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t14"
+      ],
+      "hypothesis": "The system records developer keystrokes and browser tab activity to calculate utilization percentages.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t16",
+        "t18"
+      ],
+      "hypothesis": "All engineering tasks must be estimated using Fibonacci planning poker cards led by certified scrum masters.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

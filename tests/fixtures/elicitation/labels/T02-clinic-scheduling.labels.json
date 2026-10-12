@@ -1,0 +1,310 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T02-clinic-scheduling.md",
+    "sha256": "e819b426d34a4a6b9f8d48e4900cc448118361e13983ac43e705a2c540723f68"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Single cycle clinic transcript; retraction of hourly SMS (G7) cleanly captured."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t5"
+      ],
+      "topic": "Exam room double-booking and collision prevention"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t6",
+        "t10"
+      ],
+      "topic": "Patient appointment reminders and walk-in triage buffers"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t11",
+        "t15"
+      ],
+      "topic": "Administrative frustration and physician illness reassignments"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t16",
+        "t20"
+      ],
+      "topic": "Automated cancellation boundaries and compassionate patient outreach"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "Clinic staff coordinate clinical examination room allocations to detect and resolve room scheduling conflicts.",
+      "stakeholder": "Dr. Sarah",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "Our staff need to coordinate examination room occupancy so conflicts are caught immediately."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Staff resolve examination room scheduling collisions before patient arrival."
+      ],
+      "forbidden_concretizations": [
+        "emergency beacon",
+        "flashing banner",
+        "calendar popup"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G5"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "ACHIEVE",
+      "statement": "The clinic issues timely appointment reminder notices to patients twenty-four hours before their scheduled appointment.",
+      "stakeholder": "Dr. Sarah",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t6",
+          "quote": "We should remind patients twenty-four hours before their visit so they confirm attendance or release the slot."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Send automated reminders one day in advance to confirm patient attendance."
+      ],
+      "forbidden_concretizations": [
+        "Twilio",
+        "hourly SMS blast",
+        "WhatsApp bot"
+      ],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "MAINTAIN",
+      "statement": "The clinic preserves dedicated triage buffer capacity for walk-in urgent care patients without displacing scheduled visits.",
+      "stakeholder": "Dr. Sarah",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t10",
+          "quote": "Urgent care patients who walk in without an appointment must be allocated to buffer slots without displacing scheduled chronic care patients."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Maintain reserved walk-in capacity without bumping existing appointments."
+      ],
+      "forbidden_concretizations": [
+        "FastTrack queue",
+        "triage kiosk"
+      ],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "AVOID",
+      "statement": "The scheduling system avoids automatically canceling patient appointments without explicit confirmation from clinical staff.",
+      "stakeholder": "Dr. Sarah",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t16",
+          "quote": "The scheduling system must never automatically cancel an existing appointment without explicit confirmation from clinical staff."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Never autonomously delete or cancel patient appointments without human review."
+      ],
+      "forbidden_concretizations": [
+        "auto-purge cron job",
+        "cancellation bot"
+      ],
+      "links": []
+    },
+    {
+      "id": "G5",
+      "kind": "SOFTGOAL",
+      "statement": "Patients perceive clinic communications as clear, compassionate, and reassuring rather than impersonal.",
+      "stakeholder": "Dr. Sarah",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t18",
+          "quote": "Patients should experience clear, compassionate communication rather than robotic bureaucracy."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Patient interactions feel supportive and dignified."
+      ],
+      "forbidden_concretizations": [
+        "sentiment analysis score",
+        "NPS survey widget"
+      ],
+      "links": []
+    },
+    {
+      "id": "G6",
+      "kind": "ACHIEVE",
+      "statement": "The clinic coordinator reassigns patient appointments to available partner physicians when a provider is absent.",
+      "stakeholder": "Dr. Sarah",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t14",
+          "quote": "When a doctor calls in sick, the clinic coordinator needs to reassign affected patient visits to available partner physicians."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Reassign scheduled appointments when a provider becomes unavailable."
+      ],
+      "forbidden_concretizations": [
+        "automated load balancer"
+      ],
+      "links": []
+    },
+    {
+      "id": "G7",
+      "kind": "ACHIEVE",
+      "statement": "Send hourly SMS notifications to patients preceding their appointments.",
+      "stakeholder": "Dr. Sarah",
+      "status": "RETRACTED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t8",
+          "quote": "scratch what I said about hourly SMS reminders. Sending an SMS every sixty minutes will just annoy patients and make them block our clinic number."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Issue hourly text messages before appointments."
+      ],
+      "forbidden_concretizations": [
+        "SMS spam",
+        "cron alerts"
+      ],
+      "links": []
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "UI_METAPHOR",
+      "turns": [
+        "t4"
+      ],
+      "expected": "NO_MECHANISM_GOAL",
+      "note": "Dr. Sarah requests a giant red flashing emergency beacon on the calendar, which is a UI metaphor for conflict notification."
+    },
+    {
+      "id": "TR2",
+      "type": "RETRACTION",
+      "turns": [
+        "t8"
+      ],
+      "expected": "RETRACTED_NOT_STAGED",
+      "note": "Dr. Sarah explicitly retracts the proposal for hourly SMS reminders due to patient irritation; must not be staged."
+    },
+    {
+      "id": "TR3",
+      "type": "VENTING_NO_GOAL",
+      "turns": [
+        "t12"
+      ],
+      "expected": "NO_GOAL",
+      "note": "Dr. Sarah vents about county paperwork and insurance rejection forms without defining a system objective."
+    },
+    {
+      "id": "TR4",
+      "type": "EXPLICIT_ANTIGOAL",
+      "turns": [
+        "t16"
+      ],
+      "expected": "ANTIGOAL",
+      "note": "Dr. Sarah defines an explicit safety anti-goal forbidding autonomous appointment cancellation."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "ANTIGOAL_WITHOUT_RATIONALE",
+      "refs": [
+        "G4"
+      ],
+      "description": "Anti-goal G4 defines a strict cancellation restriction but leaves fallback procedures unspecified when clinicians are unreachable."
+    },
+    {
+      "id": "GP2",
+      "detector": "SOFTGOAL_WITHOUT_CONTRIBUTOR",
+      "refs": [
+        "G5"
+      ],
+      "description": "Compassionate communication softgoal G5 has no concrete translation guidelines attached."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "Clinic staff need visibility into exam room bookings to prevent overlapping appointments.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t4"
+      ],
+      "hypothesis": "The calendar user interface must flash an animated red siren GIF whenever two appointments share a room.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t16"
+      ],
+      "hypothesis": "The system cancels appointments automatically whenever a physician indicates an absence.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t18",
+        "t20"
+      ],
+      "hypothesis": "All medical clinic records must be synchronized with HL7 FHIR cloud endpoints every fifteen seconds.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

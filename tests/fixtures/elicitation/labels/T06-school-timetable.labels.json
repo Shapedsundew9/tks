@@ -1,0 +1,311 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T06-school-timetable.md",
+    "sha256": "9078521771bd5fce0b88b49f91b6e3030e0a48eea5a9b9ed04c3e39fc2838d5f"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Cross-stakeholder contradiction between Mr. Davis and Dr. Chen over lab period block structure."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t4"
+      ],
+      "topic": "Master timetable constraints and faculty instructional loads"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t5",
+        "t11"
+      ],
+      "topic": "Science lab facilities and consecutive double-block contradiction"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t12",
+        "t16"
+      ],
+      "topic": "Teacher classroom mobility anti-goal and missing student stakeholders"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t17",
+        "t22"
+      ],
+      "topic": "Biometric attendance rejection and school community harmony"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "The master schedule allocates student course enrollments without room collisions or instructor double-bookings.",
+      "stakeholder": "Mr. Davis",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "The scheduling system must allocate student course enrollments without room collisions or teacher double-bookings."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Assign course sections avoiding teacher and classroom schedule overlaps."
+      ],
+      "forbidden_concretizations": [
+        "genetic algorithm solver",
+        "SAT solver",
+        "Gurobi"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G7"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "MAINTAIN",
+      "statement": "Full-time teaching staff do not exceed five instructional periods per instructional day.",
+      "stakeholder": "Dr. Chen",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t4",
+          "quote": "Full-time teaching staff should not exceed five instructional periods per day to ensure sufficient grading and lesson preparation time."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Cap faculty teaching load at five periods daily."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "ACHIEVE",
+      "statement": "Advanced science laboratory courses are scheduled in consecutive double periods on the same instructional day.",
+      "stakeholder": "Mr. Davis",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t8",
+          "quote": "Advanced biology and chemistry laboratories must always be scheduled in consecutive double periods on the same day so experiments finish properly."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Block science labs into paired consecutive periods."
+      ],
+      "forbidden_concretizations": [],
+      "links": [
+        {
+          "type": "CONFLICTS_WITH",
+          "target": "G4"
+        }
+      ]
+    },
+    {
+      "id": "G4",
+      "kind": "ACHIEVE",
+      "statement": "Laboratory periods are distributed across alternate days to protect humanities elective scheduling.",
+      "stakeholder": "Dr. Chen",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t10",
+          "quote": "Consecutive double periods destroy split-period humanities scheduling across elective blocks, so lab periods must remain split across alternate days."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Split lab sessions across non-consecutive days to preserve humanities offerings."
+      ],
+      "forbidden_concretizations": [],
+      "links": [
+        {
+          "type": "CONFLICTS_WITH",
+          "target": "G3"
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "kind": "AVOID",
+      "statement": "The timetable avoids scheduling junior faculty to more than three distinct classroom room relocations per day.",
+      "stakeholder": "Dr. Chen",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t12",
+          "quote": "The timetable must never schedule junior teachers to more than three distinct classroom relocations in a single instructional day, because carting teaching materials across campus exhausts them."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Do not assign junior teachers more than three room changes on any single day."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "G6",
+      "kind": "ACHIEVE",
+      "statement": "The scheduling algorithm maximizes student placement into their preferred elective courses.",
+      "stakeholder": "Mr. Davis",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t14",
+          "quote": "The scheduling algorithm should maximize placement of students into their top-choice elective courses."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Optimize student placement rates into requested elective courses."
+      ],
+      "forbidden_concretizations": [],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G7"
+        }
+      ]
+    },
+    {
+      "id": "G7",
+      "kind": "SOFTGOAL",
+      "statement": "The school community experiences an orderly, conflict-free transition into the new academic year.",
+      "stakeholder": "Dr. Chen",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t22",
+          "quote": "A calm, conflict-free start to the school year where every student and faculty member knows exactly where they belong."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Start the school year with harmonious scheduling clarity."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "CROSS_TURN_CONTRADICTION",
+      "turns": [
+        "t8",
+        "t10"
+      ],
+      "expected": "CONFLICT_LINK",
+      "note": "Mr. Davis requires consecutive double science lab blocks while Dr. Chen requires split single periods across alternate days."
+    },
+    {
+      "id": "TR2",
+      "type": "EXPLICIT_ANTIGOAL",
+      "turns": [
+        "t12"
+      ],
+      "expected": "ANTIGOAL",
+      "note": "Dr. Chen establishes an explicit teacher welfare constraint forbidding more than three room changes per day."
+    },
+    {
+      "id": "TR3",
+      "type": "MISSING_STAKEHOLDER",
+      "turns": [
+        "t16"
+      ],
+      "expected": "GAP_REPORTED",
+      "note": "Mr. Davis notes student council delegates have critical lunch schedule requirements but have not participated."
+    },
+    {
+      "id": "TR4",
+      "type": "FACILITATOR_LEADING",
+      "turns": [
+        "t18",
+        "t19",
+        "t20"
+      ],
+      "expected": "FACILITATOR_NOT_SOURCE",
+      "note": "Rachel suggests automated facial recognition cameras; both stakeholders firmly reject the proposal."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "UNRESOLVED_CONFLICT",
+      "refs": [
+        "G3",
+        "G4"
+      ],
+      "description": "Conflict between consecutive science lab double-periods G3 and alternate-day split periods G4 is unresolved."
+    },
+    {
+      "id": "GP2",
+      "detector": "SILENT_STAKEHOLDER",
+      "refs": [
+        "E3"
+      ],
+      "description": "Student union council stakeholders are absent despite holding critical preferences regarding lunch period scheduling."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "The school master timetable must prevent assigning multiple classes to the same classroom simultaneously.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t6"
+      ],
+      "hypothesis": "All chemistry lab stations must be outfitted with smart RFID beaker sensors connected to an industrial PLC.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t12"
+      ],
+      "hypothesis": "Junior instructors may be scheduled to teach in six different classrooms on a single Monday.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t14",
+        "t22"
+      ],
+      "hypothesis": "All course syllabi must be parsed and indexed using a vector embedding database before class assignment.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

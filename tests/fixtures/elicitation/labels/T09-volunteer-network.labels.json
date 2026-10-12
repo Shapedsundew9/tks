@@ -1,0 +1,288 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T09-volunteer-network.md",
+    "sha256": "76c8ac781ada25f89dd6b51d0665926bce1602095020a4ece99a98ce9d7bc115"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Emergency relief transcript highlighting swiftwater credentials and background check retraction."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t5"
+      ],
+      "topic": "Disaster volunteer dispatch pain and triage tent analogy"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t6",
+        "t9"
+      ],
+      "topic": "Swiftwater rescue credentials and background check retraction"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t10",
+        "t13"
+      ],
+      "topic": "Water filtration pallet tracking and coreference resolution"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t14",
+        "t20"
+      ],
+      "topic": "Missing municipal liaisons, mesh communication, and delivery speed"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "Logistics coordinators dispatch vetted volunteers to urgent relief supply distribution tasks during disaster responses.",
+      "stakeholder": "Carlos",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "Our logistics coordinators need to dispatch vetted volunteers to urgent relief supply distribution tasks."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Assign relief tasks to qualified volunteers during disaster emergencies."
+      ],
+      "forbidden_concretizations": [
+        "triage tent",
+        "dispatch board",
+        "mobile SMS app"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G6"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "MAINTAIN",
+      "statement": "Volunteers deployed to high-water rescue operations hold certified swiftwater rescue credentials.",
+      "stakeholder": "Carlos",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t6",
+          "quote": "Volunteers working in high-water rescue operations must hold certified swiftwater rescue credentials before field deployment."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Verify swiftwater rescue certification before deploying personnel into flood waters."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "ACHIEVE",
+      "statement": "All general volunteers complete comprehensive criminal background checks before handing out bottled water.",
+      "stakeholder": "Carlos",
+      "status": "RETRACTED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t8",
+          "quote": "scratch that suggestion about mandatory background checks before anyone is allowed to distribute bottled water. In an immediate flash flood, waiting for background checks would prevent urgent survival aid."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Perform background checks on all volunteers prior to any aid distribution."
+      ],
+      "forbidden_concretizations": [
+        "Checkr API",
+        "police database"
+      ],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "ACHIEVE",
+      "statement": "Field stations record the deployment location and operational status of high-capacity water filtration pallets.",
+      "stakeholder": "Carlos",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t12",
+          "quote": "Field stations must record the exact deployment location and operating status of those pallets so clean water distribution is uninterrupted."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Track water filtration unit positions and operational status across disaster zones."
+      ],
+      "forbidden_concretizations": [
+        "GPS tracker",
+        "LoRa beacon"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G6"
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "kind": "MAINTAIN",
+      "statement": "Coordination hubs support message relay over amateur radio and mesh links when cellular networks are inoperative.",
+      "stakeholder": "Carlos",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t18",
+          "quote": "Coordination hubs must support store-and-forward message relay over amateur radio and mesh links when cellular networks fail."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Maintain messaging functionality using alternative radio and mesh networks during outages."
+      ],
+      "forbidden_concretizations": [
+        "Meshtastic hardware",
+        "Winlink radio modem"
+      ],
+      "links": []
+    },
+    {
+      "id": "G6",
+      "kind": "ACHIEVE",
+      "statement": "The relief network delivers potable water and medical necessities to stranded families within twelve hours of disaster impact.",
+      "stakeholder": "Carlos",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t20",
+          "quote": "Deliver potable water and basic medical necessities to stranded families within twelve hours of disaster impact."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Provide essential survival supplies within twelve hours of an emergency."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "ANALOGY",
+      "turns": [
+        "t4"
+      ],
+      "expected": "NO_MECHANISM_GOAL",
+      "note": "Carlos compares civilian volunteer intake to an emergency triage tent where casualties are processed in seconds."
+    },
+    {
+      "id": "TR2",
+      "type": "RETRACTION",
+      "turns": [
+        "t8"
+      ],
+      "expected": "RETRACTED_NOT_STAGED",
+      "note": "Carlos retracts the requirement for mandatory background checks before water distribution; must not be staged."
+    },
+    {
+      "id": "TR3",
+      "type": "MULTI_TURN_COREFERENCE",
+      "turns": [
+        "t10",
+        "t12"
+      ],
+      "expected": "RESOLVED_REFERENT",
+      "note": "'Those pallets' in t12 refers to the high-capacity water filtration pallets introduced in t10."
+    },
+    {
+      "id": "TR4",
+      "type": "MISSING_STAKEHOLDER",
+      "turns": [
+        "t16"
+      ],
+      "expected": "GAP_REPORTED",
+      "note": "Carlos mentions municipal fire and rescue chiefs who govern disaster zones have not been consulted."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "SILENT_STAKEHOLDER",
+      "refs": [
+        "E4"
+      ],
+      "description": "Municipal emergency services liaisons are absent despite jurisdictional authority over evacuation zones."
+    },
+    {
+      "id": "GP2",
+      "detector": "TENTATIVE_NEVER_CONFIRMED",
+      "refs": [
+        "G3"
+      ],
+      "description": "Background check requirement G3 was retracted and leaves volunteer vetting standards ambiguous for shelter operations."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "Disaster relief coordinators must assign available volunteers to necessary relief distribution tasks.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t4"
+      ],
+      "hypothesis": "The relief coordination system must deploy physical canvas hospital triage tents equipped with red vinyl triage tags.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t8"
+      ],
+      "hypothesis": "Every community member who hands a bottle of clean water to a flood victim must first pass an FBI background check.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t18",
+        "t20"
+      ],
+      "hypothesis": "All relief coordination messages must be signed by biometric iris scanners issued to registered volunteer directors.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

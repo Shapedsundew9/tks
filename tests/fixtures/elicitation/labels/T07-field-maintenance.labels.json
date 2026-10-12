@@ -1,0 +1,282 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T07-field-maintenance.md",
+    "sha256": "2d156da25b15585128760bebe735bd25441fdc80c1b6ed2cb9d695a9348cf5de"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Clean wind energy maintenance transcript with Arctic weather harness selfie retraction."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t5"
+      ],
+      "topic": "Nacelle diagnostic data logging and flight recorder analogy"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t6",
+        "t10"
+      ],
+      "topic": "Blade pitch calibration and analog dial UI metaphor"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t11",
+        "t16"
+      ],
+      "topic": "Climbing selfie retraction and manual brake override anti-goal"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t17",
+        "t20"
+      ],
+      "topic": "Shift handover logs and zero-accident turbine availability"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "Field technicians log diagnostic vibration readings and gearbox inspection records during offshore turbine maintenance.",
+      "stakeholder": "Lars",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "Field technicians need to log diagnostic vibration readings and inspect mechanical gearboxes safely."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Record turbine vibration telemetry and mechanical inspection logs offshore."
+      ],
+      "forbidden_concretizations": [
+        "black box",
+        "flight recorder",
+        "ruggedized tablet"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G6"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "MAINTAIN",
+      "statement": "Technicians calibrate aerodynamic blade pitch angles before returning turbines to active grid power generation.",
+      "stakeholder": "Lars",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t6",
+          "quote": "Technicians must calibrate aerodynamic blade pitch angles before returning a turbine to automated grid generation."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Verify pitch angle calibration prior to re-engaging automated operation."
+      ],
+      "forbidden_concretizations": [
+        "speedometer dial",
+        "neon gauge"
+      ],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "ACHIEVE",
+      "statement": "Technicians capture mandatory photographic selfies verifying harness latching before tower climbs.",
+      "stakeholder": "Lars",
+      "status": "RETRACTED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t12",
+          "quote": "never mind the mandatory camera selfie before climbing. When you are wearing heavy arctic gloves at twenty below zero, taking selfies is completely ridiculous and hazardous."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Take climbing selfie before ascending turbine ladder."
+      ],
+      "forbidden_concretizations": [
+        "facial recognition",
+        "selfie verification"
+      ],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "AVOID",
+      "statement": "The diagnostic system avoids locking technicians out of manual mechanical brake overrides during communication outages.",
+      "stakeholder": "Lars",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t16",
+          "quote": "The diagnostic system must never lock field technicians out of manual mechanical brake overrides during communication outages, because an unbraked rotor during a storm is fatal."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Never prevent physical manual braking during network disconnection."
+      ],
+      "forbidden_concretizations": [
+        "remote lock interlock",
+        "SCADA lock"
+      ],
+      "links": []
+    },
+    {
+      "id": "G5",
+      "kind": "ACHIEVE",
+      "statement": "Offshore maintenance teams produce shift handover summaries between daytime inspection crews and night engineering shifts.",
+      "stakeholder": "Lars",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t18",
+          "quote": "Offshore maintenance teams need clear handover summaries between daytime inspection crews and night engineering shifts."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Generate crew transition logs between offshore work shifts."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "G6",
+      "kind": "MAINTAIN",
+      "statement": "The wind facility maintains high turbine operational availability while sustaining zero critical safety incidents.",
+      "stakeholder": "Lars",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t20",
+          "quote": "Maximize offshore turbine operational availability while maintaining zero critical safety accidents."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Sustain offshore generation uptime with uncompromised technician safety."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "ANALOGY",
+      "turns": [
+        "t4"
+      ],
+      "expected": "NO_MECHANISM_GOAL",
+      "note": "Lars compares telemetry logging resilience to an aircraft black box flight recorder."
+    },
+    {
+      "id": "TR2",
+      "type": "UI_METAPHOR",
+      "turns": [
+        "t8"
+      ],
+      "expected": "NO_MECHANISM_GOAL",
+      "note": "Lars asks for an analog dial speedometer with neon needles on the handheld screen."
+    },
+    {
+      "id": "TR3",
+      "type": "RETRACTION",
+      "turns": [
+        "t12"
+      ],
+      "expected": "RETRACTED_NOT_STAGED",
+      "note": "Lars firmly retracts the selfie verification idea as dangerous in sub-zero Arctic conditions; must not be staged."
+    },
+    {
+      "id": "TR4",
+      "type": "EXPLICIT_ANTIGOAL",
+      "turns": [
+        "t16"
+      ],
+      "expected": "ANTIGOAL",
+      "note": "Lars defines an explicit safety anti-goal preventing lockouts on manual mechanical brake overrides."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "ANTIGOAL_WITHOUT_RATIONALE",
+      "refs": [
+        "G4"
+      ],
+      "description": "Brake override anti-goal G4 specifies mechanical override priority but leaves post-override sensor recalibration unspecified."
+    },
+    {
+      "id": "GP2",
+      "detector": "TENTATIVE_NEVER_CONFIRMED",
+      "refs": [
+        "G3"
+      ],
+      "description": "Retracted selfie pre-check G3 leaves harness compliance verification open to alternative methods."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "Offshore wind technicians need to record vibration telemetry and inspect mechanical gear components.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t8"
+      ],
+      "hypothesis": "The handheld application must display an animated skeuomorphic analog dial speedometer with glowing neon needles.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t16"
+      ],
+      "hypothesis": "The control software must disable all manual physical rotor brake levers whenever satellite communication drops.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t18",
+        "t20"
+      ],
+      "hypothesis": "Every offshore wind technician must wear a biometric heart rate sensor broadcasting real-time ECG telemetry to headquarters.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

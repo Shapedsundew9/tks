@@ -1,0 +1,288 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T05-budgeting-app.md",
+    "sha256": "9e5aa09d761ae1b290272654d33dd56ecfe211705538968f3e84b28207b31887"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Contains explicit boundary by negation against automated robo-advisor functionality."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t6"
+      ],
+      "topic": "Multi-currency consolidation and cross-border remittance tracking"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t7",
+        "t10"
+      ],
+      "topic": "Bank fee venting and shared expense categorization"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t11",
+        "t16"
+      ],
+      "topic": "Calm financial reflection and anti-goal on algorithmic trading"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t17",
+        "t20"
+      ],
+      "topic": "Long-term savings goals and offline cash transaction logging"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "The budget system consolidates multi-currency account holdings into a unified household monthly expenditure view.",
+      "stakeholder": "Mei",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "We need our family budget to consolidate multiple currency accounts into a unified monthly expenditure view."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Aggregate income and spending across different currencies into a single household report."
+      ],
+      "forbidden_concretizations": [
+        "Plaid API",
+        "Open Banking connector"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G4"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "ACHIEVE",
+      "statement": "The system applies daily exchange valuation updates to secondary cross-border savings holdings.",
+      "stakeholder": "Mei",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t6",
+          "quote": "that secondary account needs daily exchange valuation updates so we see the true purchasing power of our joint savings."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Update foreign currency savings value daily using current foreign exchange rates."
+      ],
+      "forbidden_concretizations": [
+        "Bloomberg terminal",
+        "Forex API scraper"
+      ],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "ACHIEVE",
+      "statement": "Household members categorize shared living expenses to provide visibility across partners.",
+      "stakeholder": "Mei",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t10",
+          "quote": "Household members should be able to categorize shared living expenses so both partners understand where the money went."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Allow family partners to assign expense categories to joint transactions."
+      ],
+      "forbidden_concretizations": [
+        "Splitwise integration"
+      ],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "SOFTGOAL",
+      "statement": "Reviewing household expenditures creates feelings of calm and encouragement rather than anxiety or guilt.",
+      "stakeholder": "Mei",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t12",
+          "quote": "Reviewing monthly expenses should feel encouraging and calm rather than triggering financial guilt or panic."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Financial reviews foster positive motivation rather than stress."
+      ],
+      "forbidden_concretizations": [
+        "gamified confetti animation"
+      ],
+      "links": []
+    },
+    {
+      "id": "G5",
+      "kind": "AVOID",
+      "statement": "The application avoids functioning as an automated stock trading bot or robo-advisor executing financial transactions.",
+      "stakeholder": "Mei",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t16",
+          "quote": "we are definitely not building an automated stock trading bot or robo-advisor that executes transactions, because that introduces massive financial risk."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Do not execute automated algorithmic investments or financial trades."
+      ],
+      "forbidden_concretizations": [
+        "Interactive Brokers API",
+        "Alpaca trading bot"
+      ],
+      "links": []
+    },
+    {
+      "id": "G6",
+      "kind": "ACHIEVE",
+      "statement": "The system tracks progress toward multi-currency family savings goals without manual conversion recalculations.",
+      "stakeholder": "Mei",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t18",
+          "quote": "We want to track progress toward long-term family savings goals across different currencies without manual recalculation."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Monitor progress toward targets across multiple currencies automatically."
+      ],
+      "forbidden_concretizations": [],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G4"
+        }
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "MULTI_TURN_COREFERENCE",
+      "turns": [
+        "t4",
+        "t6"
+      ],
+      "expected": "RESOLVED_REFERENT",
+      "note": "'That secondary account' in t6 resolves to the cross-border family savings wallet introduced in t4."
+    },
+    {
+      "id": "TR2",
+      "type": "VENTING_NO_GOAL",
+      "turns": [
+        "t8"
+      ],
+      "expected": "NO_GOAL",
+      "note": "Mei vents about predatory bank fees and foreign exchange markups without requesting a product goal."
+    },
+    {
+      "id": "TR3",
+      "type": "IMPLICIT_SOFTGOAL",
+      "turns": [
+        "t12"
+      ],
+      "expected": "ABSTRACT_GOAL",
+      "note": "Mei describes an emotional quality of calm and encouragement rather than shame or financial guilt."
+    },
+    {
+      "id": "TR4",
+      "type": "BOUNDARY_BY_NEGATION",
+      "turns": [
+        "t16"
+      ],
+      "expected": "ANTIGOAL",
+      "note": "Mei establishes a strict boundary rejecting automated stock trading and robo-advisor mechanics."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "SOFTGOAL_WITHOUT_CONTRIBUTOR",
+      "refs": [
+        "G4"
+      ],
+      "description": "Softgoal G4 (calm and encouraging budget reviews) lacks concrete interaction design contributors."
+    },
+    {
+      "id": "GP2",
+      "detector": "EPISODE_WITHOUT_GOAL",
+      "refs": [
+        "E2"
+      ],
+      "description": "Episode E2 contains extensive bank venting alongside a single expense categorization goal."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "The household budgeting application combines multiple currency accounts into an aggregated monthly summary.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t6"
+      ],
+      "hypothesis": "The application connects directly to the Monetary Authority of Singapore FIX protocol feed for microsecond currency exchange rates.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t16"
+      ],
+      "hypothesis": "The application autonomously places buy orders on high-yield international dividend stocks on behalf of users.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t18",
+        "t20"
+      ],
+      "hypothesis": "All household expense records must be cryptographically hashed and anchored into a proof-of-stake ledger.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

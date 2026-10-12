@@ -178,10 +178,10 @@ The foundational substrate, storage architecture, mutation engines, and supervis
      - Speech recognition model for phonetic English transcription.
      - Language-model cleanup of conversational disfluencies and ASR artifacts.
      - Agent- or locally-driven Socratic questioning and boundary scoping by negation.
-     - Normalized transcript emission in `tks-transcript/v1` format (spec: [elicitation-transcript-format.md](docs/vision/elicitation-transcript-format.md)).
+     - Normalized transcript emission in `tks-transcript/v1` format (spec: [elicitation-transcript-format.md](elicitation-transcript-format.md)).
      - *Open Spike:* MCP sampling vs. local Ollama offload for TKS-initiated conversations.
   2. **E-B — Grounded Goal Extraction & Gap Analysis (Planned):**
-     - Implementation details specified in [docs/plans/intent-elicitation-eb-plan.md](docs/plans/intent-elicitation-eb-plan.md); evaluation framework and metrics defined in [elicitation-evaluation.md](docs/vision/elicitation-evaluation.md); transcript format specified in [elicitation-transcript-format.md](docs/vision/elicitation-transcript-format.md).
+     - Implementation details specified in [docs/plans/intent-elicitation-eb-plan.md](../plans/intent-elicitation-eb-plan.md); evaluation framework and metrics defined in [elicitation-evaluation.md](elicitation-evaluation.md); transcript format specified in [elicitation-transcript-format.md](elicitation-transcript-format.md).
      - *Pipeline Stages:*
        - Pass 0: Mechanical transcript turn and vision document parsing (`tks-transcript/v1` and CommonMark) with exact byte spans.
        - Pass 1: Contiguous topic episode segmentation and verbatim referent coreference resolution.

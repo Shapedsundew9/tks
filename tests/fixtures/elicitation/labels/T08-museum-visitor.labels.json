@@ -1,0 +1,275 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T08-museum-visitor.md",
+    "sha256": "e9b44ffab35e76ebf992b73f0d00224cd07e7ba8db300963368a1a4d380d9c1e"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Museum guide session featuring clear negative boundary against gamification mechanisms."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t5"
+      ],
+      "topic": "Gallery artwork interpretation ambition and selfie tourist venting"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t6",
+        "t10"
+      ],
+      "topic": "Layered audio commentary and quiet reflection softgoal"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t11",
+        "t15"
+      ],
+      "topic": "Accessibility transcripts and anti-goal on gamified scavenger hunts"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t16",
+        "t20"
+      ],
+      "topic": "Thematic pathways, gallery density routing, and multilingual curation"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "The audio companion enriches artwork interpretation for museum visitors through accessible acoustic guidance.",
+      "stakeholder": "Maya",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "Our curatorial team wants an acoustic guide that enriches artwork interpretation for museum visitors."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Provide audio narration to enhance visitor understanding of exhibited art."
+      ],
+      "forbidden_concretizations": [
+        "iBeacon",
+        "BLE beacon",
+        "smartphone app"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G3"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "ACHIEVE",
+      "statement": "The guide provides layered commentary levels suited to both novice art visitors and specialized scholars.",
+      "stakeholder": "Maya",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t6",
+          "quote": "the guide should offer layered commentary tailored to both novice art lovers and visiting scholars."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Offer multiple tiers of interpretive commentary based on visitor background."
+      ],
+      "forbidden_concretizations": [],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G3"
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "kind": "SOFTGOAL",
+      "statement": "Gallery audio narratives inspire quiet contemplation and aesthetic wonder rather than feeling didactic.",
+      "stakeholder": "Maya",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t8",
+          "quote": "The audio narration should spark quiet personal reflection and wonder rather than sounding like an encyclopedic lecture."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Audio storytelling encourages reflective appreciation over rote recitation."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "MAINTAIN",
+      "statement": "The guide maintains synchronized descriptive text transcripts and tactile navigation guidance for visually impaired visitors.",
+      "stakeholder": "Maya",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t10",
+          "quote": "The guide must provide synchronized descriptive audio transcripts and tactile station directions for visually impaired visitors."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Ensure accessible audio description and transcripts for disabled museum visitors."
+      ],
+      "forbidden_concretizations": [
+        "screen reader API"
+      ],
+      "links": []
+    },
+    {
+      "id": "G5",
+      "kind": "AVOID",
+      "statement": "The museum experience avoids creating gamified scavenger hunts with point leaderboards, tokens, or badges.",
+      "stakeholder": "Maya",
+      "status": "CONFIRMED",
+      "episode": "E3",
+      "grounding": [
+        {
+          "turn": "t14",
+          "quote": "We are explicitly not creating a gamified scavenger hunt with point leaderboards and badges, because that trivializes cultural artifacts into arcade tokens."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Do not implement arcade gaming mechanics, badges, or competitive leaderboards."
+      ],
+      "forbidden_concretizations": [
+        "gamification engine",
+        "leaderboard",
+        "badge unlocking"
+      ],
+      "links": []
+    },
+    {
+      "id": "G6",
+      "kind": "ACHIEVE",
+      "statement": "The system suggests thematic gallery exploration itineraries based on visitor schedule constraints and personal interests.",
+      "stakeholder": "Maya",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t16",
+          "quote": "The companion should suggest thematic exploration itineraries based on visitor available time and artistic interest."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Propose curated tour routes matching available visitor time."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "VENTING_NO_GOAL",
+      "turns": [
+        "t4"
+      ],
+      "expected": "NO_GOAL",
+      "note": "Maya vents about tourist selfie culture and social media obsession without stating a functional goal."
+    },
+    {
+      "id": "TR2",
+      "type": "IMPLICIT_SOFTGOAL",
+      "turns": [
+        "t8"
+      ],
+      "expected": "ABSTRACT_GOAL",
+      "note": "Maya expresses an emotional quality of quiet personal reflection and wonder over encyclopedic delivery."
+    },
+    {
+      "id": "TR3",
+      "type": "BOUNDARY_BY_NEGATION",
+      "turns": [
+        "t14"
+      ],
+      "expected": "ANTIGOAL",
+      "note": "Maya establishes a firm boundary rejecting gamified scavenger hunts and point leaderboards."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "SOFTGOAL_WITHOUT_CONTRIBUTOR",
+      "refs": [
+        "G3"
+      ],
+      "description": "Quiet reflection softgoal G3 lacks acoustic pacing and vocal tone guidelines."
+    },
+    {
+      "id": "GP2",
+      "detector": "EPISODE_WITHOUT_GOAL",
+      "refs": [
+        "E1"
+      ],
+      "description": "Episode E1 contains tourist selfie venting alongside the high-level audio companion vision."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "The museum needs an audio companion solution to help visitors understand artwork history in the galleries.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t6"
+      ],
+      "hypothesis": "The museum must install directional ultra-narrow parametric ultrasonic audio spotlight speakers above every canvas.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t14"
+      ],
+      "hypothesis": "Visitors receive collectible digital achievement badges and level-up points for checking into every gallery room.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t16",
+        "t18"
+      ],
+      "hypothesis": "All visitors must swipe a credit card deposit before obtaining an acoustic gallery receiver unit.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

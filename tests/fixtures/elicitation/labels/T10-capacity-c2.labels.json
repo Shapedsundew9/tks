@@ -1,0 +1,250 @@
+{
+  "schema_version": "tks-elicitation-labels/v1",
+  "source": {
+    "kind": "transcript",
+    "path": "tests/fixtures/elicitation/transcripts/T10-capacity-c2.md",
+    "sha256": "c2c465c2d5ac5bbd8c1272f3a5152b2b5e0289e696b6b248fc67a8b3f36ffdec"
+  },
+  "adjudication": {
+    "status": "DRAFT",
+    "labeled_by": "agent",
+    "adjudicated_by": null,
+    "notes": "Cycle 2 continuation of T01; resolves T01 on-call bottleneck ambiguity and rejects automated AI reassignment."
+  },
+  "episodes": [
+    {
+      "id": "E1",
+      "turns": [
+        "t1",
+        "t5"
+      ],
+      "topic": "Cycle two on-call capacity deduction and traffic light UI metaphor"
+    },
+    {
+      "id": "E2",
+      "turns": [
+        "t6",
+        "t10"
+      ],
+      "topic": "Cross-team platform commitments and timesheet anti-goal"
+    },
+    {
+      "id": "E3",
+      "turns": [
+        "t11",
+        "t14"
+      ],
+      "topic": "Automated task reassignment rejection and team lead agency"
+    },
+    {
+      "id": "E4",
+      "turns": [
+        "t15",
+        "t18"
+      ],
+      "topic": "Historical velocity calibration and empowered lead sentiment"
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "kind": "ACHIEVE",
+      "statement": "Team capacity calculations explicitly deduct on-call rotation schedules before determining available sprint capacity.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E1",
+      "grounding": [
+        {
+          "turn": "t2",
+          "quote": "We confirmed that team allocations must explicitly account for scheduled on-call rotations before calculating available sprint capacity."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Deduct on-call commitments from total team capacity prior to sprint planning."
+      ],
+      "forbidden_concretizations": [
+        "traffic light",
+        "blinking siren",
+        "status bar widget"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G5"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "kind": "ACHIEVE",
+      "statement": "Engineering leads map shared platform service commitments across consumer teams to detect blocking dependencies.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t6",
+          "quote": "Engineering leads need to visualize shared platform service commitments across consumer teams to prevent blocked sprint goals."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Track cross-team platform dependencies to avoid blocking squad commitments."
+      ],
+      "forbidden_concretizations": [
+        "dependency matrix plugin"
+      ],
+      "links": []
+    },
+    {
+      "id": "G3",
+      "kind": "AVOID",
+      "statement": "The planning system avoids mandating hour-by-hour timesheet submissions from senior engineering staff.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E2",
+      "grounding": [
+        {
+          "turn": "t8",
+          "quote": "we will definitely not mandate hour-by-hour timesheet submissions from senior engineering staff, because micromanagement drives our best talent away."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Never require granular hourly timesheet reporting from staff engineers."
+      ],
+      "forbidden_concretizations": [
+        "Harvest timesheets",
+        "Toggl integration"
+      ],
+      "links": []
+    },
+    {
+      "id": "G4",
+      "kind": "ACHIEVE",
+      "statement": "Sprint commitment targets are calibrated against trailing six-sprint median completion rates.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t15",
+          "quote": "Sprint commitments should be calibrated against trailing six-sprint median completion rates rather than optimistic aspirations."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Baseline sprint capacity commitments on historical six-sprint median velocity."
+      ],
+      "forbidden_concretizations": [
+        "AI forecasting engine"
+      ],
+      "links": [
+        {
+          "type": "CONTRIBUTES_TO",
+          "target": "G5"
+        }
+      ]
+    },
+    {
+      "id": "G5",
+      "kind": "SOFTGOAL",
+      "statement": "Engineering leads feel empowered with factual capacity data rather than defensive during cross-functional planning.",
+      "stakeholder": "Priya",
+      "status": "CONFIRMED",
+      "episode": "E4",
+      "grounding": [
+        {
+          "turn": "t17",
+          "quote": "Engineering leads should feel empowered with factual capacity data rather than defensive during cross-functional planning."
+        }
+      ],
+      "acceptable_paraphrases": [
+        "Capacity planning promotes confidence and factual empowerment among team leads."
+      ],
+      "forbidden_concretizations": [],
+      "links": []
+    }
+  ],
+  "traps": [
+    {
+      "id": "TR1",
+      "type": "UI_METAPHOR",
+      "turns": [
+        "t4"
+      ],
+      "expected": "NO_MECHANISM_GOAL",
+      "note": "Priya asks for a traffic light dashboard with blinking sirens, which is a vivid UI metaphor."
+    },
+    {
+      "id": "TR2",
+      "type": "BOUNDARY_BY_NEGATION",
+      "turns": [
+        "t8"
+      ],
+      "expected": "ANTIGOAL",
+      "note": "Priya reinforces the negative boundary forbidding hour-by-hour timesheet tracking."
+    },
+    {
+      "id": "TR3",
+      "type": "FACILITATOR_LEADING",
+      "turns": [
+        "t12",
+        "t13"
+      ],
+      "expected": "FACILITATOR_NOT_SOURCE",
+      "note": "Marcus suggests neural network automated task reassignment; Priya rejects it to preserve engineering lead agency."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GP1",
+      "detector": "SOFTGOAL_WITHOUT_CONTRIBUTOR",
+      "refs": [
+        "G5"
+      ],
+      "description": "Softgoal G5 (empowered team leads) lacks specific conflict negotiation workflow contributors."
+    }
+  ],
+  "entailment_cases": [
+    {
+      "id": "EC1",
+      "premise_turns": [
+        "t2"
+      ],
+      "hypothesis": "On-call rotation schedules must be subtracted from available engineering sprint capacity.",
+      "forward": "ENTAILED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC2",
+      "premise_turns": [
+        "t2",
+        "t4"
+      ],
+      "hypothesis": "The capacity application must display animated blinking red siren icons when a team exceeds ninety percent workload.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": true,
+      "phantom": false
+    },
+    {
+      "id": "EC3",
+      "premise_turns": [
+        "t8"
+      ],
+      "hypothesis": "Senior software engineers must submit hourly timesheet breakdowns of their daily activities into the capacity portal.",
+      "forward": "CONTRADICTED",
+      "reverse_overconstrained": false,
+      "phantom": false
+    },
+    {
+      "id": "EC4",
+      "premise_turns": [
+        "t15",
+        "t17"
+      ],
+      "hypothesis": "All story point velocity estimations must be certified by an external scrum alliance audit committee.",
+      "forward": "NEUTRAL",
+      "reverse_overconstrained": false,
+      "phantom": true
+    }
+  ]
+}

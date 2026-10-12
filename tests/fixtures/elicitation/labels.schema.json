@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tks.dev/schemas/elicitation-labels.v1.json",
+  "title": "TksElicitationLabels",
+  "description": "Ground truth label schema for TKS Intent Elicitation evaluation corpus",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source",
+    "adjudication",
+    "episodes",
+    "goals",
+    "traps",
+    "gaps",
+    "entailment_cases"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "tks-elicitation-labels/v1"
+    },
+    "source": {
+      "type": "object",
+      "required": ["kind", "path", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["transcript", "document"]
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "required": ["status", "labeled_by", "adjudicated_by", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["DRAFT", "ADJUDICATED"]
+        },
+        "labeled_by": {
+          "type": "string"
+        },
+        "adjudicated_by": {
+          "type": ["string", "null"]
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "episodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "turns", "topic"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "turns": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "topic": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "goals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "statement",
+          "stakeholder",
+          "status",
+          "episode",
+          "grounding",
+          "acceptable_paraphrases",
+          "forbidden_concretizations",
+          "links"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["ACHIEVE", "MAINTAIN", "AVOID", "SOFTGOAL"]
+          },
+          "statement": {
+            "type": "string"
+          },
+          "stakeholder": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["CONFIRMED", "TENTATIVE", "RETRACTED"]
+          },
+          "episode": {
+            "type": ["string", "null"]
+          },
+          "grounding": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["turn", "quote"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "turn": { "type": "string" },
+                    "quote": { "type": "string" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["section", "quote"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "section": { "type": "string" },
+                    "quote": { "type": "string" }
+                  }
+                }
+              ]
+            }
+          },
+          "acceptable_paraphrases": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "forbidden_concretizations": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "target"],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["REFINES", "CONFLICTS_WITH", "CONTRIBUTES_TO"]
+                },
+                "target": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "traps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "turns", "expected", "note"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "ANALOGY",
+              "UI_METAPHOR",
+              "RETRACTION",
+              "MULTI_TURN_COREFERENCE",
+              "VENTING_NO_GOAL",
+              "CROSS_TURN_CONTRADICTION",
+              "IMPLICIT_SOFTGOAL",
+              "EXPLICIT_ANTIGOAL",
+              "BOUNDARY_BY_NEGATION",
+              "MISSING_STAKEHOLDER",
+              "FACILITATOR_LEADING"
+            ]
+          },
+          "turns": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "expected": {
+            "type": "string",
+            "enum": [
+              "NO_GOAL",
+              "NO_MECHANISM_GOAL",
+              "ABSTRACT_GOAL",
+              "RETRACTED_NOT_STAGED",
+              "RESOLVED_REFERENT",
+              "CONFLICT_LINK",
+              "ANTIGOAL",
+              "GAP_REPORTED",
+              "FACILITATOR_NOT_SOURCE"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "detector", "refs", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "detector": {
+            "type": "string",
+            "enum": [
+              "SOFTGOAL_WITHOUT_CONTRIBUTOR",
+              "GOAL_WITHOUT_STAKEHOLDER",
+              "EPISODE_WITHOUT_GOAL",
+              "UNRESOLVED_CONFLICT",
+              "TENTATIVE_NEVER_CONFIRMED",
+              "ANTIGOAL_WITHOUT_RATIONALE",
+              "SILENT_STAKEHOLDER",
+              "NO_BOUNDARY_STATEMENT"
+            ]
+          },
+          "refs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "entailment_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "premise_turns",
+          "hypothesis",
+          "forward",
+          "reverse_overconstrained",
+          "phantom"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "premise_turns": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "hypothesis": {
+            "type": "string"
+          },
+          "forward": {
+            "type": "string",
+            "enum": ["ENTAILED", "NEUTRAL", "CONTRADICTED"]
+          },
+          "reverse_overconstrained": {
+            "type": "boolean"
+          },
+          "phantom": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}
