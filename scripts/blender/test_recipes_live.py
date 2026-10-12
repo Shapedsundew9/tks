@@ -88,6 +88,9 @@ class RecipeTests(unittest.TestCase):
     def test_procedural(self):
         self.run_recipe("procedural")
 
+    def test_cinematic(self):
+        self.run_recipe("cinematic")
+
 
 if __name__ == "__main__":
     unittest.main()

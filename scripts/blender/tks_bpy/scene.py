@@ -74,6 +74,8 @@ def ensure_collection(name, scene=None, parent=None):
     Lookup is scoped to the scene, so another scene's (or the user's) collection of the same
     name is never shared; a new one may get a ``.001`` suffix but is still found by ``name``.
     """
+    if isinstance(name, bpy.types.Collection):
+        return name
     scene = scene or bpy.context.scene
     for coll in scene.collection.children_recursive:
         if coll.get("tks_name") == name or (coll.name == name and coll.get("tks_name") is None):

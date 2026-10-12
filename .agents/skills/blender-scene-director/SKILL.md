@@ -1,6 +1,6 @@
 ---
 name: blender-scene-director
-description: Staged pipeline for turning a scene brief into a finished Blender render via the blender MCP server - routes the brief to one of five tested paths (outdoor/nature, interior/archviz, product/studio, stylised low-poly, procedural/geometry nodes), then blockout, assets, materials, lighting, atmosphere, camera, preview critique loops and final render. Use for any "make/build/render a scene" request.
+description: Staged pipeline for turning a scene brief into a finished Blender render via the blender MCP server - routes the brief to one of six tested paths (outdoor/nature, interior/archviz, product/studio, stylised low-poly, procedural/geometry nodes, cinematic hero/key art), then blockout, assets, materials, lighting, atmosphere, camera, preview critique loops and final render. Use for any "make/build/render a scene" request.
 ---
 
 # Scene director
@@ -23,6 +23,7 @@ Work in small, verifiable stages; never write one giant script.
 | product, packshot, hero shot, studio, turntable, bottle, mug, watch, jewellery | Product / studio | [references/product.md](references/product.md) |
 | low-poly, stylised, cartoon, toy, diorama, isometric, game-like, cute | Stylised low-poly | [references/lowpoly.md](references/lowpoly.md) |
 | procedural, generative, pattern, abstract, scatter, geometry nodes, motion-graphics | Procedural / GN | [references/procedural.md](references/procedural.md) |
+| hero asset, key art, cinematic monolith, sci-fi artifact, dark void, HUD overlay, moody | Cinematic hero / key art | [references/cinematic.md](references/cinematic.md) |
 
 Mixed briefs: pick the path that owns the **camera and lighting** (e.g. "cabin interior at night"
 → interior) and borrow steps from others. Read the chosen recipe before writing code.
@@ -67,6 +68,13 @@ Look at the actual image, then check:
 - **Noise**: a noisy 16-spp preview is fine; judge composition and light, not grain.
 
 State what you'll change, change one or two things, preview again.
+
+### Scene-as-code & review tools
+For complex hero or key art scenes, implement the scene-as-code pattern:
+- Write modular build stages in `scripts/blender/scenes/<scene_name>.py` with a top-level `PARAMS` dict and `build(stages)`.
+- Use `T.review.stats(path)` to measure display-referred mean luma, saturation, and clipping percent.
+- Use `T.review.compare(ref_path, render_path)` for side-by-side verification and 3x3 luma zone ratios.
+- Maintain a structured Lookdev Log markdown file tracking each loop's metrics and visual verdict.
 
 ## 5. Budgets and safety
 

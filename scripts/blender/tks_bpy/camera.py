@@ -60,3 +60,65 @@ def frame_objects(cam, objs, margin=1.15):
         if con.type == "TRACK_TO" and con.target is not None:
             con.target.location = centre
     return cam
+
+
+def reference_overlay(cam, image_path, opacity=0.5):
+    """Show the reference as a camera background image (viewport only) for look(mode='camera') matching."""
+    img = bpy.data.images.load(str(image_path), check_existing=True)
+    cam.data.show_background_images = True
+    bg = cam.data.background_images.new()
+    bg.image = img
+    bg.alpha = opacity
+    bg.display_depth = "FRONT"
+    bg.frame_method = "FIT"
+    return bg
+
+
+def shot(name, location, target, lens=50, fstop=4.0, focus=None, rig_azimuth=True, collection="Cameras"):
+    """Create or update camera 'Shot_<name>' (+ focus empty) and store shot metadata."""
+    cam_name = f"Shot_{name}"
+    old_cam = bpy.data.objects.get(cam_name)
+    if old_cam is not None:
+        bpy.data.objects.remove(old_cam, do_unlink=True)
+    old_focus = bpy.data.objects.get(f"{cam_name}_Focus")
+    if old_focus is not None:
+        bpy.data.objects.remove(old_focus, do_unlink=True)
+
+    cam, focus_empty = rig(
+        location=location,
+        target=target if focus is None else focus,
+        lens=lens,
+        name=cam_name,
+        dof=(fstop is not None),
+        fstop=fstop or 4.0,
+        collection=collection,
+        make_active=False,
+    )
+    cam["tks_shot_name"] = name
+    cam["tks_rig_azimuth"] = bool(rig_azimuth)
+    cam["tks_target"] = [float(v) for v in target]
+    return cam, focus_empty
+
+
+def orbit_shots(prefix, target, radius, height, count=8, lens=50, fstop=4.0, collection="Cameras"):
+    """Create a ring of orbit cameras around target."""
+    import math
+
+    shots = []
+    tx, ty, _ = target
+    for i in range(count):
+        angle = -math.pi / 2 + 2 * math.pi * i / count
+        x = tx + radius * math.cos(angle)
+        y = ty + radius * math.sin(angle)
+        cam, _ = shot(
+            f"{prefix}_{i:02d}",
+            location=(x, y, height),
+            target=target,
+            lens=lens,
+            fstop=fstop,
+            rig_azimuth=True,
+            collection=collection,
+        )
+        shots.append(cam)
+    return shots
+

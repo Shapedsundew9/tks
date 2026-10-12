@@ -68,6 +68,16 @@ http://localhost:8080/explorer
 
 ## Testing & Verification
 
+The devcontainer post-create script installs stable Rust with `rustfmt`, Clippy,
+`rust-analyzer`, and `rust-src`. If inherited toolchain files conflict with
+rustup's component metadata, setup reports the conflict and reinstalls only the
+`stable` toolchain. Other installation failures stop setup without reinstalling.
+To retry a failed post-create command from the repository root, run:
+
+```bash
+bash .devcontainer/post-create.sh
+```
+
 For the optional GPU-accelerated Blender container, its Antigravity MCP
 integration, pinned community extensions, asset sources, and the agent skills in
 `.agents/skills/`, see [Blender development setup](docs/blender-development.md).

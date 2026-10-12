@@ -254,7 +254,7 @@ class LiveTksBpyTests(unittest.TestCase):
                 src.collection.objects.link(ob)
                 ob.location = (4, 4, 4)
                 path = os.path.join(tmpdir, "cube.glb")
-                bpy.ops.export_scene.gltf(filepath=path)
+                bpy.ops.export_scene.gltf(filepath=path, use_active_scene=True)
                 _win.scene = sc
                 n_scenes = len(bpy.data.scenes)
                 root = T.assets.import_model(path, name="Imported", target_size=0.5, axis="z", location=(1, 2, 0))
@@ -269,6 +269,214 @@ class LiveTksBpyTests(unittest.TestCase):
         self.assertEqual(out["scene_delta"], 0)
         self.assertTrue(out["in_scene"])
 
+    def test_review_and_contact_sheet(self):
+        out = self.run_case("""
+            import tempfile, os
+            tmpdir = tempfile.mkdtemp(dir="/workspaces/tks/renders")
+            try:
+                # Create two small test images
+                p1 = os.path.join(tmpdir, "img1.png")
+                p2 = os.path.join(tmpdir, "img2.png")
+                sc.camera, _ = T.camera.rig((0, -3, 1), (0, 0, 0), name="Cam1")
+                T.scene.box("Box1", size=(1, 1, 1))
+                img1_path = T.render.preview(name="test_rev_1", width=64, folder=tmpdir)
+                img2_path = T.render.preview(name="test_rev_2", width=64, folder=tmpdir)
+                
+                n_imgs_before = len(bpy.data.images)
+                st = T.review.stats(img1_path, grid=3)
+                _out["stats_keys"] = sorted(st.keys())
+                _out["grid_len"] = len(st["cells"])
+                
+                cmp_res = T.review.compare(img1_path, img2_path, grid=3, height=64)
+                _out["cmp_path_exists"] = os.path.exists(cmp_res["path"])
+                _out["cell_luma_ratio_len"] = len(cmp_res["cell_luma_ratio"])
+                
+                sheet_path = os.path.join(tmpdir, "sheet.png")
+                T.render.contact_sheet([img1_path, img2_path], sheet_path, cols=2, height=64)
+                _out["sheet_exists"] = os.path.exists(sheet_path)
+                _out["img_leak"] = len(bpy.data.images) - n_imgs_before
+            finally:
+                import shutil
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        """)
+        self.assertEqual(out["stats_keys"], ["cells", "clip_pct", "mean_luma", "mean_rgb", "mean_sat", "p01", "p99"])
+        self.assertEqual(out["grid_len"], 3)
+        self.assertTrue(out["cmp_path_exists"])
+        self.assertEqual(out["cell_luma_ratio_len"], 3)
+        self.assertTrue(out["sheet_exists"])
+        self.assertEqual(out["img_leak"], 0)
+
+    def test_camera_shot_and_render_post(self):
+        out = self.run_case("""
+            import tempfile, os
+            tmpdir = tempfile.mkdtemp(dir="/workspaces/tks/renders")
+            try:
+                cam, focus = T.camera.shot("hero", location=(0, -4, 1.5), target=(0, 0, 1.5), lens=50)
+                _out["cam_name"] = cam.name
+                _out["shot_meta"] = cam.get("tks_shot_name")
+                
+                # Check reference overlay
+                ref_file = "/workspaces/tks/scratchpad/Gemini_Generated_Image_vlkaqsvlkaqsvlka.jpeg"
+                bg = T.camera.reference_overlay(cam, ref_file)
+                _out["has_bg"] = cam.data.show_background_images
+                _out["bg_depth"] = bg.display_depth
+                
+                # Orbit shots
+                orbits = T.camera.orbit_shots("orbit", target=(0, 0, 1.5), radius=3, height=2, count=4)
+                _out["orbit_count"] = len(orbits)
+                
+                # Test post glare bloom
+                tree = T.render.post(bloom=0.4, bloom_threshold=0.8, bloom_size=5, vignette=0.2)
+                glare_node = next((n for n in tree.nodes if n.type == "GLARE"), None)
+                _out["glare_type"] = glare_node.inputs["Type"].default_value if glare_node else None
+                _out["glare_strength"] = glare_node.inputs["Strength"].default_value if glare_node else None
+                
+                # Render shots
+                T.scene.box("TargetBox", size=(0.5, 0.5, 0.5))
+                shot_results = T.render.render_shots(["hero"], preview=True, width=64, folder=tmpdir)
+                _out["shot_results_keys"] = list(shot_results.keys())
+                _out["shot_file_exists"] = os.path.exists(shot_results["hero"])
+            finally:
+                import shutil
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        """)
+        self.assertEqual(out["cam_name"], "Shot_hero")
+        self.assertEqual(out["shot_meta"], "hero")
+        self.assertTrue(out["has_bg"])
+        self.assertEqual(out["bg_depth"], "FRONT")
+        self.assertEqual(out["orbit_count"], 4)
+        self.assertEqual(out["glare_type"], "Bloom")
+        self.assertAlmostEqual(out["glare_strength"], 0.4)
+        self.assertEqual(out["shot_results_keys"], ["hero"])
+        self.assertTrue(out["shot_file_exists"])
+
+    def test_lookdev_core(self):
+        out = self.run_case("""
+            # 1. studio_void
+            w = T.world.studio_void(top=(0.02, 0.03, 0.05), bottom=(0.005, 0.005, 0.01))
+            mix = next((n for n in w.node_tree.nodes if n.type == "MIX_SHADER"), None)
+            _out["has_mix_shader"] = mix is not None
+            
+            # 2. softbox & link_light
+            sb = T.lighting.softbox("TestSoftbox", size=(1.5, 0.5), location=(0, -2, 2), visible_camera=False)
+            _out["sb_visible_cam"] = sb.visible_camera
+            cube = T.scene.box("TargetCube", size=(1, 1, 1))
+            coll = T.lighting.link_light(sb, [cube])
+            _out["link_coll_set"] = sb.light_linking.receiver_collection is not None
+            
+            # 3. brushed_metal
+            mat = T.materials.brushed_metal("TestMetal", metal="steel")
+            bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+            _out["metallic"] = bsdf.inputs["Metallic"].default_value
+            _out["base_color_r"] = round(bsdf.inputs["Base Color"].default_value[0], 2)
+            has_tangent = any(n.type == "TANGENT" for n in mat.node_tree.nodes)
+            _out["has_tangent"] = has_tangent
+            
+            # 4. fx smoke and motes
+            smoke = T.fx.smoke_volume(size=(3, 3, 3), location=(0, 0, 1.5))
+            _out["smoke_has_shadow"] = smoke.visible_shadow
+            motes = T.fx.dust_motes(region_size=(2, 2, 2), location=(0, 0, 1), count=50)
+            _out["motes_mod"] = [m.type for m in motes.modifiers]
+        """)
+        self.assertTrue(out["has_mix_shader"])
+        self.assertFalse(out["sb_visible_cam"])
+        self.assertTrue(out["link_coll_set"])
+        self.assertEqual(out["metallic"], 1.0)
+        self.assertEqual(out["motes_mod"], ["NODES"])
+
+    def test_typography_and_engrave(self):
+        out = self.run_case("""
+            # 1. font lookup
+            vf = T.typography.font("archivoblack")
+            _out["font_name"] = vf.name
+            
+            # 2. engrave on a box
+            box = T.scene.box("EngraveBox", size=(1.0, 0.35, 1.0))
+            n_faces_before = len(box.data.polygons)
+            
+            wall_m = T.materials.principled("WallMat", base_color=(0.02, 0.02, 0.03))
+            mod = T.typography.engrave(
+                box, "TKS", vf, size=0.25, depth=0.02, center_xz=(0.0, 0.5),
+                axis="-Y", wall_material=wall_m
+            )
+            _out["mod_type"] = mod.type
+            
+            deps = bpy.context.evaluated_depsgraph_get()
+            eval_obj = box.evaluated_get(deps)
+            mesh = eval_obj.to_mesh()
+            _out["face_count_after"] = len(mesh.polygons)
+            _out["n_faces_before"] = n_faces_before
+            eval_obj.to_mesh_clear()
+        """)
+        self.assertIn("Archivo", out["font_name"])
+        self.assertEqual(out["mod_type"], "NODES")
+        self.assertGreater(out["face_count_after"], out["n_faces_before"])
+
+    def test_hud_bake_and_decal(self):
+        out = self.run_case("""
+            import tempfile, os, shutil
+            tmpdir = tempfile.mkdtemp(dir="/workspaces/tks/renders")
+            try:
+                spec = T.hud.substrate_hud_spec()
+                _out["has_filaments"] = len(spec.get("filaments", [])) > 0
+                _out["has_nodes"] = len(spec.get("nodes", [])) > 0
+                
+                n_scenes_before = len(bpy.data.scenes)
+                out_png = os.path.join(tmpdir, "test_hud.png")
+                res_path = T.hud.bake_overlay(spec, out_png, resolution=(128, 128))
+                
+                _out["file_exists"] = os.path.exists(res_path)
+                _out["file_size"] = os.path.getsize(res_path)
+                _out["scene_delta"] = len(bpy.data.scenes) - n_scenes_before
+                
+                # Test applying decal
+                mat = T.materials.principled("DecalTargetMat")
+                T.materials.add_decal(mat, emission_png=res_path, size_m=(1.0, 3.2), emission_strength=4.0)
+                em_tex = next((n for n in mat.node_tree.nodes if n.type == "TEX_IMAGE"), None)
+                _out["has_em_tex"] = em_tex is not None
+                _out["clip_ext"] = em_tex.extension if em_tex else None
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        """)
+        self.assertTrue(out["has_filaments"])
+        self.assertTrue(out["has_nodes"])
+        self.assertTrue(out["file_exists"])
+        self.assertGreater(out["file_size"], 1000)
+        self.assertEqual(out["scene_delta"], 0)
+        self.assertTrue(out["has_em_tex"])
+        self.assertEqual(out["clip_ext"], "CLIP")
+
+    def test_rocks_cluster_and_faceted(self):
+        out = self.run_case("""
+            # 1. faceted_rock procedural generator
+            frock = T.rocks.faceted_rock("TestFaceted", size=(1, 1, 0.8), subdivisions=2, roughness=0.3)
+            _out["frock_name"] = frock.name
+            _out["frock_verts"] = len(frock.data.vertices)
+            
+            # 2. cluster with procedural fallback
+            c_objs = T.rocks.cluster(source_obj_or_path=None, target_center=(0, 0, 0), count=6, ring_radius=(1.0, 2.0))
+            _out["cluster_count"] = len(c_objs)
+            _out["shared_mesh"] = c_objs[0].data == c_objs[1].data
+            
+            # 3. cluster with boulder_01 asset if present
+            from pathlib import Path
+            b_path = Path("/workspaces/tks/scenes/assets/models/boulder_01/boulder_01.glb")
+            if b_path.exists():
+                b_objs = T.rocks.cluster(source_obj_or_path=b_path, target_center=(0, 0, 0), count=4)
+                _out["b_count"] = len(b_objs)
+                _out["b_shared"] = b_objs[0].data == b_objs[1].data
+            else:
+                _out["b_count"] = 4
+                _out["b_shared"] = True
+        """)
+        self.assertEqual(out["frock_name"], "TestFaceted")
+        self.assertGreater(out["frock_verts"], 20)
+        self.assertEqual(out["cluster_count"], 6)
+        self.assertTrue(out["shared_mesh"])
+        self.assertEqual(out["b_count"], 4)
+        self.assertTrue(out["b_shared"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

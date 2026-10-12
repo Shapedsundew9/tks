@@ -42,7 +42,18 @@ following the rules below — do not edit `tks_bpy` mid-scene unless asked.
 | `bpy.ops.import_scene.obj` | `bpy.ops.wm.obj_import` (also `wm.ply_import`, `wm.stl_import`, `wm.usd_import`; glTF/FBX stay `import_scene.*`) |
 | `bpy.ops.preferences.addon_enable("add_mesh_extra_objects")` | legacy add-ons are **extensions** now: `bl_ext.user_default.<id>`; they are pre-installed — see the `blender-extensions` skill |
 | `nodes.new("ShaderNodeBSDFPrincipled")`, `"ShaderNodeEmissionShader"` | idnames are CamelCase: `ShaderNodeBsdfPrincipled`, `ShaderNodeEmission`, `ShaderNodeBsdfGlass`, `ShaderNodeTexImage`. Prefer `T.materials.*`; to check a name: `hasattr(bpy.types, "ShaderNodeBsdfPrincipled")` |
+| `mix.inputs["A"]`, `mix.inputs["B"]` on `ShaderNodeMix` | socket names are duplicated; use index access: `inputs[0]`=Factor, `inputs[2]`=A, `inputs[3]`=B for Float; `inputs[6]`=A, `inputs[7]`=B for RGBA |
+| `glare.glare_type = "BLOOM"` on `CompositorNodeGlare` | glare properties are input sockets: `inputs["Type"].default_value = "Bloom"`, `inputs["Threshold"]`, `inputs["Size"]`, `inputs["Strength"]` |
+| `light.light_linking` collection assignment | use `light_obj.light_linking.receiver_collection = coll` |
+| `bpy.ops.export_scene.gltf(filepath=...)` | defaults `use_active_scene=False` exporting all scenes; pass `use_active_scene=True` or `use_selection=True` |
+| `fill_node.mode = "NGONS"` on `GeometryNodeFillCurve` | mode is an input socket: `fill.inputs["Mode"].default_value = "N-gons"` |
+| `stc.font = font_obj` on `GeometryNodeStringToCurves` | font is an input socket: `stc.inputs["Font"].default_value = font_obj`; output socket is `'Curve Instances'` |
 | After a failed snippet, retrying the same `new()` calls | partial state persists (half-built materials, `.001` duplicates). Inspect with `T.scene.summary()` and delete or reuse what the failed call made |
+
+### PBR Sanity & Lookdev Rules in 5.2
+- **Brushed Metal Anisotropy**: Radial Z tangent (`tangent.direction_type = "RADIAL"`, `axis = "Z"`) produces horizontal brushed sheen on vertical faces without UV unwrapping.
+- **Atmosphere in Hero Void**: Never attach global `Principled Volume` to World output in dark void scenes (it veils contrast); use bounded local `fx.smoke_volume` and `fx.dust_motes`.
+- **Light Linking in Cycles**: Use `lighting.link_light` to isolate high-energy rims and softboxes to hero receivers without hazing background atmosphere.
 
 More detail and the full Principled/sky/volume socket lists: [references/api-changes.md](references/api-changes.md).
 

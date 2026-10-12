@@ -19,6 +19,8 @@ Blender). Never commit assets.
 | Realistic generic props (furniture, rocks, plants, tools) | Poly Haven models (CC0) | `search_assets(source="polyhaven", asset_type="models", query=..., previews=3)` → `import_asset(..., asset_type="models")` |
 | Stylised low-poly props | Poly Pizza (CC0 / CC-BY) | Needs `BLENDERMCP_POLYPIZZA_API_KEY`. `search_assets(source="polypizza", query=..., licence="CC0")` → `import_asset(source="polypizza", id=..., target_size=...)` |
 | A specific real-world object (named car, landmark) | Sketchfab (licence varies) | Needs `BLENDERMCP_SKETCHFAB_API_KEY`. Accept only CC0 / CC-BY (CC-BY-SA if the user agrees); **never** NC/ND or editorial without asking. `target_size` is required. |
+| Typography / signage / engraving | OFL Fonts catalogue | Download via `scripts/blender/fetch_fonts.py` to `scenes/assets/fonts/`. In Blender: `T.typography.font("archivoblack")`, `T.typography.font("ibmplexmono")`, etc. |
+| Rock clusters / bedrock formations | Poly Haven + `tks_bpy.rocks` | `T.rocks.cluster(source_obj_or_path, target_center, count=12)` (shared-mesh instances). Grade scan material to dark slate via `T.materials.restyle(mat, value=0.22, roughness_range=(0.32, 0.52))` |
 | Procedural/simple geometry (walls, shelves, fences, terrain, trees, gems) | Script it | `tks_bpy` + pinned extensions (see `blender-extensions`) |
 | A file the user supplies (glb/gltf/fbx/obj/usd/ply/stl/blend) | Local | `T.assets.import_model(path, target_size=..., axis=...)` |
 | One-off hero object from text | `generate_3d` | Only if `get_addon_status` reports a configured provider; otherwise say so and fall back to library assets |
