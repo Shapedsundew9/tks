@@ -173,8 +173,12 @@ async fn test_mcp_wire_protocol_camel_case_input_schema() {
         .and_then(Value::as_array)
         .expect("Tools must be an array");
 
-    // Proof Criterion 2: Exactly 8 tools returned, each using camelCase inputSchema
-    assert_eq!(tools.len(), 8, "Must return exactly 8 registered MCP tools");
+    // Proof Criterion 2: Exactly 14 tools returned, each using camelCase inputSchema
+    assert_eq!(
+        tools.len(),
+        14,
+        "Must return exactly 14 registered MCP tools (8 core + 6 elicitation)"
+    );
 
     let expected_tools = [
         "get_context_envelope",
@@ -185,6 +189,12 @@ async fn test_mcp_wire_protocol_camel_case_input_schema() {
         "update_node_status",
         "revert_mutations",
         "reverify_node",
+        "open_extraction_session",
+        "submit_episodes",
+        "submit_goal_candidates",
+        "submit_verification_verdicts",
+        "get_gap_report",
+        "stage_goals",
     ];
 
     for expected_name in &expected_tools {

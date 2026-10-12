@@ -150,11 +150,11 @@ async fn test_mcp_tools_list_all_eight_tools() {
         .as_array()
         .expect("tools must be an array");
 
-    // Proof Criterion 2: Querying tools/list returns all 8 tools
+    // Proof Criterion 2: Querying tools/list returns all 14 tools
     assert_eq!(
         tools.len(),
-        8,
-        "Expected exactly 8 registered MCP tools (3 read-only + 5 mutation)"
+        14,
+        "Expected exactly 14 registered MCP tools (3 read-only + 5 mutation + 6 elicitation)"
     );
 
     let tool_names: Vec<&str> = tools
@@ -171,6 +171,12 @@ async fn test_mcp_tools_list_all_eight_tools() {
         "update_node_status",
         "revert_mutations",
         "reverify_node",
+        "open_extraction_session",
+        "submit_episodes",
+        "submit_goal_candidates",
+        "submit_verification_verdicts",
+        "get_gap_report",
+        "stage_goals",
     ];
 
     for expected in &expected_tools {
@@ -1120,7 +1126,7 @@ async fn test_mcp_sse_transport_mutation() {
         .unwrap();
     assert_eq!(list_resp.status(), StatusCode::OK);
     let list_body: serde_json::Value = list_resp.json().await.unwrap();
-    assert_eq!(list_body["result"]["tools"].as_array().unwrap().len(), 8);
+    assert_eq!(list_body["result"]["tools"].as_array().unwrap().len(), 14);
 
     cancel.cancel();
 }

@@ -2,6 +2,7 @@
 
 pub mod classify;
 pub mod drift;
+pub mod elicitation;
 pub mod fallback;
 pub mod matcher;
 pub mod parser;
@@ -12,6 +13,7 @@ pub mod transcript;
 
 pub use classify::*;
 pub use drift::*;
+pub use elicitation::*;
 pub use fallback::*;
 pub use matcher::*;
 pub use parser::*;

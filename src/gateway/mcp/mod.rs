@@ -1,5 +1,6 @@
 //! Model Context Protocol (MCP) router over HTTP/SSE and JSON-RPC (WP-1.5, WP-2.4, D-19, TB-4).
 
+pub mod prompts;
 pub mod tools;
 
 use std::convert::Infallible;
@@ -17,10 +18,13 @@ use uuid::Uuid;
 
 use crate::gateway::AppState;
 use crate::gateway::auth::MaybeAuthenticatedAgent;
+use crate::gateway::mcp::prompts::{get_prompt, list_prompts};
 use crate::gateway::mcp::tools::{
     handle_create_subtask, handle_get_context_envelope, handle_get_document_span,
-    handle_propose_node_mutation, handle_query_requirements, handle_reverify_node,
-    handle_revert_mutations, handle_update_node_status, list_tools,
+    handle_get_gap_report, handle_open_extraction_session, handle_propose_node_mutation,
+    handle_query_requirements, handle_reverify_node, handle_revert_mutations, handle_stage_goals,
+    handle_submit_episodes, handle_submit_goal_candidates, handle_submit_verification_verdicts,
+    handle_update_node_status, list_tools,
 };
 use crate::storage::mutation::MutationError;
 use crate::storage::rollback::RevertExecutionResult;
@@ -169,7 +173,8 @@ pub async fn process_jsonrpc_request(
             let res = serde_json::json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
-                    "tools": {}
+                    "tools": {},
+                    "prompts": {}
                 },
                 "serverInfo": {
                     "name": "tks",
@@ -190,6 +195,42 @@ pub async fn process_jsonrpc_request(
                 "tools": tools
             });
             Some(JsonRpcResponse::success(id, res))
+        }
+
+        "prompts/list" => {
+            let prompts = list_prompts();
+            let res = serde_json::json!({
+                "prompts": prompts
+            });
+            Some(JsonRpcResponse::success(id, res))
+        }
+
+        "prompts/get" => {
+            let prompt_name = request.params.get("name").and_then(|v| v.as_str());
+            let arguments = request
+                .params
+                .get("arguments")
+                .cloned()
+                .unwrap_or(Value::Null);
+
+            let prompt_name = match prompt_name {
+                Some(name) => name,
+                None => {
+                    return Some(JsonRpcResponse::error(
+                        id,
+                        -32602,
+                        "Missing required 'name' in prompts/get params",
+                    ));
+                }
+            };
+
+            match get_prompt(prompt_name, &arguments) {
+                Ok(result) => {
+                    let res_val = serde_json::to_value(&result).unwrap_or_default();
+                    Some(JsonRpcResponse::success(id, res_val))
+                }
+                Err(err) => Some(JsonRpcResponse::error(id, -32602, err)),
+            }
         }
 
         "tools/call" => {
@@ -239,7 +280,13 @@ pub async fn process_jsonrpc_request(
         | "create_subtask"
         | "update_node_status"
         | "revert_mutations"
-        | "reverify_node" => {
+        | "reverify_node"
+        | "open_extraction_session"
+        | "submit_episodes"
+        | "submit_goal_candidates"
+        | "submit_verification_verdicts"
+        | "get_gap_report"
+        | "stage_goals" => {
             let mut params = request.params;
             if let (Some(token), Some(param_obj)) = (&request.auth_token, params.as_object_mut()) {
                 param_obj
@@ -272,6 +319,7 @@ async fn dispatch_tool_call(
             | "update_node_status"
             | "revert_mutations"
             | "reverify_node"
+            | "stage_goals"
     );
 
     let effective_caller = match caller {
@@ -554,6 +602,134 @@ async fn dispatch_tool_call(
                     Some(JsonRpcResponse::success(id, result))
                 }
                 Err(err) => Some(format_mutation_error(id, err)),
+            }
+        }
+
+        "open_extraction_session" => {
+            match handle_open_extraction_session(state, arguments, effective_caller.as_ref()).await
+            {
+                Ok(res) => {
+                    let formatted_text = serde_json::to_string_pretty(&res).unwrap_or_default();
+                    let result = serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": formatted_text
+                            }
+                        ],
+                        "session": res
+                    });
+                    Some(JsonRpcResponse::success(id, result))
+                }
+                Err(err) => Some(JsonRpcResponse::error(id, -32000, err)),
+            }
+        }
+
+        "submit_episodes" => {
+            match handle_submit_episodes(state, arguments, effective_caller.as_ref()).await {
+                Ok(res) => {
+                    let formatted_text = serde_json::to_string_pretty(&res).unwrap_or_default();
+                    let result = serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": formatted_text
+                            }
+                        ],
+                        "result": res
+                    });
+                    Some(JsonRpcResponse::success(id, result))
+                }
+                Err(err) => Some(JsonRpcResponse::error(id, -32000, err)),
+            }
+        }
+
+        "submit_goal_candidates" => {
+            match handle_submit_goal_candidates(state, arguments, effective_caller.as_ref()).await {
+                Ok(res) => {
+                    let formatted_text = serde_json::to_string_pretty(&res).unwrap_or_default();
+                    let result = serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": formatted_text
+                            }
+                        ],
+                        "result": res
+                    });
+                    Some(JsonRpcResponse::success(id, result))
+                }
+                Err(err) => Some(JsonRpcResponse::error(id, -32000, err)),
+            }
+        }
+
+        "submit_verification_verdicts" => {
+            match handle_submit_verification_verdicts(state, arguments, effective_caller.as_ref())
+                .await
+            {
+                Ok(res) => {
+                    let formatted_text = serde_json::to_string_pretty(&res).unwrap_or_default();
+                    let result = serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": formatted_text
+                            }
+                        ],
+                        "result": res
+                    });
+                    Some(JsonRpcResponse::success(id, result))
+                }
+                Err(err) => Some(JsonRpcResponse::error(id, -32000, err)),
+            }
+        }
+
+        "get_gap_report" => {
+            match handle_get_gap_report(state, arguments, effective_caller.as_ref()).await {
+                Ok(res) => {
+                    let formatted_text = serde_json::to_string_pretty(&res).unwrap_or_default();
+                    let result = serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": formatted_text
+                            }
+                        ],
+                        "gap_report": res
+                    });
+                    Some(JsonRpcResponse::success(id, result))
+                }
+                Err(err) => Some(JsonRpcResponse::error(id, -32000, err)),
+            }
+        }
+
+        "stage_goals" => {
+            let agent = match effective_caller.as_ref() {
+                Some(a) => a,
+                None => {
+                    return Some(JsonRpcResponse::error(
+                        id,
+                        -32000,
+                        "ERR_AUTH_FAILED: Authentication required for mutation tools",
+                    ));
+                }
+            };
+
+            match handle_stage_goals(state, arguments, Some(agent)).await {
+                Ok(res) => {
+                    let formatted_text = serde_json::to_string_pretty(&res).unwrap_or_default();
+                    let result = serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": formatted_text
+                            }
+                        ],
+                        "staging": res
+                    });
+                    Some(JsonRpcResponse::success(id, result))
+                }
+                Err(err) => Some(JsonRpcResponse::error(id, -32000, err)),
             }
         }
 
