@@ -156,51 +156,152 @@ pub async fn run_staging(
                     .first()
                     .and_then(|c| c.doc_path.as_deref())
                     .unwrap_or("<unknown>");
-                println!("Staging Candidates (Job: {}):", args.job_id);
-                println!("  Document Path: {doc_path}");
-                println!("  Candidates ({}):", candidates.len());
 
-                for node in &candidates {
-                    let key = node.node_key.as_deref().unwrap_or("<no-key>");
-                    let title = node.title.as_deref().unwrap_or("<no-title>");
-                    let start = node.byte_start.unwrap_or(0);
-                    let end = node.byte_end.unwrap_or(0);
-                    let modality = node
-                        .extraction_metadata
-                        .get("modality")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("SHALL");
-                    let conf = node
-                        .extraction_metadata
-                        .get("confidence")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(1.0);
-                    let risk = node
-                        .extraction_metadata
-                        .get("contradiction_risk")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("LOW");
+                let has_goals = candidates.iter().any(|c| c.node_type == "GOAL");
+                if has_goals {
+                    println!("Goal Model Candidates (Job: {}):", args.job_id);
+                    println!("  Document Path: {doc_path}");
 
-                    let is_child = node.parent_anchor.is_some();
-                    let prefix = if is_child { "      └─" } else { "    " };
+                    let mut goal_nodes: Vec<&CandidateNodeResponse> = candidates
+                        .iter()
+                        .filter(|c| c.node_type == "GOAL")
+                        .collect();
 
-                    println!(
-                        "{} [{}] {} | {} | \"{}\" | bytes: {start}..{end} [{}] [CONF: {:.2}] [CONTRADICTION RISK: {}]",
-                        prefix,
-                        node.id,
-                        key,
-                        node.node_type,
-                        title,
-                        modality.to_uppercase(),
-                        conf,
-                        risk.to_uppercase()
-                    );
-                    if conf < 0.70 {
-                        let adv_prefix = if is_child { "         " } else { "      " };
+                    // Sort in narrative order by earliest cited turn number
+                    goal_nodes.sort_by_key(|c| {
+                        c.attributes
+                            .get("grounding")
+                            .and_then(|v| v.as_array())
+                            .and_then(|arr| arr.first())
+                            .and_then(|cite| cite.get("turn"))
+                            .and_then(|t| t.as_str())
+                            .and_then(|s| s.strip_prefix('t'))
+                            .and_then(|num| num.parse::<u32>().ok())
+                            .unwrap_or(u32::MAX)
+                    });
+
+                    println!("  Staged Goals ({}):", goal_nodes.len());
+
+                    for (idx, node) in goal_nodes.iter().enumerate() {
+                        let key = node.node_key.as_deref().unwrap_or("<no-key>");
+                        let statement = node.title.as_deref().unwrap_or("<no-statement>");
+                        let kind = node
+                            .attributes
+                            .get("goal_kind")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("ACHIEVE");
+                        let stakeholder = node
+                            .attributes
+                            .get("stakeholder")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        let cycle_action =
+                            node.attributes.get("cycle_action").and_then(|v| v.as_str());
+
+                        let verdict = node
+                            .attributes
+                            .get("verification")
+                            .and_then(|v| v.get("forward"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("PENDING");
+
+                        let mut badges =
+                            vec![format!("[{kind}]"), format!("[STAKEHOLDER: {stakeholder}]")];
+                        if let Some(action) = cycle_action {
+                            badges.push(format!("[CYCLE: {action}]"));
+                        }
+                        badges.push(format!("[VERDICT: {verdict}]"));
+
                         println!(
-                            "{}⚠️  ADVISORY: Low extraction confidence ({:.2}) - supervisor verification required",
-                            adv_prefix, conf
+                            "\n  {:2}. [{}] {} {}",
+                            idx + 1,
+                            node.id,
+                            key,
+                            badges.join(" ")
                         );
+                        println!("      Statement: \"{statement}\"");
+
+                        if let Some(content) = &node.content
+                            && content != statement
+                        {
+                            println!("      Rationale: \"{content}\"");
+                        }
+
+                        // Verbatim grounding quotes with turn click-through references
+                        if let Some(citations) =
+                            node.attributes.get("grounding").and_then(|v| v.as_array())
+                        {
+                            for cite in citations {
+                                let quote =
+                                    cite.get("quote").and_then(|v| v.as_str()).unwrap_or("");
+                                if let Some(turn) = cite.get("turn").and_then(|v| v.as_str()) {
+                                    println!("      └─ Grounding [{turn}]: \"{quote}\"");
+                                } else if let Some(sec) =
+                                    cite.get("section").and_then(|v| v.as_str())
+                                {
+                                    println!("      └─ Grounding [Section \"{sec}\"]: \"{quote}\"");
+                                }
+                            }
+                        }
+
+                        // Premature-concretization and technology lint badges
+                        if let Some(warnings) =
+                            node.attributes.get("warnings").and_then(|v| v.as_array())
+                        {
+                            for warn in warnings {
+                                if let Some(w_str) = warn.as_str() {
+                                    println!("      ⚠️  LINT: {w_str}");
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    println!("Staging Candidates (Job: {}):", args.job_id);
+                    println!("  Document Path: {doc_path}");
+                    println!("  Candidates ({}):", candidates.len());
+
+                    for node in &candidates {
+                        let key = node.node_key.as_deref().unwrap_or("<no-key>");
+                        let title = node.title.as_deref().unwrap_or("<no-title>");
+                        let start = node.byte_start.unwrap_or(0);
+                        let end = node.byte_end.unwrap_or(0);
+                        let modality = node
+                            .extraction_metadata
+                            .get("modality")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("SHALL");
+                        let conf = node
+                            .extraction_metadata
+                            .get("confidence")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(1.0);
+                        let risk = node
+                            .extraction_metadata
+                            .get("contradiction_risk")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("LOW");
+
+                        let is_child = node.parent_anchor.is_some();
+                        let prefix = if is_child { "      └─" } else { "    " };
+
+                        println!(
+                            "{} [{}] {} | {} | \"{}\" | bytes: {start}..{end} [{}] [CONF: {:.2}] [CONTRADICTION RISK: {}]",
+                            prefix,
+                            node.id,
+                            key,
+                            node.node_type,
+                            title,
+                            modality.to_uppercase(),
+                            conf,
+                            risk.to_uppercase()
+                        );
+                        if conf < 0.70 {
+                            let adv_prefix = if is_child { "         " } else { "      " };
+                            println!(
+                                "{}⚠️  ADVISORY: Low extraction confidence ({:.2}) - supervisor verification required",
+                                adv_prefix, conf
+                            );
+                        }
                     }
                 }
             }
@@ -248,6 +349,42 @@ pub async fn run_staging(
             }
             if let Some(content) = &node.content {
                 println!("  Content:           {content}");
+            }
+
+            if node.node_type == "GOAL" {
+                if let Some(kind) = node.attributes.get("goal_kind").and_then(|v| v.as_str()) {
+                    println!("  Goal Kind:         {kind}");
+                }
+                if let Some(sh) = node.attributes.get("stakeholder").and_then(|v| v.as_str()) {
+                    println!("  Stakeholder:       {sh}");
+                }
+                if let Some(verdict) = node
+                    .attributes
+                    .get("verification")
+                    .and_then(|v| v.get("forward"))
+                    .and_then(|v| v.as_str())
+                {
+                    println!("  Verdict:           {verdict}");
+                }
+                if let Some(citations) = node.attributes.get("grounding").and_then(|v| v.as_array())
+                {
+                    println!("  Grounding Citations ({}):", citations.len());
+                    for cite in citations {
+                        let quote = cite.get("quote").and_then(|v| v.as_str()).unwrap_or("");
+                        if let Some(turn) = cite.get("turn").and_then(|v| v.as_str()) {
+                            println!("    - Turn [{turn}]: \"{quote}\"");
+                        } else if let Some(sec) = cite.get("section").and_then(|v| v.as_str()) {
+                            println!("    - Section [{sec}]: \"{quote}\"");
+                        }
+                    }
+                }
+                if let Some(warnings) = node.attributes.get("warnings").and_then(|v| v.as_array()) {
+                    for warn in warnings {
+                        if let Some(w) = warn.as_str() {
+                            println!("  ⚠️  LINT:           {w}");
+                        }
+                    }
+                }
             }
 
             if let Some(span_text) = &inspect_info.span_text {

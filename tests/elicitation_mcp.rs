@@ -552,6 +552,22 @@ async fn test_elicitation_extraction_session_end_to_end() {
         .expect("validate_ancestor_path");
     assert!(is_valid, "Staged GOAL roots must satisfy Invariant INV-1");
 
+    // 8. Test tks staging list review UX for staged goals (EB-7)
+    use tks::cli::staging::{StagingListArgs, StagingSubcommand, run_staging};
+    let list_res = run_staging(
+        StagingSubcommand::List(StagingListArgs {
+            job_id: session_id,
+            triage_anomalies: false,
+        }),
+        &base_url,
+        auth_token,
+    )
+    .await;
+    assert!(
+        list_res.is_ok(),
+        "tks staging list must succeed for staged goals: {list_res:?}"
+    );
+
     cancel_token.cancel();
 }
 
