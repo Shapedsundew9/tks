@@ -6,8 +6,9 @@ use uuid::Uuid;
 
 use tks::db;
 use tks::storage::{
-    StorageRepo, acquire_structural_lock, assemble_topological_envelope, lookup_node_polymorphic,
-    query_active_requirements, validate_ancestor_path,
+    MutationError, StorageRepo, acquire_structural_lock, assemble_topological_envelope,
+    insert_structural_edge, lookup_node_polymorphic, query_active_requirements,
+    validate_ancestor_path,
 };
 
 static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -600,6 +601,267 @@ async fn test_topological_envelope_assembly_and_caller_draft_isolation() {
             "DELETE FROM graph_nodes WHERE created_by IN ('test_wp12_env', 'agent_a', 'agent_b');",
             &[],
         )
+        .await
+        .expect("Cleanup failed");
+}
+
+#[tokio::test]
+async fn test_goal_model_ancestry_and_edge_validation() {
+    let (_guard, _repo, client) = setup_test_db().await;
+    let actor = "test_wp12_goal_model";
+
+    // 1. Create nodes
+    let g1_id = Uuid::new_v4();
+    let g2_id = Uuid::new_v4();
+    let g_soft_id = Uuid::new_v4();
+    let e1_id = Uuid::new_v4();
+    let r1_id = Uuid::new_v4();
+    let s1_id = Uuid::new_v4();
+    let t1_id = Uuid::new_v4();
+
+    // Insert active nodes
+    client
+        .execute(
+            "INSERT INTO graph_nodes (id, node_key, node_type, title, content, lifecycle_state, created_by, attributes)
+             VALUES ($1, 'GOAL-001', 'GOAL', 'Goal 1', 'Content 1', 'ACTIVE', $2, '{\"goal_kind\": \"ACHIEVE\"}'),
+                    ($3, 'GOAL-002', 'GOAL', 'Goal 2', 'Content 2', 'ACTIVE', $2, '{\"goal_kind\": \"ACHIEVE\"}'),
+                    ($4, 'GOAL-SOFT', 'GOAL', 'Soft Goal', 'Content S', 'ACTIVE', $2, '{\"goal_kind\": \"SOFTGOAL\"}'),
+                    ($5, 'EXC-001', 'SOURCE_EXCERPT', 'Excerpt 1', 'Quote 1', 'ACTIVE', $2, '{}'),
+                    ($6, 'REQ-001', 'REQUIREMENT', 'Req 1', 'Content R', 'ACTIVE', $2, '{}'),
+                    ($7, 'SPEC-001', 'SPECIFICATION', 'Spec 1', 'Content SP', 'ACTIVE', $2, '{}'),
+                    ($8, 'TASK-001', 'TASK', 'Task 1', 'Content T', 'ACTIVE', $2, '{}');",
+            &[&g1_id, &actor, &g2_id, &g_soft_id, &e1_id, &r1_id, &s1_id, &t1_id],
+        )
+        .await
+        .expect("Failed to insert active test nodes");
+
+    // 2. Test GROUNDED_IN: GOAL -> SOURCE_EXCERPT
+    let grounded_edge =
+        insert_structural_edge(&client, g1_id, e1_id, "GROUNDED_IN", actor, "ACTIVE").await;
+    assert!(
+        grounded_edge.is_ok(),
+        "GOAL -> SOURCE_EXCERPT GROUNDED_IN must succeed"
+    );
+
+    let invalid_grounded_from =
+        insert_structural_edge(&client, s1_id, e1_id, "GROUNDED_IN", actor, "ACTIVE").await;
+    assert!(
+        matches!(
+            invalid_grounded_from,
+            Err(MutationError::InvalidEdgeTarget { .. })
+        ),
+        "SPECIFICATION -> SOURCE_EXCERPT GROUNDED_IN must be rejected"
+    );
+
+    let invalid_grounded_to =
+        insert_structural_edge(&client, g1_id, s1_id, "GROUNDED_IN", actor, "ACTIVE").await;
+    assert!(
+        matches!(
+            invalid_grounded_to,
+            Err(MutationError::InvalidEdgeTarget { .. })
+        ),
+        "GOAL -> SPECIFICATION GROUNDED_IN must be rejected"
+    );
+
+    // 3. Test REFINES: (GOAL | REQUIREMENT) -> GOAL
+    let refines_goal_goal =
+        insert_structural_edge(&client, g2_id, g1_id, "REFINES", actor, "ACTIVE").await;
+    assert!(
+        refines_goal_goal.is_ok(),
+        "GOAL -> GOAL REFINES must succeed"
+    );
+
+    let refines_req_goal =
+        insert_structural_edge(&client, r1_id, g1_id, "REFINES", actor, "ACTIVE").await;
+    assert!(
+        refines_req_goal.is_ok(),
+        "REQUIREMENT -> GOAL REFINES must succeed"
+    );
+
+    let invalid_refines_target =
+        insert_structural_edge(&client, g1_id, r1_id, "REFINES", actor, "ACTIVE").await;
+    assert!(
+        matches!(
+            invalid_refines_target,
+            Err(MutationError::InvalidEdgeTarget { .. })
+        ),
+        "GOAL -> REQUIREMENT REFINES must be rejected (target must be GOAL)"
+    );
+
+    let invalid_refines_from =
+        insert_structural_edge(&client, t1_id, g1_id, "REFINES", actor, "ACTIVE").await;
+    assert!(
+        matches!(
+            invalid_refines_from,
+            Err(MutationError::InvalidEdgeTarget { .. })
+        ),
+        "TASK -> GOAL REFINES must be rejected (source must be GOAL or REQUIREMENT)"
+    );
+
+    // Cycle check on REFINES: g2 -> g1 exists; attempting g1 -> g2 must be rejected with CycleDetected
+    let refines_cycle =
+        insert_structural_edge(&client, g1_id, g2_id, "REFINES", actor, "ACTIVE").await;
+    assert!(
+        matches!(refines_cycle, Err(MutationError::CycleDetected { .. })),
+        "REFINES cycle (g1 -> g2 when g2 -> g1 exists) must be rejected with CycleDetected"
+    );
+
+    // 4. Test CONFLICTS_WITH: GOAL <-> GOAL with lower UUID as from_node_id
+    let (min_g, max_g) = if g1_id < g2_id {
+        (g1_id, g2_id)
+    } else {
+        (g2_id, g1_id)
+    };
+    let conflict_ok =
+        insert_structural_edge(&client, min_g, max_g, "CONFLICTS_WITH", actor, "ACTIVE").await;
+    assert!(
+        conflict_ok.is_ok(),
+        "CONFLICTS_WITH with lower UUID as from_node_id must succeed"
+    );
+
+    let conflict_reversed =
+        insert_structural_edge(&client, max_g, min_g, "CONFLICTS_WITH", actor, "ACTIVE").await;
+    assert!(
+        matches!(
+            conflict_reversed,
+            Err(MutationError::InvalidEdgeTarget { .. })
+        ),
+        "CONFLICTS_WITH with higher UUID as from_node_id must be rejected"
+    );
+
+    let conflict_non_goal =
+        insert_structural_edge(&client, g1_id, r1_id, "CONFLICTS_WITH", actor, "ACTIVE").await;
+    assert!(
+        matches!(
+            conflict_non_goal,
+            Err(MutationError::InvalidEdgeTarget { .. })
+        ),
+        "CONFLICTS_WITH with non-GOAL node must be rejected"
+    );
+
+    // 5. Test CONTRIBUTES_TO: (GOAL | REQUIREMENT) -> SOFTGOAL GOAL
+    let contrib_goal =
+        insert_structural_edge(&client, g1_id, g_soft_id, "CONTRIBUTES_TO", actor, "ACTIVE").await;
+    assert!(
+        contrib_goal.is_ok(),
+        "GOAL -> SOFTGOAL CONTRIBUTES_TO must succeed"
+    );
+
+    let contrib_req =
+        insert_structural_edge(&client, r1_id, g_soft_id, "CONTRIBUTES_TO", actor, "ACTIVE").await;
+    assert!(
+        contrib_req.is_ok(),
+        "REQUIREMENT -> SOFTGOAL CONTRIBUTES_TO must succeed"
+    );
+
+    let contrib_not_softgoal =
+        insert_structural_edge(&client, g1_id, g2_id, "CONTRIBUTES_TO", actor, "ACTIVE").await;
+    assert!(
+        matches!(
+            contrib_not_softgoal,
+            Err(MutationError::InvalidEdgeTarget { .. })
+        ),
+        "CONTRIBUTES_TO targeting non-SOFTGOAL goal must be rejected"
+    );
+
+    let contrib_invalid_from =
+        insert_structural_edge(&client, t1_id, g_soft_id, "CONTRIBUTES_TO", actor, "ACTIVE").await;
+    assert!(
+        matches!(
+            contrib_invalid_from,
+            Err(MutationError::InvalidEdgeTarget { .. })
+        ),
+        "TASK -> SOFTGOAL CONTRIBUTES_TO must be rejected"
+    );
+
+    // 6. Test INV-1 Ancestor Path Validation with GOAL roots (D-125)
+    // 6a. GOAL root itself is valid
+    assert!(
+        validate_ancestor_path(&client, &[g1_id], false)
+            .await
+            .unwrap(),
+        "GOAL root itself must satisfy INV-1"
+    );
+
+    // 6b. SPECIFICATION with REFINES edge to GOAL root is valid
+    // First insert SPEC -> GOAL edge using raw INSERT or DERIVED_FROM / FULFILLS / REFINES
+    client
+        .execute(
+            "INSERT INTO graph_edges (from_node_id, to_node_id, edge_type, lifecycle_state, created_by)
+             VALUES ($1, $2, 'DERIVED_FROM', 'ACTIVE', $3);",
+            &[&s1_id, &g1_id, &actor],
+        )
+        .await
+        .unwrap();
+    assert!(
+        validate_ancestor_path(&client, &[s1_id], false)
+            .await
+            .unwrap(),
+        "SPECIFICATION derived from GOAL root must satisfy INV-1"
+    );
+
+    // 6c. Multi-hop TASK -> SPEC -> GOAL is valid
+    let task_edge =
+        insert_structural_edge(&client, t1_id, s1_id, "FULFILLS", actor, "ACTIVE").await;
+    assert!(
+        task_edge.is_ok(),
+        "TASK -> SPEC FULFILLS edge insertion must succeed"
+    );
+    assert!(
+        validate_ancestor_path(&client, &[t1_id], false)
+            .await
+            .unwrap(),
+        "TASK fulfilling SPEC derived from GOAL root must satisfy INV-1"
+    );
+
+    // 6d. Batch draft promotion with candidate GOAL and child TASK
+    let draft_goal_id = Uuid::new_v4();
+    let draft_task_id = Uuid::new_v4();
+    client
+        .execute(
+            "INSERT INTO graph_nodes (id, node_key, node_type, lifecycle_state, created_by, attributes)
+             VALUES ($1, 'GOAL-DRAFT-01', 'GOAL', 'DRAFT', $3, '{\"goal_kind\": \"ACHIEVE\"}'),
+                    ($2, 'TASK-DRAFT-01', 'TASK', 'DRAFT', $3, '{}');",
+            &[&draft_goal_id, &draft_task_id, &actor],
+        )
+        .await
+        .unwrap();
+    client
+        .execute(
+            "INSERT INTO graph_edges (from_node_id, to_node_id, edge_type, lifecycle_state, created_by)
+             VALUES ($1, $2, 'FULFILLS', 'DRAFT', $3);",
+            &[&draft_task_id, &draft_goal_id, &actor],
+        )
+        .await
+        .unwrap();
+
+    // Promoting draft_task_id alone without candidate goal in batch must fail
+    assert!(
+        !validate_ancestor_path(&client, &[draft_task_id], false)
+            .await
+            .unwrap(),
+        "Promoting draft task without active or promoted parent goal must fail"
+    );
+
+    // Promoting both draft_task_id and draft_goal_id together in the same batch must succeed
+    assert!(
+        validate_ancestor_path(&client, &[draft_task_id, draft_goal_id], false)
+            .await
+            .unwrap(),
+        "Batch promotion must succeed when candidate goal root is in batch"
+    );
+
+    // allow_draft_parents=true must allow draft structural goal parent
+    assert!(
+        validate_ancestor_path(&client, &[draft_task_id], true)
+            .await
+            .unwrap(),
+        "allow_draft_parents=true must allow draft structural goal parent"
+    );
+
+    // Clean up
+    client
+        .execute("DELETE FROM graph_nodes WHERE created_by = $1;", &[&actor])
         .await
         .expect("Cleanup failed");
 }

@@ -130,15 +130,15 @@ pub async fn reverify_node_client(
         .await?;
     }
 
-    // 5. Validate that all direct upstream dependencies are in ACTIVE state (INV-1, D-76)
-    if node_type != "REQUIREMENT" {
+    // 5. Validate that all direct upstream dependencies are in ACTIVE state (INV-1, D-76, D-125)
+    if node_type != "REQUIREMENT" && node_type != "GOAL" {
         let parent_rows = tx
             .query(
                 "SELECT e.edge_id, e.to_node_id, p.node_key, p.lifecycle_state, p.node_type \
                  FROM graph_edges e \
                  JOIN graph_nodes p ON p.id = e.to_node_id \
                  WHERE e.from_node_id = $1 \
-                   AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM') \
+                   AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS', 'REFINES') \
                    AND e.lifecycle_state = 'ACTIVE';",
                 &[&resolved_id],
             )

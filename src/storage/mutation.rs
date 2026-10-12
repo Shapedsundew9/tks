@@ -379,7 +379,7 @@ pub async fn check_dag_cycle(
                 ARRAY[$1, e.to_node_id] AS visited
             FROM graph_edges e
             WHERE e.from_node_id = $1
-              AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS')
+              AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS', 'REFINES')
               AND e.lifecycle_state IN ('ACTIVE', 'DRAFT')
             UNION ALL
             SELECT
@@ -388,7 +388,7 @@ pub async fn check_dag_cycle(
                 uw.visited || e.to_node_id
             FROM upward_walk uw
             JOIN graph_edges e ON e.from_node_id = uw.current_id
-            WHERE e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS')
+            WHERE e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS', 'REFINES')
               AND e.lifecycle_state IN ('ACTIVE', 'DRAFT')
               AND NOT (e.to_node_id = ANY(uw.visited))
               AND uw.depth < 100
@@ -599,12 +599,15 @@ pub async fn insert_structural_edge(
         });
     }
 
-    // 2. Cycle prevention check for structural edge types
+    // 2. Pre-validation for goal model edge types
+    pre_validate_goal_model_edge_endpoints(client, from_id, to_id, &edge_type_norm).await?;
+
+    // 3. Cycle prevention check for structural edge types
     if is_structural_edge_type(&edge_type_norm) {
         assert_no_dag_cycle(client, from_id, to_id).await?;
     }
 
-    // 3. Insert edge into graph_edges
+    // 4. Insert edge into graph_edges
     let row = client
         .query_one(
             "INSERT INTO graph_edges (from_node_id, to_node_id, edge_type, created_by, lifecycle_state) \
@@ -617,12 +620,123 @@ pub async fn insert_structural_edge(
     Ok(GraphEdge::from_row(&row))
 }
 
+/// Pre-validates node types and directional invariants for goal model edge types.
+///
+/// Returns `MutationError::InvalidEdgeTarget` if edge relation violates typed endpoint contracts:
+/// - `GROUNDED_IN`: `GOAL -> SOURCE_EXCERPT`
+/// - `REFINES`: `GOAL -> GOAL` or `REQUIREMENT -> GOAL`
+/// - `CONFLICTS_WITH`: `GOAL <-> GOAL` with lower UUID as `from_node_id`
+/// - `CONTRIBUTES_TO`: `(GOAL | REQUIREMENT) -> SOFTGOAL-kind GOAL`
+pub async fn pre_validate_goal_model_edge_endpoints(
+    client: &(impl tokio_postgres::GenericClient + ?Sized),
+    from_id: Uuid,
+    to_id: Uuid,
+    edge_type: &str,
+) -> Result<(), MutationError> {
+    if !matches!(
+        edge_type,
+        "GROUNDED_IN" | "REFINES" | "CONFLICTS_WITH" | "CONTRIBUTES_TO"
+    ) {
+        return Ok(());
+    }
+
+    let rows = client
+        .query(
+            "SELECT id, node_type, attributes FROM graph_nodes WHERE id = ANY($1::uuid[]);",
+            &[&vec![from_id, to_id]],
+        )
+        .await?;
+
+    let from_node = rows.iter().find(|r| r.get::<_, Uuid>("id") == from_id);
+    let to_node = rows.iter().find(|r| r.get::<_, Uuid>("id") == to_id);
+
+    let (from_type, _from_attrs): (String, serde_json::Value) = match from_node {
+        Some(r) => (r.get("node_type"), r.get("attributes")),
+        None => return Ok(()),
+    };
+    let (to_type, to_attrs): (String, serde_json::Value) = match to_node {
+        Some(r) => (r.get("node_type"), r.get("attributes")),
+        None => return Ok(()),
+    };
+
+    let (repairs, candidates) = fetch_target_candidates(client).await;
+
+    match edge_type {
+        "GROUNDED_IN" => {
+            if from_type != "GOAL" || to_type != "SOURCE_EXCERPT" {
+                return Err(MutationError::InvalidEdgeTarget {
+                    invalid_field: "edge_type".to_string(),
+                    invalid_value: format!("{from_type} -GROUNDED_IN-> {to_type}"),
+                    message: "GROUNDED_IN edge must connect a GOAL node to a SOURCE_EXCERPT node"
+                        .to_string(),
+                    suggested_repairs: repairs,
+                    valid_target_candidates: candidates,
+                });
+            }
+        }
+        "REFINES" => {
+            if (from_type != "GOAL" && from_type != "REQUIREMENT") || to_type != "GOAL" {
+                return Err(MutationError::InvalidEdgeTarget {
+                    invalid_field: "edge_type".to_string(),
+                    invalid_value: format!("{from_type} -REFINES-> {to_type}"),
+                    message:
+                        "REFINES edge must connect a GOAL or REQUIREMENT node to a target GOAL node"
+                            .to_string(),
+                    suggested_repairs: repairs,
+                    valid_target_candidates: candidates,
+                });
+            }
+        }
+        "CONFLICTS_WITH" => {
+            if from_type != "GOAL" || to_type != "GOAL" {
+                return Err(MutationError::InvalidEdgeTarget {
+                    invalid_field: "edge_type".to_string(),
+                    invalid_value: format!("{from_type} -CONFLICTS_WITH-> {to_type}"),
+                    message: "CONFLICTS_WITH edge must connect two GOAL nodes".to_string(),
+                    suggested_repairs: repairs,
+                    valid_target_candidates: candidates,
+                });
+            }
+            if from_id >= to_id {
+                return Err(MutationError::InvalidEdgeTarget {
+                    invalid_field: "from_node_id".to_string(),
+                    invalid_value: from_id.to_string(),
+                    message: format!(
+                        "CONFLICTS_WITH edge must be stored once with lower UUID as from_node_id: {from_id} >= {to_id}"
+                    ),
+                    suggested_repairs: repairs,
+                    valid_target_candidates: candidates,
+                });
+            }
+        }
+        "CONTRIBUTES_TO" => {
+            let is_softgoal =
+                to_attrs.get("goal_kind").and_then(|v| v.as_str()) == Some("SOFTGOAL");
+            if (from_type != "GOAL" && from_type != "REQUIREMENT")
+                || to_type != "GOAL"
+                || !is_softgoal
+            {
+                return Err(MutationError::InvalidEdgeTarget {
+                    invalid_field: "edge_type".to_string(),
+                    invalid_value: format!("{from_type} -CONTRIBUTES_TO-> {to_type}"),
+                    message: "CONTRIBUTES_TO edge must connect a GOAL or REQUIREMENT to a target GOAL with goal_kind = 'SOFTGOAL'".to_string(),
+                    suggested_repairs: repairs,
+                    valid_target_candidates: candidates,
+                });
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
 /// Returns true if `edge_type` participates in structural requirement lineage and DAG cycle checks.
 #[must_use]
 pub fn is_structural_edge_type(edge_type: &str) -> bool {
     matches!(
         edge_type,
-        "FULFILLS" | "CONSTRAINED_BY" | "DERIVED_FROM" | "IMPLEMENTS"
+        "FULFILLS" | "CONSTRAINED_BY" | "DERIVED_FROM" | "IMPLEMENTS" | "REFINES"
     )
 }
 
@@ -1026,7 +1140,7 @@ pub async fn elaborate_task_client(
         )));
     }
 
-    if parent.node_type != "REQUIREMENT" {
+    if parent.node_type != "REQUIREMENT" && parent.node_type != "GOAL" {
         assert_ancestor_path(&tx, &[parent.id], false).await?;
     }
 

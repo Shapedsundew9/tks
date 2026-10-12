@@ -588,7 +588,7 @@ pub async fn validate_ancestor_path(
             WHERE node_type IN ('TASK', 'SPECIFICATION', 'CODE_COMMIT')
               AND (
                   node_type IN ('TASK', 'CODE_COMMIT')
-                  OR id IN (SELECT from_node_id FROM graph_edges WHERE edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS'))
+                  OR id IN (SELECT from_node_id FROM graph_edges WHERE edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS', 'REFINES'))
               )
         ),
         path_walk AS (
@@ -599,7 +599,7 @@ pub async fn validate_ancestor_path(
                 1 AS depth
             FROM non_requirements nr
             JOIN graph_edges e ON e.from_node_id = nr.id
-            WHERE e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS')
+            WHERE e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS', 'REFINES')
               AND (
                   e.lifecycle_state = 'ACTIVE'
                   OR $2 = true
@@ -614,10 +614,10 @@ pub async fn validate_ancestor_path(
             FROM path_walk pw
             JOIN graph_nodes curr ON curr.id = pw.current_id
             JOIN graph_edges e ON e.from_node_id = pw.current_id
-            WHERE curr.node_type NOT IN ('REQUIREMENT')
+            WHERE curr.node_type NOT IN ('REQUIREMENT', 'GOAL')
               AND NOT (e.to_node_id = ANY(pw.visited))
               AND pw.depth < 20
-              AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS')
+              AND e.edge_type IN ('FULFILLS', 'CONSTRAINED_BY', 'DERIVED_FROM', 'IMPLEMENTS', 'REFINES')
               AND (
                   e.lifecycle_state = 'ACTIVE'
                   OR $2 = true
@@ -636,7 +636,7 @@ pub async fn validate_ancestor_path(
             WHERE (
                 $2 = true
                 OR (
-                    term.node_type = 'REQUIREMENT'
+                    term.node_type IN ('REQUIREMENT', 'GOAL')
                     AND (term.lifecycle_state = 'ACTIVE' OR term.id = ANY($1))
                 )
             )

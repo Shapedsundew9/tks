@@ -81,6 +81,7 @@ async fn test_migration_and_schema_verification() {
         "idx_graph_nodes_search_tsv",
         "idx_graph_edges_active_unique",
         "idx_graph_edges_draft_author",
+        "idx_graph_edges_type_active",
         "idx_audit_ledger_entity",
         "idx_audit_ledger_batch",
         "idx_audit_ledger_created_at",
@@ -167,11 +168,90 @@ async fn test_migration_and_schema_verification() {
         panic!("vector(384) embedding insert failed: {e}");
     }
 
-    // 6. Clean up test records
-    let _ = client
+    // 6. Verify V7 Goal Model node types and chk_goal_kind constraint (EB-3)
+    // 6a. GOAL requires attributes->>'goal_kind'
+    let insert_goal_no_kind = client
         .execute(
-            "DELETE FROM graph_nodes WHERE node_key IN ('TEST-DRAFT-001', 'TEST-ACTIVE-001', 'TEST-VEC-001');",
+            "INSERT INTO graph_nodes (node_key, node_type, title, content, lifecycle_state, created_by, attributes)
+             VALUES ('TEST-GOAL-001', 'GOAL', 'Goal Node', 'Goal without kind', 'DRAFT', 'test_user', '{}');",
             &[],
         )
+        .await;
+    assert!(
+        insert_goal_no_kind.is_err(),
+        "GOAL node without goal_kind must be rejected by chk_goal_kind"
+    );
+
+    // 6b. GOAL rejects invalid goal_kind
+    let insert_goal_invalid_kind = client
+        .execute(
+            "INSERT INTO graph_nodes (node_key, node_type, title, content, lifecycle_state, created_by, attributes)
+             VALUES ('TEST-GOAL-002', 'GOAL', 'Goal Node', 'Invalid kind', 'DRAFT', 'test_user', '{\"goal_kind\": \"INVALID\"}');",
+            &[],
+        )
+        .await;
+    assert!(
+        insert_goal_invalid_kind.is_err(),
+        "GOAL node with invalid goal_kind must be rejected by chk_goal_kind"
+    );
+
+    // 6c. GOAL accepts valid goal_kinds in both DRAFT and ACTIVE
+    for kind in &["ACHIEVE", "MAINTAIN", "AVOID", "SOFTGOAL"] {
+        let key_draft = format!("TEST-GOAL-{kind}-DRAFT");
+        let attrs = serde_json::json!({ "goal_kind": kind });
+        let res = client
+            .execute(
+                "INSERT INTO graph_nodes (node_key, node_type, title, content, lifecycle_state, created_by, attributes)
+                 VALUES ($1, 'GOAL', 'Valid Goal', 'Valid goal content', 'DRAFT', 'test_user', $2);",
+                &[&key_draft, &attrs],
+            )
+            .await;
+        assert!(
+            res.is_ok(),
+            "GOAL with kind {kind} in DRAFT must succeed: {res:?}"
+        );
+
+        let key_active = format!("TEST-GOAL-{kind}-ACTIVE");
+        let res_active = client
+            .execute(
+                "INSERT INTO graph_nodes (node_key, node_type, title, content, lifecycle_state, created_by, attributes)
+                 VALUES ($1, 'GOAL', 'Valid Goal', 'Valid goal content', 'ACTIVE', 'test_user', $2);",
+                &[&key_active, &attrs],
+            )
+            .await;
+        assert!(
+            res_active.is_ok(),
+            "GOAL with kind {kind} in ACTIVE must succeed: {res_active:?}"
+        );
+    }
+
+    // 6d. SOURCE_EXCERPT is allowed in DRAFT and ACTIVE
+    let insert_excerpt_draft = client
+        .execute(
+            "INSERT INTO graph_nodes (node_key, node_type, title, content, lifecycle_state, created_by)
+             VALUES ('TEST-EXC-001', 'SOURCE_EXCERPT', 'Excerpt Draft', 'Transcript excerpt text', 'DRAFT', 'test_user');",
+            &[],
+        )
+        .await;
+    assert!(
+        insert_excerpt_draft.is_ok(),
+        "SOURCE_EXCERPT must be allowed in DRAFT state"
+    );
+
+    let insert_excerpt_active = client
+        .execute(
+            "INSERT INTO graph_nodes (node_key, node_type, title, content, lifecycle_state, created_by)
+             VALUES ('TEST-EXC-002', 'SOURCE_EXCERPT', 'Excerpt Active', 'Transcript excerpt text', 'ACTIVE', 'test_user');",
+            &[],
+        )
+        .await;
+    assert!(
+        insert_excerpt_active.is_ok(),
+        "SOURCE_EXCERPT must be allowed in ACTIVE state"
+    );
+
+    // 7. Clean up test records
+    let _ = client
+        .execute("DELETE FROM graph_nodes WHERE node_key LIKE 'TEST-%';", &[])
         .await;
 }
