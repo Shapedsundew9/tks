@@ -69,6 +69,10 @@ name = "eb5_spike_eval"
 path = "scripts/spikes/eb5_verification/main.rs"
 required-features = ["vector-spike"]
 
+[[bin]]
+name = "elicitation_eval"
+path = "scripts/elicitation_eval/main.rs"
+
 [[bench]]
 name = "ast_decomposition_bench"
 harness = false
