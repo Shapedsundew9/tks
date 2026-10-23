@@ -1,5 +1,9 @@
 # Common Instructions
 
+## General
+
+Only call tools listed for the current session. e.g. ensure `apply_patch` exisst before using it.
+
 ## Documentation
 
 - Keep `README.md` aligned with the install, usage, development, and publishing workflows.
