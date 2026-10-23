@@ -12,3 +12,10 @@ These rules only apply when a mermaid diagram is part of a response. If there is
 
 - Always write or update the output directly into `scratchpad/` creating the folder as necessary.
 - In the terminal, provide only a 1–2 sentence summary and state that the full diagram/plan has been written to the scratchpad.
+
+<!-- mermaid-ai-skills:start -->
+## Mermaid Diagrams
+
+When the user asks to create, edit, or visualize a diagram, follow the
+instructions in `.shared/ai/core/mermaid.instructions.md`.
+<!-- mermaid-ai-skills:end -->
