@@ -173,13 +173,16 @@ The foundational substrate, storage architecture, mutation engines, and supervis
 
 - **Primary Objective:** Bridge the fuzzy intent articulation gap preceding formal requirements through externalized conversational elicitation, schema-constrained technology-agnostic goal extraction with mechanical verbatim grounding and entailment verification, and iterative gap-question loops.
 - **Core Deliverables:**
-  1. **E-A — Conversational Elicitation & Transcription (Backlogged — not yet planned):**
-     - Browser page with microphone audio capture.
-     - Speech recognition model for phonetic English transcription.
-     - Language-model cleanup of conversational disfluencies and ASR artifacts.
-     - Agent- or locally-driven Socratic questioning and boundary scoping by negation.
+  1. **E-A — Conversational Elicitation & Transcription (Planned — decisions accepted; EA-0 spike pending):**
+     - Browser page with microphone audio capture; audio is never stored (D-132).
+     - Local, in-process English speech recognition with a permissively licensed non-LLM model
+       (Cohere Transcribe, Whisper large-v3-turbo fallback); no cloud services (D-131, C-28).
+     - User-reviewed clean-up of conversational disfluencies and ASR artifacts (D-133).
+     - Agent- or locally-driven Socratic questioning and boundary scoping by negation (D-130).
      - Normalized transcript emission in `tks-transcript/v1` format (spec: [elicitation-transcript-format.md](elicitation-transcript-format.md)).
-     - *Open Spike:* MCP sampling vs. local Ollama offload for TKS-initiated conversations.
+     - *First work package (EA-0):* spike the conversation-provider paths (MCP sampling vs. local
+       Ollama offload), the ASR Rust runtime and hardware fit, and the in-memory audio data flow.
+     - Implementation plan: [intent-elicitation-ea-plan.md](../plans/intent-elicitation-ea-plan.md).
   2. **E-B — Grounded Goal Extraction & Gap Analysis (Planned):**
      - Implementation details specified in [docs/plans/intent-elicitation-eb-plan.md](../plans/intent-elicitation-eb-plan.md); evaluation framework and metrics defined in [elicitation-evaluation.md](elicitation-evaluation.md); transcript format specified in [elicitation-transcript-format.md](elicitation-transcript-format.md).
      - *Pipeline Stages:*

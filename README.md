@@ -28,6 +28,7 @@ Comprehensive documentation and step-by-step operational walkthroughs are availa
 * [Chapter 8: Web Explorer & Real-Time Observability](docs/user-guide/08-web-explorer-and-observability.md)
 * [Chapter 9: Model Context Protocol (MCP) Integration](docs/user-guide/09-mcp-agent-integration.md)
 * [Chapter 10: CLI Reference & Command Cheat Sheet](docs/user-guide/10-cli-reference.md)
+* [Chapter 11: Intent Elicitation & Goal Staging](docs/user-guide/11-intent-elicitation.md)
 
 ## Getting Started
 

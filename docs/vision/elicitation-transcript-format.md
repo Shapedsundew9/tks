@@ -2,7 +2,7 @@
 
 > **Status:** Normative Specification  
 > **Schema Version:** `tks-transcript/v1`  
-> **Related Documents:** [Technical Vision](vision.md), [Strategic Planning Backlog](strategic-planning-backlog.md), [Implementation Plan](../../docs/plans/intent-elicitation-eb-plan.md)
+> **Related Documents:** [Technical Vision](vision.md), [Strategic Planning Backlog](strategic-planning-backlog.md), [E-A Implementation Plan](../../docs/plans/intent-elicitation-ea-plan.md), [E-B Implementation Plan](../../docs/plans/intent-elicitation-eb-plan.md)
 
 ---
 

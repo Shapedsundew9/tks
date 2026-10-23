@@ -249,10 +249,10 @@ pub struct ExtractionSessionState {
     pub custom_lexicon: Option<Vec<String>>,
 }
 
-static TURN_ID_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^t(?P<num>\d+)$").expect("valid turn id regex"));
+static SOURCE_ID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?P<prefix>[tc])(?P<num>\d+)$").expect("valid source id regex"));
 
-/// Validates that an array of episodes is non-empty, strictly contiguous, and covers all turns `t1..tN`.
+/// Validates that episodes cover every transcript turn (`t1..tN`) or document chunk (`c1..cN`).
 ///
 /// # Errors
 ///
@@ -262,35 +262,61 @@ pub fn validate_episodes(episodes: &[EpisodeCandidate], total_turns: usize) -> R
         return Err("Episode submission cannot be empty".to_string());
     }
     if total_turns == 0 {
-        return Err("Cannot validate episodes on a transcript with 0 turns".to_string());
+        return Err("Cannot validate episodes on a source with 0 items".to_string());
     }
 
     let mut expected_start = 1u32;
+    let mut expected_prefix = None;
 
     for ep in episodes {
-        let start_num = parse_turn_number(&ep.turns[0])
-            .ok_or_else(|| format!("Episode {} start turn '{}' is invalid", ep.id, ep.turns[0]))?;
-        let end_num = parse_turn_number(&ep.turns[1])
-            .ok_or_else(|| format!("Episode {} end turn '{}' is invalid", ep.id, ep.turns[1]))?;
+        let (start_prefix, start_num) = parse_source_id(&ep.turns[0]).ok_or_else(|| {
+            format!(
+                "Episode {} start source ID '{}' is invalid",
+                ep.id, ep.turns[0]
+            )
+        })?;
+        let (end_prefix, end_num) = parse_source_id(&ep.turns[1]).ok_or_else(|| {
+            format!(
+                "Episode {} end source ID '{}' is invalid",
+                ep.id, ep.turns[1]
+            )
+        })?;
+
+        if start_prefix != end_prefix {
+            return Err(format!(
+                "Episode {} mixes source ID prefixes: '{}' and '{}'",
+                ep.id, ep.turns[0], ep.turns[1]
+            ));
+        }
+
+        if let Some(prefix) = expected_prefix
+            && start_prefix != prefix
+        {
+            return Err(format!(
+                "Episode {} mixes transcript turns and document chunks",
+                ep.id
+            ));
+        }
+        expected_prefix = Some(start_prefix);
 
         if start_num > end_num {
             return Err(format!(
-                "Episode {} has inverted turns: t{start_num} > t{end_num}",
-                ep.id
+                "Episode {} has inverted source IDs: {}{start_num} > {}{end_num}",
+                ep.id, start_prefix, end_prefix
             ));
         }
 
         if start_num != expected_start {
             return Err(format!(
-                "Episode {} non-contiguous: expected to start at t{expected_start}, but started at t{start_num}",
-                ep.id
+                "Episode {} non-contiguous: expected to start at {}{expected_start}, but started at {}{start_num}",
+                ep.id, start_prefix, start_prefix
             ));
         }
 
         if end_num > total_turns as u32 {
             return Err(format!(
-                "Episode {} exceeds transcript bounds: ends at t{end_num}, transcript has {total_turns} turns",
-                ep.id
+                "Episode {} exceeds source bounds: ends at {}{end_num}, source has {total_turns} items",
+                ep.id, end_prefix
             ));
         }
 
@@ -299,19 +325,21 @@ pub fn validate_episodes(episodes: &[EpisodeCandidate], total_turns: usize) -> R
 
     if expected_start != (total_turns as u32 + 1) {
         return Err(format!(
-            "Episodes do not cover all turns: ended at t{}, expected t{total_turns}",
-            expected_start - 1
+            "Episodes do not cover all source items: ended at {}{}, expected {}{total_turns}",
+            expected_prefix.unwrap_or('t'),
+            expected_start - 1,
+            expected_prefix.unwrap_or('t')
         ));
     }
 
     Ok(())
 }
 
-fn parse_turn_number(turn_id: &str) -> Option<u32> {
-    TURN_ID_RE
-        .captures(turn_id)
-        .and_then(|c| c.name("num"))
-        .and_then(|m| m.as_str().parse::<u32>().ok())
+fn parse_source_id(source_id: &str) -> Option<(char, u32)> {
+    let captures = SOURCE_ID_RE.captures(source_id)?;
+    let prefix = captures.name("prefix")?.as_str().chars().next()?;
+    let number = captures.name("num")?.as_str().parse::<u32>().ok()?;
+    Some((prefix, number))
 }
 
 /// Evaluates the 8 canonical gap detectors against current session state.
@@ -769,6 +797,39 @@ mod tests {
             },
         ];
         assert!(validate_episodes(&gapped, 8).is_err());
+    }
+
+    #[test]
+    fn test_validate_document_chunk_episodes() {
+        let episodes = vec![
+            EpisodeCandidate {
+                id: "E1".to_string(),
+                turns: ["c1".to_string(), "c3".to_string()],
+                topic: "Vision".to_string(),
+            },
+            EpisodeCandidate {
+                id: "E2".to_string(),
+                turns: ["c4".to_string(), "c5".to_string()],
+                topic: "Constraints".to_string(),
+            },
+        ];
+
+        assert!(validate_episodes(&episodes, 5).is_ok());
+
+        let mixed_prefixes = vec![
+            EpisodeCandidate {
+                id: "E1".to_string(),
+                turns: ["t1".to_string(), "t2".to_string()],
+                topic: "Transcript turns".to_string(),
+            },
+            EpisodeCandidate {
+                id: "E2".to_string(),
+                turns: ["c3".to_string(), "c4".to_string()],
+                topic: "Document chunks".to_string(),
+            },
+        ];
+
+        assert!(validate_episodes(&mixed_prefixes, 4).is_err());
     }
 
     #[test]

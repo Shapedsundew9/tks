@@ -86,6 +86,7 @@ strategic backlog, and Project Initiator directives:
 | C-25 | Externalized commercial cognitive compute: `tks serve` substrate daemon binaries and core crate dependencies must remain strictly free of proprietary commercial LLM SDKs (Anthropic, OpenAI, etc.); automated local decomposition utilizes local Ollama REST endpoints (Tier 2); all Tier 3 commercial model escalation is externalized to client agents invoking MCP tools with planning dossiers | response.md LD-13 |
 | C-26 | Advisory-only background relationship maintenance & queue economy: scheduled or triggered relationship auditing (`tks graph audit`) operates in an advisory-only mode without dedicated tables or review queues; audit diagnostics write directly to CLI/logs and surface anomalies via existing anomaly triage (`--triage-anomalies` / `attributes->'extraction_metadata'`) or candidate tasks in `NEEDS_REVERIFICATION`; background workers must never automatically delete, re-wire, or mutate topological graph edges | response.md LD-7; LD-12 (iter 10) |
 | C-27 | Externalized intent elicitation cognition and mechanical grounding: intent elicitation and goal extraction cognition is strictly external to TKS, performed by the user's MCP-capable agent CLI or optional local Ollama offload; TKS may only verify, store, and stage agent submissions, and every staged `GOAL` must carry ≥ 1 mechanically verified verbatim grounding span from cited source turns or sentences | vision.md §1, §2; architecture.md D-124, D-125; docs/plans/intent-elicitation-eb-plan.md |
+| C-28 | Local-only speech recognition and zero audio retention: speech recognition is not LLM cognition and may run in-process inside TKS behind an optional Cargo feature, using only a permissively licensed (Apache-2.0 or MIT), non-LLM ASR model; microphone audio must never be sent to any cloud or third-party service (including browser speech-recognition APIs), and must be held only in bounded volatile memory for the duration of transcription — never persisted to disk, database, logs, caches, browser storage, or exports | architecture.md D-131, D-132; docs/plans/intent-elicitation-ea-plan.md |
 
 ## 3. Architectural Invariants
 
@@ -2021,7 +2022,7 @@ CREATE INDEX idx_graph_edges_draft_author
 * **Status:** Accepted
 * **Origin:** D-EB-3
 * **Context:** The strategic roadmap placed Phase 5 (Cognitive Planning Rails) after Phase 4. Fuzzy intent extraction must occur before requirements can be governed or elaborated.
-* **Decision:** Name the new track the "Intent Elicitation Track", slotted ahead of Phase 5 in the roadmap (`P4 -> PE -> P5`). Sub-phases: E-A (Conversational Elicitation & Transcription, backlogged) and E-B (Goal Extraction & Gap Analysis, planned). Phase 4 numbering is untouched.
+* **Decision:** Name the new track the "Intent Elicitation Track", slotted ahead of Phase 5 in the roadmap (`P4 -> PE -> P5`). Sub-phases: E-A (Conversational Elicitation & Transcription, planned; see D-130 … D-134) and E-B (Goal Extraction & Gap Analysis, planned). Phase 4 numbering is untouched.
 * **Rationale:** Clarifies that intent elicitation is an upstream prerequisite to strategic planning and requirement elaboration without renumbering established completed phases.
 * **Reopen If:** E-A and E-B are merged into Phase 5.
 
@@ -2051,6 +2052,51 @@ CREATE INDEX idx_graph_edges_draft_author
 * **Decision:** Spike two entailment verification mechanisms in EB-5: (a) a fresh-context agent judge pass via MCP, and (b) a local, non-generative NLI cross-encoder (DeBERTa-v3 MNLI via ONNX) behind a Cargo feature. Select the winner based on empirical agreement with human-adjudicated labels and phantom catch rate.
 * **Rationale:** Compares the zero-cost offline determinism of a local cross-encoder against the nuanced reasoning of an LLM agent judge before committing to an architecture.
 * **Reopen If:** One approach decisively outperforms the other in preliminary benchmarks.
+
+### D-130: E-A Conversation-Provider Boundary (MCP Sampling and Out-of-Process Local Offload)
+
+* **Status:** Accepted
+* **Origin:** D-EA-1
+* **Context:** E-A needs TKS-initiated Socratic questioning, but D-124 and C-25/C-27 keep LLM cognition outside TKS. MCP sampling support varies between agent clients, and local Ollama offload must stay outside the `tks serve` core path.
+* **Decision:** Put Socratic conversation cognition behind a small conversation-provider boundary supporting MCP sampling via the user's agent client and out-of-process local Ollama offload. Ship whichever path the EA-0 spike proves viable (both if practical). Typed/manual conversation is always available as the no-model baseline.
+* **Rationale:** Preserves "bring your own cognition", avoids depending on a single client capability, and keeps E-A usable without any model.
+* **Reopen If:** Neither provider path is viable in EA-0, or MCP sampling becomes universally supported and the local path becomes redundant.
+
+### D-131: Local In-Process English Speech Recognition (Permissive Non-LLM Model)
+
+* **Status:** Accepted
+* **Origin:** D-EA-2
+* **Context:** E-A captures spoken intent. Cloud speech services and browser speech-recognition APIs can forward audio to third parties. Speech recognition is not LLM cognition, so C-25/C-27 do not forbid running it inside TKS.
+* **Decision:** Speech recognition is local only; no cloud service is used. Use the most accurate permissively licensed (Apache-2.0 or MIT), non-LLM English model from the Hugging Face Open ASR Leaderboard, running in-process inside TKS behind an optional Cargo feature. Current selection: Cohere Transcribe (`CohereLabs/cohere-transcribe-03-2026`, 2B, Apache-2.0, Conformer encoder with a lightweight Transformer decoder; 5.42% average English WER over eight leaderboard sets, 5.84% over the seven sets newer entries report). Fallback: Whisper large-v3-turbo (`openai/whisper-large-v3-turbo`, MIT). Higher-scoring models were checked and are ineligible: MOSS-Transcribe-preview-2B (4.87%) and ARK-ASR-3B (5.04%) are Apache-2.0 but built on Qwen LLM decoders, and Zipformer CR-CTC Transducer XL (5.56%) is non-LLM but CC-BY-NC-4.0. Other models with LLM decoders (Canary-Qwen, Granite Speech, Qwen3-ASR, Voxtral) are also excluded. Evidence table: `docs/plans/intent-elicitation-ea-plan.md` §4.2. EA-0 selects the Rust inference runtime and confirms hardware fit; a voice-activity gate precedes the model.
+* **Rationale:** Keeps stakeholder speech on the user's machine, uses the strongest licence-compatible dedicated recognizer, and keeps default builds free of the model dependency.
+* **Reopen If:** The selected model fails the EA-0 runtime or hardware gate (switch to the fallback), or a permissively licensed non-LLM model clearly beats it on comparable leaderboard averages within the hardware budget.
+
+### D-132: No Audio Storage
+
+* **Status:** Accepted
+* **Origin:** D-EA-3
+* **Context:** Recorded stakeholder speech is sensitive, and E-B needs only the reviewed transcript text, not audio.
+* **Decision:** Never store audio. Microphone audio is held only in bounded volatile memory for transcription and then dropped. It is never written to disk, database, logs, caches, browser storage, or exports, and there is no option to save it.
+* **Rationale:** Eliminates audio retention, deletion, and access-control risk entirely; the transcript is the sole durable artifact.
+* **Reopen If:** A future, explicitly approved requirement (for example acoustic re-verification of grounding) needs audio, and its privacy design is approved first.
+
+### D-133: Human-Reviewed Transcript Text Is Authoritative
+
+* **Status:** Accepted
+* **Origin:** D-EA-4
+* **Context:** ASR output contains recognition errors, and E-B grounding matches verbatim against utterance text. Audio is not retained (D-132), so it cannot be used to re-check text later.
+* **Decision:** ASR output is an editable draft; the stakeholder-reviewed utterance text is authoritative. Transcripts produced from ASR declare `source: asr` in `tks-transcript/v1` frontmatter. Per-turn provenance is not encoded unless the format is changed with approval.
+* **Rationale:** Keeps E-B grounding anchored to words the stakeholder has confirmed, without depending on audio.
+* **Reopen If:** The transcript format gains approved per-turn provenance fields.
+
+### D-134: Elicitation Cycle Continuity
+
+* **Status:** Accepted
+* **Origin:** D-EA-5
+* **Context:** E-B gap reports produce open questions intended to drive the next elicitation cycle.
+* **Decision:** Follow-up cycles keep a stable `session_id`, increment `cycle`, and present imported E-B gap questions to the facilitator as prompts, never as stakeholder statements or confirmed intent.
+* **Rationale:** Preserves traceability across cycles and prevents prior-cycle questions from leaking into goal grounding.
+* **Reopen If:** Cycle identity moves out of the transcript format into a separate session store.
 
 ## 10. Risks & Spikes
 

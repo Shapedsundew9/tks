@@ -28,7 +28,8 @@ Naive paragraph-by-paragraph LLM extraction fails in two characteristic ways:
 
 A new track, slotted **ahead of Phase 5** in the strategic roadmap. Phase 4 numbering is untouched.
 
-- **E-A — Conversational Elicitation & Transcription** *(backlog entry only; not planned here)*:
+- **E-A — Conversational Elicitation & Transcription** *(planned separately; see
+  [E-A plan](./intent-elicitation-ea-plan.md))*:
   web page + microphone → speech recognition (phonetic transcription) → language-model clean-up of
   disfluencies/ASR artifacts → LLM-driven Socratic questioning (including scoping by "what it is
   *not*") → transcript emitted in the E-B transcript format.

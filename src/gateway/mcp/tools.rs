@@ -294,6 +294,10 @@ pub fn list_tools() -> Vec<McpToolDefinition> {
                     "content": {
                         "type": "string",
                         "description": "Optional inline raw document content (if not reading from disk)."
+                    },
+                    "prior_session_id": {
+                        "type": "string",
+                        "description": "Optional UUID of the prior extraction session for multi-cycle goal reconciliation."
                     }
                 },
                 "required": ["doc_path"]
@@ -301,7 +305,7 @@ pub fn list_tools() -> Vec<McpToolDefinition> {
         },
         McpToolDefinition {
             name: "submit_episodes".to_string(),
-            description: "Submits Pass 1 topic episode boundaries with contiguity verification and full turn coverage validation (t1..tN).".to_string(),
+            description: "Submits Pass 1 topic episode boundaries with contiguity verification and full source coverage validation (transcript turns t1..tN or vision chunks c1..cN).".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -319,7 +323,7 @@ pub fn list_tools() -> Vec<McpToolDefinition> {
                                 "turns": {
                                     "type": "array",
                                     "items": { "type": "string" },
-                                    "description": "Two-element array of inclusive start and end turn IDs: ['t1', 't5']."
+                                    "description": "Two-element array of inclusive start and end source IDs, e.g. transcript turns ['t1', 't5'] or vision chunks ['c1', 'c5']."
                                 },
                                 "topic": { "type": "string", "description": "Concise summary of episode topic." }
                             },

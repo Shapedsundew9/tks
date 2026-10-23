@@ -53,7 +53,7 @@ flowchart TD
 
     WORKER["⚡ Background Worker<br/>• Claims job (status = 'PROCESSING')<br/>• Mechanical AST Parsing (pulldown-cmark)<br/>• Heading stack generates DERIVED_FROM edges<br/>• Exact 0-based byte spans extracted<br/>• Candidate drafts written to graph_nodes (DRAFT)<br/>• Transitions ingestion_jobs to STAGED"]:::secondary
 
-    CLI["🔍 Staging Review & CLI<br/>• tks staging list &lt;job_id&gt;<br/>• tks staging inspect &lt;job_id&gt; &lt;node_id&gt; (verbatim Git slice)"]:::note
+    CLI["🔍 Staging Review & CLI<br/>• tks staging list &lt;job_id&gt;<br/>• tks staging inspect &lt;node_id&gt; (verbatim Git slice)"]:::note
     APPROVE["🛡️ Staging Approval<br/>• tks staging approve &lt;job_id&gt;<br/>• Promotes candidate nodes to ACTIVE<br/>• Commits events to audit_ledger<br/>• Enqueues vector generation into node_embeddings"]:::primary
 
     DOC --> API
@@ -64,6 +64,11 @@ flowchart TD
     WORKER --> CLI
     CLI --> APPROVE
 ```
+
+This document-ingestion path is intended for structured governing documents. For fuzzy intent,
+conversation transcripts, or free-form product visions, use the separate Intent Elicitation workflow
+in [Chapter 11](11-intent-elicitation.md). It uses an MCP extraction session and stages grounded
+`GOAL` drafts rather than mechanically decomposing the document into requirements.
 
 ---
 

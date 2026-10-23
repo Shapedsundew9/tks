@@ -50,21 +50,30 @@ tks identity revoke <ID>
 
 ### 3. `tks staging`
 
-Inspect and approve candidate drafts from document ingestion.
+Inspect, approve, and reject candidate drafts from document ingestion or Intent Elicitation.
 
 ```bash
-# List candidate draft nodes for a job
+# List candidate draft nodes for an ingestion or extraction session
 tks staging list <JOB_ID>
 
-# Inspect node metadata and verbatim Git ODB source span
-tks staging inspect <JOB_ID> <NODE_ID>
+# List candidates in anomaly-triage order
+tks staging list <JOB_ID> --triage-anomalies
+
+# Inspect node metadata and its verbatim source span
+tks staging inspect <NODE_ID>
 
 # Approve candidate drafts and promote to ACTIVE
-tks staging approve <JOB_ID> [--only <NODE_IDS>] [--exclude <NODE_IDS>]
+tks staging approve <JOB_ID> [--only <NODE_ID,...>] [--exclude <NODE_ID,...>] [--confirm-omissions]
 
-# Reject candidate drafts
-tks staging reject <JOB_ID> [--node-id <NODE_ID>]
+# Reject all drafts for a job, or one candidate node
+tks staging reject --job-id <JOB_ID> [--reason <TEXT>]
+tks staging reject <NODE_ID> [--reason <TEXT>]
 ```
+
+`list` accepts an ingestion job ID or an extraction-session ID. `inspect` accepts a node UUID or
+canonical key and is not scoped by a job ID. For goal drafts, list and inspect output includes goal
+kind, stakeholder, verification verdict, grounding quotes, and technology-lint warnings. See
+[Chapter 11](11-intent-elicitation.md) for the goal staging workflow.
 
 ---
 
