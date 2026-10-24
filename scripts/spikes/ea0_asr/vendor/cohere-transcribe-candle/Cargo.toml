@@ -1,0 +1,26 @@
+[package]
+name = "cohere-transcribe-candle"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Vendored for the TKS EA-0 spike: pure Rust Cohere Transcribe ASR via candle (see VENDORED.md)."
+repository = "https://github.com/justmaier/cohere-transcribe-candle"
+publish = false
+
+[features]
+default = []
+cuda = ["candle-core/cuda", "candle-nn/cuda", "dep:half"]
+flash-attn = ["cuda", "dep:candle-flash-attn"]
+
+[dependencies]
+candle-core = "0.9"
+candle-nn = "0.9"
+candle-flash-attn = { version = "0.9", optional = true }
+half = { version = "2.7.1", optional = true }
+symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "ogg", "wav"] }
+rubato = "0.16"
+rustfft = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+tracing = "0.1"

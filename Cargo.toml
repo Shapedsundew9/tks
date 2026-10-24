@@ -35,10 +35,23 @@ tower-http = { version = "0.6", features = ["cors", "trace", "timeout"] }
 moka = { version = "0.12", features = ["future"] }
 futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# EA-0 ASR spike (D-131): local, non-LLM speech recognition; never enabled by default.
+cohere-transcribe-candle = { path = "scripts/spikes/ea0_asr/vendor/cohere-transcribe-candle", optional = true }
+candle-core = { version = "0.9", optional = true }
+candle-nn = { version = "0.9", optional = true }
+candle-transformers = { version = "0.9", optional = true }
+earshot = { version = "1.2", optional = true }
 
 [features]
 default = ["vector-spike"]
 vector-spike = ["dep:fastembed"]
+asr-spike = [
+    "dep:cohere-transcribe-candle",
+    "dep:candle-core",
+    "dep:candle-nn",
+    "dep:candle-transformers",
+    "dep:earshot",
+]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -68,6 +81,11 @@ required-features = ["vector-spike"]
 name = "eb5_spike_eval"
 path = "scripts/spikes/eb5_verification/main.rs"
 required-features = ["vector-spike"]
+
+[[bin]]
+name = "ea0_asr_spike"
+path = "scripts/spikes/ea0_asr/main.rs"
+required-features = ["asr-spike"]
 
 [[bin]]
 name = "elicitation_eval"
