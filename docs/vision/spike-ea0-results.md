@@ -1,5 +1,11 @@
 # Spike EA-0 Results: Conversation Provider, Local ASR Runtime, and Audio Data Flow
 
+> [!NOTE]
+> **Phase 1 Baseline Archive & Architectural Pivot:**
+> This document records the empirical results of the **Phase 1 Server-Side Batch ASR Baseline** (Cohere Transcribe 2B & Whisper Large on Candle). While these results validated offline execution and WER accuracy, the investigation proved that server-side batch inference introduces prohibitive memory overhead (9.4–14.4 GiB RAM), requires heavy CUDA toolchains, breaks GPU co-tenancy with local facilitator LLMs, and causes high turn latency (4.9s–8.8s p50).
+>
+> On 2026-10-24, user approval reopened D-131 to pivot to **Client-Side In-Browser Streaming ASR (WASM/WebGPU)** to match interactive dictation experiences like VS Code Speech and Antigravity voice. The new methodology and benchmark plan are defined in [spike-ea0-streaming-proposal.md](../plans/spike-ea0-streaming-proposal.md).
+
 Governing plan: [intent-elicitation-ea-plan.md §6.1](../plans/intent-elicitation-ea-plan.md).
 Decisions in scope: D-130 … D-134 and C-28 in [architecture.md](architecture.md). Date: 2026-10-23.
 

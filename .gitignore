@@ -30,6 +30,10 @@
 .DS_Store
 Thumbs.db
 
+# Node.js
+node_modules/
+package-lock.json
+
 **/.fastembed_cache/
 scratchpad/*
 

@@ -69,6 +69,9 @@ struct Args {
     /// Print VAD decisions for every clip and exit without loading a model.
     #[arg(long)]
     vad_only: bool,
+    /// Export clean FLAC clips as 16 kHz WAV files in the testset directory.
+    #[arg(long)]
+    export_wav: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -208,6 +211,33 @@ fn nonspeech_clips(rng: &mut Rng) -> Vec<(String, Vec<f32>)> {
                 .collect(),
         ),
     ]
+}
+
+fn write_wav_16k_mono(path: &Path, samples: &[f32]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)?;
+    let num_samples = samples.len() as u32;
+    let byte_rate = 16000u32 * 2;
+    let block_align = 2u16;
+    let data_len = num_samples * 2;
+    let file_len = 36 + data_len;
+    file.write_all(b"RIFF")?;
+    file.write_all(&file_len.to_le_bytes())?;
+    file.write_all(b"WAVEfmt ")?;
+    file.write_all(&16u32.to_le_bytes())?;
+    file.write_all(&1u16.to_le_bytes())?;
+    file.write_all(&1u16.to_le_bytes())?;
+    file.write_all(&16000u32.to_le_bytes())?;
+    file.write_all(&byte_rate.to_le_bytes())?;
+    file.write_all(&block_align.to_le_bytes())?;
+    file.write_all(&16u16.to_le_bytes())?;
+    file.write_all(b"data")?;
+    file.write_all(&data_len.to_le_bytes())?;
+    for &s in samples {
+        let clamped = (s.clamp(-1.0, 1.0) * 32767.0) as i16;
+        file.write_all(&clamped.to_le_bytes())?;
+    }
+    Ok(())
 }
 
 struct CohereAsr {
@@ -375,6 +405,19 @@ fn main() -> Res<()> {
 
     let manifest: Vec<ManifestClip> =
         serde_json::from_slice(&std::fs::read(args.testset.join("manifest.json"))?)?;
+
+    if args.export_wav {
+        for clip in &manifest {
+            if clip.file.ends_with(".flac") {
+                let pcm = audio::load_audio(args.testset.join(&clip.file), SR)
+                    .map_err(|e| format!("{}: {e}", clip.file))?;
+                let wav_path = args.testset.join(format!("{}.wav", clip.id));
+                write_wav_16k_mono(&wav_path, &pcm)?;
+                println!("Exported {}", wav_path.display());
+            }
+        }
+        return Ok(());
+    }
 
     if args.vad_only {
         let mut rng = Rng(SEED);
