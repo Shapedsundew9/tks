@@ -5,6 +5,8 @@ Read `.shared/ai/core/common-instructions.md`.
 
 ## Repository Layout
 
+- Use `codegraph_explore` first to inspect existing Axum routes, state wrappers,
+  and error envelopes before `find` or `grep`.
 - This is a pure Rust package repository.
 - The crate/package project is configured by the repository-root `Cargo.toml`.
 - Reusable package code belongs in `src/lib.rs` (and submodules under `src/`).
