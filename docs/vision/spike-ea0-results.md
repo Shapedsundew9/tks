@@ -253,6 +253,9 @@ only text, numbers and VAD statistics to its JSON report.
 
 ## 10. Reproduction
 
+> [!NOTE]
+> The server-side ASR reproduction code (`scripts/spikes/ea0_asr/`, the `ea0_asr_spike` binary, and the `asr-spike` Cargo feature) was removed in EA-1 following the client-side streaming decision (D-131, EA-0.2). It is preserved and recoverable from git history at commit `60f25c3`.
+
 All caches live outside the repository. Requires `HF_READ_TOKEN` in the environment for the gated
 Cohere download; the token is never logged or written to disk.
 

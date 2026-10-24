@@ -35,6 +35,7 @@ pub struct AppState {
     pub git_read: GitReadHandle,
     pub auth: AuthState,
     pub event_bus: crate::storage::GraphEventBus,
+    pub elicitation: crate::elicitation::ElicitationStore,
 }
 
 impl AppState {
@@ -48,6 +49,9 @@ impl AppState {
     ) -> Self {
         let auth = AuthState::new(pool.clone());
         let event_bus = crate::storage::GraphEventBus::default();
+        let elicitation = crate::elicitation::ElicitationStore::new(
+            crate::elicitation::ElicitationConfig::default(),
+        );
         Self {
             pool,
             storage,
@@ -55,6 +59,7 @@ impl AppState {
             git_read,
             auth,
             event_bus,
+            elicitation,
         }
     }
 
@@ -62,6 +67,13 @@ impl AppState {
     #[must_use]
     pub fn with_event_bus(mut self, event_bus: crate::storage::GraphEventBus) -> Self {
         self.event_bus = event_bus;
+        self
+    }
+
+    /// Sets custom `ElicitationStore` on `AppState`.
+    #[must_use]
+    pub fn with_elicitation(mut self, elicitation: crate::elicitation::ElicitationStore) -> Self {
+        self.elicitation = elicitation;
         self
     }
 }
@@ -72,9 +84,101 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
+impl FromRef<AppState> for crate::elicitation::ElicitationStore {
+    fn from_ref(state: &AppState) -> Self {
+        state.elicitation.clone()
+    }
+}
+
+/// Loopback access-control guard middleware (D-EA-10, §6.2).
+///
+/// Enforces that elicitation routes are accessible only via loopback Host
+/// headers, rejects cross-origin state-changing mutations, and avoids permissive CORS.
+pub async fn loopback_guard_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let host_header = match req
+        .headers()
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok())
+    {
+        Some(h) => h,
+        None => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": "ERR_LOOPBACK_REQUIRED",
+                    "message": "Host header is required and must resolve to loopback"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let hostname = if host_header.starts_with('[') {
+        host_header.split(']').next().map(|s| &s[1..]).unwrap_or("")
+    } else {
+        host_header.split(':').next().unwrap_or("")
+    };
+
+    let is_loopback = hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1";
+    if !is_loopback {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": "ERR_LOOPBACK_REQUIRED",
+                "message": format!("Access forbidden for host '{hostname}'; loopback address required")
+            })),
+        )
+            .into_response();
+    }
+
+    let method = req.method();
+    let is_state_changing = matches!(
+        *method,
+        axum::http::Method::POST
+            | axum::http::Method::PUT
+            | axum::http::Method::PATCH
+            | axum::http::Method::DELETE
+    );
+
+    if is_state_changing && let Some(origin) = req.headers().get(axum::http::header::ORIGIN) {
+        let origin_str = match origin.to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({
+                        "error": "ERR_INVALID_ORIGIN",
+                        "message": "Invalid Origin header encoding"
+                    })),
+                )
+                    .into_response();
+            }
+        };
+
+        let expected_origin = format!("http://{host_header}");
+        if origin_str != expected_origin {
+            return (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({
+                        "error": "ERR_CROSS_ORIGIN_FORBIDDEN",
+                        "message": format!(
+                            "Cross-origin request rejected: expected '{expected_origin}', got '{origin_str}'"
+                        )
+                    })),
+                )
+                    .into_response();
+        }
+    }
+
+    next.run(req).await
+}
+
 /// Builds and configures the unified Axum router with REST endpoints, MCP tools, and middleware.
 pub fn create_router(state: AppState) -> Router {
-    Router::new()
+    let general_routes = Router::new()
         // Health check endpoint (Architecture §8 Observability)
         .route("/health", get(health_check))
         // Document ingestion routes (TB-1, D-67)
@@ -227,9 +331,57 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/explorer/events",
             get(routes::explorer::stream_explorer_events),
         )
-        // Layer configurations: tracing, CORS, per-request timeout (Architecture §6.2)
+        .layer(CorsLayer::permissive());
+
+    // Elicitation REST and SSE routes (D-130..D-134, D-EA-10, §6.2)
+    // Strictly loopback-guarded, excluded from permissive CORS
+    let elicitation_routes = Router::new()
+        .route(
+            "/api/v1/elicitation/capabilities",
+            get(routes::elicitation::get_capabilities),
+        )
+        .route(
+            "/api/v1/elicitation/sessions",
+            post(routes::elicitation::create_session),
+        )
+        .route(
+            "/api/v1/elicitation/sessions/{elicitation_id}",
+            get(routes::elicitation::get_session).delete(routes::elicitation::delete_session),
+        )
+        .route(
+            "/api/v1/elicitation/sessions/{elicitation_id}/turns",
+            post(routes::elicitation::add_turn),
+        )
+        .route(
+            "/api/v1/elicitation/sessions/{elicitation_id}/turns/{number}",
+            patch(routes::elicitation::patch_turn),
+        )
+        .route(
+            "/api/v1/elicitation/sessions/{elicitation_id}/facilitator/proposals",
+            post(routes::elicitation::request_facilitator_proposal),
+        )
+        .route(
+            "/api/v1/elicitation/sessions/{elicitation_id}/events",
+            get(routes::elicitation::stream_session_events),
+        )
+        .route(
+            "/api/v1/elicitation/sessions/{elicitation_id}/close",
+            post(routes::elicitation::close_session),
+        )
+        .route(
+            "/api/v1/elicitation/sessions/{elicitation_id}/reopen",
+            post(routes::elicitation::reopen_session),
+        )
+        .route(
+            "/api/v1/elicitation/sessions/{elicitation_id}/transcript",
+            get(routes::elicitation::get_transcript),
+        )
+        .layer(axum::middleware::from_fn(loopback_guard_middleware));
+
+    general_routes
+        .merge(elicitation_routes)
+        // Layer configurations: tracing, per-request timeout (Architecture §6.2)
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(30),

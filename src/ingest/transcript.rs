@@ -143,12 +143,8 @@ pub enum TranscriptParseError {
         got: String,
         turn: u32,
     },
-    /// Turn count out of bounds.
-    TurnCountOutOfBounds {
-        found: usize,
-        min: usize,
-        max: usize,
-    },
+    /// Transcript must contain at least one turn.
+    NoTurns,
     /// Byte span slicing failure.
     Span(SpanError),
 }
@@ -201,12 +197,7 @@ impl fmt::Display for TranscriptParseError {
                     "role mismatch in turn t{turn} for '{name}': frontmatter declared '{expected}', turn specifies '{got}'"
                 )
             }
-            Self::TurnCountOutOfBounds { found, min, max } => {
-                write!(
-                    f,
-                    "turn count {found} out of bounds (allowed: {min}..={max})"
-                )
-            }
+            Self::NoTurns => write!(f, "transcript must contain at least one turn (found 0)"),
             Self::Span(err) => write!(f, "byte span error: {err}"),
         }
     }
@@ -371,12 +362,8 @@ impl ParsedTranscript {
             offset = block_byte_end;
         }
 
-        if turns.len() < 15 || turns.len() > 40 {
-            return Err(TranscriptParseError::TurnCountOutOfBounds {
-                found: turns.len(),
-                min: 15,
-                max: 40,
-            });
+        if turns.is_empty() {
+            return Err(TranscriptParseError::NoTurns);
         }
 
         Ok(Self { frontmatter, turns })
@@ -669,5 +656,82 @@ participants:
 "#;
         let err = ParsedTranscript::parse(input).unwrap_err();
         assert!(matches!(err, TranscriptParseError::RoleMismatch { .. }));
+    }
+
+    #[test]
+    fn test_rejects_zero_turn_transcript() {
+        let input = r#"---
+format: tks-transcript/v1
+title: "Test"
+session_id: "T99"
+cycle: 1
+date: "2026-10-12"
+language: "en"
+source: "manual"
+participants:
+  - { name: "Priya", role: "stakeholder" }
+---
+"#;
+        let err = ParsedTranscript::parse(input).unwrap_err();
+        assert!(matches!(err, TranscriptParseError::NoTurns));
+    }
+
+    #[test]
+    fn test_accepts_single_turn_transcript() {
+        let input = r#"---
+format: tks-transcript/v1
+title: "Single Turn Test"
+session_id: "T99"
+cycle: 1
+date: "2026-10-12"
+language: "en"
+source: "manual"
+participants:
+  - { name: "Priya", role: "stakeholder" }
+---
+
+**[t1] Priya (stakeholder):** Hello world this is the only turn.
+"#;
+        let parsed =
+            ParsedTranscript::parse(input).expect("single-turn transcript should be valid");
+        assert_eq!(parsed.turns.len(), 1);
+        assert_eq!(
+            parsed.turns[0].utterance_text,
+            "Hello world this is the only turn."
+        );
+    }
+
+    #[test]
+    fn test_accepts_100_turn_transcript() {
+        let mut input = String::from(
+            r#"---
+format: tks-transcript/v1
+title: "100 Turn Test"
+session_id: "T100"
+cycle: 1
+date: "2026-10-24"
+language: "en"
+source: "manual"
+participants:
+  - { name: "Priya", role: "stakeholder" }
+  - { name: "Facilitator", role: "facilitator" }
+---
+
+"#,
+        );
+        for i in 1..=100 {
+            let (name, role) = if i % 2 == 1 {
+                ("Priya", "stakeholder")
+            } else {
+                ("Facilitator", "facilitator")
+            };
+            input.push_str(&format!(
+                "**[t{i}] {name} ({role}):** This is turn number {i}.\n\n"
+            ));
+        }
+
+        let parsed = ParsedTranscript::parse(&input).expect("100-turn transcript should be valid");
+        assert_eq!(parsed.turns.len(), 100);
+        assert_eq!(parsed.turns[99].number, 100);
     }
 }

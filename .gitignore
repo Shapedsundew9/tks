@@ -34,6 +34,12 @@ Thumbs.db
 node_modules/
 package-lock.json
 
+# Downloaded Sherpa-ONNX assets for the browser ASR proof gate
+/scripts/elicitation/gate/public/sherpa-onnx-asr.js
+/scripts/elicitation/gate/public/sherpa-onnx-wasm-main-asr.js
+/scripts/elicitation/gate/public/sherpa-onnx-wasm-main-asr.wasm
+/scripts/elicitation/gate/public/sherpa-onnx-wasm-main-asr.data
+
 **/.fastembed_cache/
 scratchpad/*
 

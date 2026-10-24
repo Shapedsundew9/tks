@@ -51,6 +51,7 @@ async fn test_cli_serve_migrate_only() {
             migrate_only: true,
             database_url: Some(test_db_url),
             git_dir: None,
+            ..Default::default()
         })),
     };
     assert!(run_with_args(cli).await.is_ok());

@@ -1,0 +1,13 @@
+{
+  "name": "ea2-gate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EA-2.0 In-Browser Proof Gate with Playwright",
+  "scripts": {
+    "test": "node run_gate_test.js",
+    "serve": "node server.js"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

@@ -2,11 +2,13 @@
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use clap::Args;
 use tokio_util::sync::CancellationToken;
 
 use crate::db;
+use crate::elicitation::{ElicitationConfig, ElicitationStore, FacilitatorProviderKind};
 use crate::gateway::{AppState, run_server};
 use crate::storage::StorageRepo;
 use crate::storage::git::{resolve_git_dir, start_git_actor};
@@ -30,6 +32,62 @@ pub struct ServeArgs {
     /// Git repository path (overrides TKS_GIT_DIR).
     #[arg(long)]
     pub git_dir: Option<PathBuf>,
+
+    /// Facilitator provider for elicitation ('none' or 'ollama', default: 'none').
+    #[arg(long, default_value = "none", env = "TKS_ELICITATION_FACILITATOR")]
+    pub facilitator: String,
+
+    /// Ollama endpoint URL for facilitator offload (default: http://localhost:11434).
+    #[arg(long, default_value = "http://localhost:11434", env = "OLLAMA_HOST")]
+    pub ollama_url: String,
+
+    /// Ollama model identifier for facilitator offload (default: qwen3:8b).
+    #[arg(long, default_value = "qwen3:8b", env = "TKS_LLM_MODEL")]
+    pub facilitator_model: String,
+
+    /// Local directory containing pre-downloaded ASR assets (default: None, ASR disabled).
+    #[arg(long, env = "TKS_ASR_ASSETS_DIR")]
+    pub asr_assets_dir: Option<PathBuf>,
+
+    /// Idle expiry duration for elicitation draft sessions (e.g. '24h', '30m', default: '24h').
+    #[arg(long, default_value = "24h")]
+    pub elicitation_idle_expiry: String,
+}
+
+impl Default for ServeArgs {
+    fn default() -> Self {
+        Self {
+            port: 8080,
+            migrate_only: false,
+            database_url: None,
+            git_dir: None,
+            facilitator: "none".to_string(),
+            ollama_url: "http://localhost:11434".to_string(),
+            facilitator_model: "qwen3:8b".to_string(),
+            asr_assets_dir: None,
+            elicitation_idle_expiry: "24h".to_string(),
+        }
+    }
+}
+
+fn parse_idle_expiry(s: &str) -> Duration {
+    let s = s.trim();
+    if let Some(h) = s.strip_suffix('h') {
+        if let Ok(hours) = h.parse::<u64>() {
+            return Duration::from_secs(hours * 3600);
+        }
+    } else if let Some(m) = s.strip_suffix('m') {
+        if let Ok(mins) = m.parse::<u64>() {
+            return Duration::from_secs(mins * 60);
+        }
+    } else if let Some(sec) = s.strip_suffix('s') {
+        if let Ok(secs) = sec.parse::<u64>() {
+            return Duration::from_secs(secs);
+        }
+    } else if let Ok(secs) = s.parse::<u64>() {
+        return Duration::from_secs(secs);
+    }
+    Duration::from_secs(24 * 3600)
 }
 
 /// Executes the `tks serve` daemon.
@@ -88,8 +146,41 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
     let event_bus = crate::storage::GraphEventBus::default();
     let _pg_listener_handle =
         crate::storage::start_pg_listener(&database_url, event_bus.clone(), cancel_token.clone());
-    let state =
-        AppState::new(pool.clone(), storage, git_write.clone(), git_read).with_event_bus(event_bus);
+
+    let idle_expiry = parse_idle_expiry(&args.elicitation_idle_expiry);
+    let facilitator_provider = args
+        .facilitator
+        .parse::<FacilitatorProviderKind>()
+        .unwrap_or(FacilitatorProviderKind::None);
+    let elicitation_cfg = ElicitationConfig {
+        facilitator_provider,
+        ollama_url: args.ollama_url,
+        facilitator_model: args.facilitator_model,
+        asr_assets_dir: args.asr_assets_dir,
+        idle_expiry,
+    };
+    let elicitation_store = ElicitationStore::new(elicitation_cfg);
+
+    // Spawn periodic background sweep for expired draft sessions (every 5 minutes)
+    let sweep_store = elicitation_store.clone();
+    let sweep_cancel = cancel_token.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(300));
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    sweep_store.sweep_expired().await;
+                }
+                _ = sweep_cancel.cancelled() => {
+                    break;
+                }
+            }
+        }
+    });
+
+    let state = AppState::new(pool.clone(), storage, git_write.clone(), git_read)
+        .with_event_bus(event_bus)
+        .with_elicitation(elicitation_store);
 
     // Step 5: Start background worker manager (WP-1.4, WP-3.1)
     let worker_token = cancel_token.clone();

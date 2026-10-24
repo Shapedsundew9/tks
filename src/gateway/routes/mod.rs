@@ -1,6 +1,7 @@
 //! Gateway REST route handlers.
 
 pub mod documents;
+pub mod elicitation;
 pub mod explorer;
 pub mod identities;
 pub mod mutation;

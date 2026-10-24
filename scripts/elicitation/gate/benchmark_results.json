@@ -1,0 +1,122 @@
+[
+  {
+    "clip": "clean-01",
+    "category": "clean",
+    "cold_load_ms": 1493,
+    "frames": 34,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 46,
+    "release_to_final_ms": 43,
+    "final_text": "MISTER QUILTER IS THE APOSTLE OF THE MIDDLE CLASSES",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "clean-02",
+    "category": "clean",
+    "cold_load_ms": 1450,
+    "frames": 34,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 47,
+    "release_to_final_ms": 44,
+    "final_text": "NOR IS MISTER QUILTER'S MANNER LESS INTERESTING",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "clean-03",
+    "category": "clean",
+    "cold_load_ms": 1396,
+    "frames": 44,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 46,
+    "release_to_final_ms": 43,
+    "final_text": "HE TELLS US THAT AT THIS FESTIVE SEASON OF THE YEAR",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "clean-04",
+    "category": "clean",
+    "cold_load_ms": 1448,
+    "frames": 39,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 46,
+    "release_to_final_ms": 43,
+    "final_text": "HE HAS GRAVE DOUBTS WHETHER SIR FREDERICK LEIGHTON'S",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "clean-05",
+    "category": "clean",
+    "cold_load_ms": 1510,
+    "frames": 49,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 44,
+    "release_to_final_ms": 11,
+    "final_text": "LYNELL'S PICTURES ARE A SORT OF UP GUARDS AND ATOM PA",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "disfluent-01",
+    "category": "disfluent",
+    "cold_load_ms": 1478,
+    "frames": 34,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 46,
+    "release_to_final_ms": 45,
+    "final_text": "SO IT DOESN'T WORK YOU CAN JIGGERY POKER IT AROUND AND MAKE IT WORK",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "disfluent-02",
+    "category": "disfluent",
+    "cold_load_ms": 1421,
+    "frames": 44,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 46,
+    "release_to_final_ms": 42,
+    "final_text": "OPENED THE WINDOW YOU READ THROUGH IT YOU MIGHT CLICK ON YOU KNOW CLOSE IT AGAIN STRAIGHT",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "disfluent-03",
+    "category": "disfluent",
+    "cold_load_ms": 1408,
+    "frames": 44,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 45,
+    "release_to_final_ms": 44,
+    "final_text": "I MEAN IF YOU ALREADY STARTED ON ON DOING STUFF I GUESS",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "disfluent-04",
+    "category": "disfluent",
+    "cold_load_ms": 1414,
+    "frames": 44,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 46,
+    "release_to_final_ms": 45,
+    "final_text": "I'M ACTUALLY SURE WHAT THE USER WANTS WITH IT BUT IT'S INTERESTING SO WHY NOT",
+    "websockets": 0,
+    "non_self_requests": 0
+  },
+  {
+    "clip": "disfluent-05",
+    "category": "disfluent",
+    "cold_load_ms": 1446,
+    "frames": 49,
+    "p50_frame_ms": 1,
+    "p95_frame_ms": 45,
+    "release_to_final_ms": 12,
+    "final_text": "PROBABLY JUST TWO OR TWO OR THREE OF WHATEVER WHATEVER THEY'RE LOOKING AT LIKE DIALOGUE X TO WHATEVER",
+    "websockets": 0,
+    "non_self_requests": 0
+  }
+]

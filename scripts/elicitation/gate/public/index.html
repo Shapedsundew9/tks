@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EA-2.0 In-Browser Proof Gate (Sherpa-ONNX WASM)</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+      line-height: 1.5;
+      background: #fdfdfd;
+      color: #222;
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      background: #eee;
+      margin-bottom: 20px;
+    }
+    .status-badge.ready { background: #d4edda; color: #155724; }
+    .status-badge.loading { background: #fff3cd; color: #856404; }
+    .status-badge.error { background: #f8d7da; color: #721c24; }
+    .mic-section {
+      margin: 20px 0;
+      text-align: center;
+    }
+    #micBtn {
+      font-size: 1.1rem;
+      padding: 14px 28px;
+      border-radius: 30px;
+      border: 2px solid #0066cc;
+      background: #0066cc;
+      color: #fff;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+    #micBtn:disabled {
+      background: #ccc;
+      border-color: #ccc;
+      cursor: not-allowed;
+    }
+    #micBtn.recording {
+      background: #cc0000;
+      border-color: #cc0000;
+      animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse {
+      from { transform: scale(1); }
+      to { transform: scale(1.04); }
+    }
+    .preview-box {
+      min-height: 50px;
+      padding: 12px;
+      background: #f1f3f5;
+      border-radius: 6px;
+      border-left: 4px solid #0066cc;
+      margin-bottom: 20px;
+      font-style: italic;
+      color: #495057;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      padding: 12px;
+      font-size: 1rem;
+      border: 1px solid #ced4da;
+      border-radius: 6px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    .metrics-panel {
+      margin-top: 30px;
+      padding: 15px;
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>EA-2.0 Proof Gate: In-Browser Sherpa-ONNX Dictation</h1>
+  <p>Push-and-hold the button (or hold <strong>Ctrl+Alt+V</strong>) to dictate. Release to stop.</p>
+
+  <div id="statusBadge" class="status-badge loading">Loading WASM and model data (~190 MB)...</div>
+
+  <div class="mic-section">
+    <button id="micBtn" disabled>Hold to Dictate (Ctrl+Alt+V)</button>
+  </div>
+
+  <div>
+    <label><strong>Live Streaming Preview:</strong></label>
+    <div id="streamingPreview" class="preview-box">Live transcribed words will appear here...</div>
+  </div>
+
+  <div>
+    <label><strong>Draft Box (Stakeholder-Controlled):</strong></label>
+    <textarea id="draftBox" placeholder="Transcribed text will land here upon release for your review and edits..."></textarea>
+  </div>
+
+  <div class="metrics-panel">
+    <strong>Gate Diagnostics:</strong>
+    <pre id="metricsLog">Initializing...</pre>
+  </div>
+
+  <script>
+    const startTime = performance.now();
+    const statusBadge = document.getElementById('statusBadge');
+    const micBtn = document.getElementById('micBtn');
+    const preview = document.getElementById('streamingPreview');
+    const draftBox = document.getElementById('draftBox');
+    const metricsLog = document.getElementById('metricsLog');
+
+    window.__gate_metrics = {
+      cold_load_time_ms: null,
+      wasm_memory_bytes: null,
+      frame_latencies_ms: [],
+      release_to_final_ms: null,
+      final_text: '',
+      is_ready: false,
+    };
+
+    let worker = new Worker('asr-worker.js');
+    worker.onerror = function (err) {
+      console.error('Worker error:', err.message, err.filename, err.lineno);
+      statusBadge.textContent = 'Worker Error: ' + err.message;
+      statusBadge.className = 'status-badge error';
+    };
+    let audioCtx = null;
+    let mediaStream = null;
+    let workletNode = null;
+    let isRecording = false;
+    let releaseTimestamp = null;
+
+    worker.onmessage = function (e) {
+      const msg = e.data;
+      console.log('Worker message:', msg.type, msg.text || '');
+      if (msg.type === 'status') {
+        statusBadge.textContent = msg.text || 'Loading...';
+      } else if (msg.type === 'ready') {
+        const coldLoadMs = performance.now() - startTime;
+        window.__gate_metrics.cold_load_time_ms = coldLoadMs;
+        window.__gate_metrics.wasm_memory_bytes = msg.memoryBytes;
+        window.__gate_metrics.is_ready = true;
+
+        statusBadge.textContent = `WASM Ready (${(msg.memoryBytes / 1024 / 1024).toFixed(1)} MB linear memory, loaded in ${(coldLoadMs / 1000).toFixed(2)}s)`;
+        statusBadge.className = 'status-badge ready';
+        micBtn.disabled = false;
+        updateMetricsDisplay();
+      } else if (msg.type === 'partial') {
+        preview.textContent = msg.text || '...';
+        const frameLatency = performance.now() - msg.sentTime;
+        window.__gate_metrics.frame_latencies_ms.push(frameLatency);
+        updateMetricsDisplay();
+      } else if (msg.type === 'final') {
+        if (releaseTimestamp) {
+          window.__gate_metrics.release_to_final_ms = performance.now() - releaseTimestamp;
+        }
+        window.__gate_metrics.final_text = msg.text;
+        if (msg.text) {
+          draftBox.value = (draftBox.value ? draftBox.value + ' ' : '') + msg.text;
+        }
+        preview.textContent = 'Dictation complete. Editable draft updated.';
+        updateMetricsDisplay();
+      } else if (msg.type === 'error') {
+        statusBadge.textContent = 'Worker Error: ' + msg.error;
+        statusBadge.className = 'status-badge error';
+      }
+    };
+
+    async function startRecording() {
+      if (isRecording || !window.__gate_metrics.is_ready) return;
+      isRecording = true;
+      micBtn.classList.add('recording');
+      micBtn.textContent = 'Listening... (Release to commit)';
+      preview.textContent = 'Listening...';
+
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+
+        audioCtx = new AudioContext({ sampleRate: 16000 });
+        await audioCtx.audioWorklet.addModule('audio-worklet.js');
+
+        const source = audioCtx.createMediaStreamSource(mediaStream);
+        workletNode = new AudioWorkletNode(audioCtx, 'audio-recorder-processor');
+
+        workletNode.port.onmessage = (event) => {
+          if (!isRecording) return;
+          const pcm = event.data.data;
+          worker.postMessage(
+            { type: 'pcm', data: pcm, sentTime: performance.now() },
+            [pcm.buffer]
+          );
+        };
+
+        source.connect(workletNode);
+        worker.postMessage({ type: 'start' });
+      } catch (err) {
+        console.error('Audio capture error:', err);
+        statusBadge.textContent = 'Microphone error: ' + err.message;
+        statusBadge.className = 'status-badge error';
+        stopRecording();
+      }
+    }
+
+    function stopRecording() {
+      if (!isRecording) return;
+      isRecording = false;
+      releaseTimestamp = performance.now();
+
+      micBtn.classList.remove('recording');
+      micBtn.textContent = 'Hold to Dictate (Ctrl+Alt+V)';
+
+      if (workletNode) {
+        workletNode.disconnect();
+        workletNode = null;
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        mediaStream = null;
+      }
+      if (audioCtx) {
+        audioCtx.close();
+        audioCtx = null;
+      }
+
+      worker.postMessage({ type: 'stop' });
+    }
+
+    function updateMetricsDisplay() {
+      const latencies = window.__gate_metrics.frame_latencies_ms;
+      let p50 = 0, p95 = 0;
+      if (latencies.length > 0) {
+        const sorted = [...latencies].sort((a, b) => a - b);
+        p50 = sorted[Math.floor(sorted.length * 0.5)];
+        p95 = sorted[Math.floor(sorted.length * 0.95)];
+      }
+
+      metricsLog.textContent = JSON.stringify({
+        cold_load_time_ms: window.__gate_metrics.cold_load_time_ms ? Math.round(window.__gate_metrics.cold_load_time_ms) : null,
+        wasm_memory_mb: window.__gate_metrics.wasm_memory_bytes ? (window.__gate_metrics.wasm_memory_bytes / 1024 / 1024).toFixed(1) : null,
+        frames_captured: latencies.length,
+        p50_frame_to_partial_ms: Math.round(p50),
+        p95_frame_to_partial_ms: Math.round(p95),
+        release_to_final_ms: window.__gate_metrics.release_to_final_ms ? Math.round(window.__gate_metrics.release_to_final_ms) : null,
+        final_text: window.__gate_metrics.final_text,
+      }, null, 2);
+    }
+
+    // Button interactions
+    micBtn.addEventListener('mousedown', startRecording);
+    window.addEventListener('mouseup', () => {
+      if (isRecording) stopRecording();
+    });
+
+    // Push-to-talk keyboard shortcut: Ctrl+Alt+V
+    window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.altKey && (e.key === 'v' || e.key === 'V')) {
+        e.preventDefault();
+        if (!isRecording) startRecording();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'v' || e.key === 'V') {
+        if (isRecording) stopRecording();
+      }
+    });
+
+    // Lifecycle cleanups: stop recording if tab becomes hidden or window blurs
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && isRecording) stopRecording();
+    });
+    window.addEventListener('blur', () => {
+      if (isRecording) stopRecording();
+    });
+    window.addEventListener('pagehide', () => {
+      if (isRecording) stopRecording();
+    });
+  </script>
+</body>
+</html>

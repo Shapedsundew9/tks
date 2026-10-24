@@ -3,7 +3,6 @@
 ## General
 
 - Only call tools listed for the current session. e.g. ensure `apply_patch` exisst before using it.
-- Low-polling policy on long-running tasks. Launch background commands, perform parallel non-conflicting edits, and rely on system completion notifications.
 - Make surgical, right-sized edits and apply typing and markdownlint conventions upfront.
 
 ## Documentation

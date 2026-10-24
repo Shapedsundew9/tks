@@ -5,6 +5,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod cli;
 pub mod db;
+pub mod elicitation;
 pub mod gateway;
 pub mod ingest;
 pub mod storage;

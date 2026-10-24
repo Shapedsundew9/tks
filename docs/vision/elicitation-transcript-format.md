@@ -59,6 +59,7 @@ Following the YAML frontmatter, the document body consists strictly of dialogue 
 5. **No Extraneous Block Elements:** Transcripts MUST NOT contain headings (`#`), horizontal rules (`---`), blockquotes (`>`), lists (`-` or `1.`), code fences (` ``` `), or tables between turns.
 6. **No Inline Markdown in Synthetic Fixtures:** Utterances in synthetic evaluation fixtures MUST NOT contain bold, italics, or code formatting within the speech text itself, ensuring that speech-to-text realism is maintained.
 7. **Verbatim Grounding Boundary:** The utterance text (with whitespace collapsed) defines the exact candidate text boundary against which downstream extraction passes mechanically verify quotes.
+8. **Turn Count:** A transcript MUST contain at least one turn. The format imposes no maximum turn count. The 15–40 turn range applies only to the synthetic evaluation corpus as a benchmarking constraint, not as a format rule.
 
 ### 2.3 Free-Form Vision Documents
 

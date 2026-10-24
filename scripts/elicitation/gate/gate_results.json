@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-10-24T15:56:27.926Z",
+  "cold_load_time_ms": 1496,
+  "wasm_memory_mb": 512,
+  "frames_captured": 34,
+  "p50_frame_to_partial_ms": 1,
+  "p95_frame_to_partial_ms": 48,
+  "release_to_final_ms": 44,
+  "final_text": "SO IT DOESN'T WORK YOU CAN JIGGERY POKER IT AROUND AND MAKE IT WORK",
+  "websockets_count": 0,
+  "requests_count": 6,
+  "all_self_origin": true
+}
