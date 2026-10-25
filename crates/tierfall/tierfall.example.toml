@@ -1,0 +1,92 @@
+# tierfall example configuration.
+#
+# Everything is optional: with no file at all tierfall auto-detects GEMINI_API_KEY*,
+# GROQ_API_KEY* and OPENROUTER_API_KEY* from the environment, discovers and ranks each
+# account's models, adds local Ollama as the last resort and exposes the `auto` and
+# `fast` routes. Copy what you need to ./tierfall.toml or ~/.config/tierfall/config.toml
+# (or point TIERFALL_CONFIG at it). `tierfall init` writes a starter file for your env.
+
+[server]
+bind = "127.0.0.1:4141"
+# Clients must send `Authorization: Bearer <value of this env var>` when it is set.
+api_key_env = "TIERFALL_API_KEY"
+
+[router]
+default_route = "auto"          # used when a request's model is empty or "default"
+account_order = ["gemini-ss", "gemini-am", "gemini-jb"]  # env TIERFALL_ACCOUNT_ORDER wins
+provider_priority = ["gemini", "groq", "openrouter", "openai", "ollama"]  # within a tier
+short_wait_secs = 0             # wait in place for a minute-limit reset up to N s (0 = fall back now)
+request_timeout_secs = 120      # also the idle timeout between streamed chunks
+connect_timeout_secs = 10
+transient_cooldown_secs = 30    # after 5xx/timeouts; doubles per consecutive failure
+auto_detect = true              # pick up *_API_KEY* env vars as accounts
+include_ollama = true           # OLLAMA_HOST (default http://ollama:11434) as last resort
+discovery = true                # GET /models per account, cached for discovery_ttl_hours
+discovery_ttl_hours = 24
+models_per_tier = 2             # discovered models kept per account per tier
+builtin_routes = true           # also provide `fast` (`auto` always exists)
+persist_state = true            # remember exhausted quotas across restarts
+# state_dir = "~/.cache/tierfall"   # or env TIERFALL_STATE_DIR
+
+# Explicit accounts. Auto-detection still adds any other keys it finds; an explicit
+# account claims its api_key_env so it is not detected twice.
+[[accounts]]
+id = "gemini-ss"
+provider = "gemini"
+api_key_env = "GEMINI_API_KEY_SS"
+preferred_models = ["gemini-3.8-flash"]   # ranked first within its tier
+
+[[accounts]]
+id = "groq"
+provider = "groq"
+api_key_env = "GROQ_API_KEY"
+# Pinning models skips discovery for this account and fixes their order.
+models = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+
+[[accounts]]
+id = "local-vllm"
+provider = "openai"                        # any OpenAI-compatible endpoint
+base_url = "http://localhost:8000/v1"
+api_key_env = "LOCAL_VLLM_KEY"
+models = ["my-model"]
+tier = 3                                   # force every model of this account into tier 3
+drop_params = ["parallel_tool_calls"]      # stripped from requests sent here
+enabled = false
+
+# Named routes: explicit fallback chains, tried top to bottom. Requests use them as `model`.
+[[routes]]
+name = "smart"
+description = "Best Gemini everywhere, then Groq's largest, then whatever auto has left"
+chain = [
+  { provider = "gemini", model = "gemini-3.8-flash" },   # every Gemini account, in order
+  { account = "groq", model = "openai/gpt-oss-120b" },  # one account
+  { route = "auto" },                                   # splice in another route
+]
+
+[[routes]]
+name = "cheap"
+chain = [
+  { model = "gemini-3.5-flash-lite" },                  # every account that lists it
+  { account = "groq", model = "*" },                    # every ranked model of an account
+]
+
+# Optional proactive limits (otherwise limits are learned from 429s and rate-limit headers).
+[[limits]]
+provider = "gemini"
+model = "gemini-*-flash"
+rpm = 10
+rpd = 250
+
+[[limits]]
+account = "groq"
+rpm = 30
+
+# Extra ranking rules, checked before the built-in ones (first match wins; tier 1 = best).
+[[rankings]]
+provider = "openrouter"
+pattern = "qwen/*:free"
+tier = 2
+
+[[rankings]]
+pattern = "*-exp*"
+exclude = true

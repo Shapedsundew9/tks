@@ -102,6 +102,8 @@
 		"GEMINI_API_KEY_SS": "${localEnv:GEMINI_API_KEY_SS}",
 		"GEMINI_API_KEY_AM": "${localEnv:GEMINI_API_KEY_AM}",
 		"GEMINI_API_KEY_JB": "${localEnv:GEMINI_API_KEY_JB}",
-		"GROQ_API_KEY": "${localEnv:GROQ_API_KEY}"
+		"GROQ_API_KEY": "${localEnv:GROQ_API_KEY}",
+		"OPENROUTER_API_KEY": "${localEnv:OPENROUTER_API_KEY}",
+		"TIERFALL_ACCOUNT_ORDER": "gemini-ss,gemini-am,gemini-jb"
 	}
 }

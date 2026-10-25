@@ -21,6 +21,9 @@ Read `.shared/ai/core/common-instructions.md`.
 - Put one-off developer utilities or scripts in `scripts/`.
 - Keep build artifacts such as `target/` out of commits unless the repository explicitly tracks them.
 - Be explicitly aware that GEMINI.md is a symbolic link to .github/copilot-instructions.md
+- The root `Cargo.toml` is also a workspace. `crates/tierfall/` is a separate member crate
+  (a free-tier LLM fallback library and OpenAI-compatible proxy). It has its own `src/`,
+  `tests/` and README, and is independent of TKS and the database.
 
 ## Development Environment
 
@@ -47,6 +50,10 @@ Read `.shared/ai/core/common-instructions.md`.
   `cargo package`.
 - Inspect the generated package archive in `target/package/` when packaging changes affect included files or binaries.
 - Run focused checks for the files and behavior changed before running broader validation.
+- Root-level `cargo test`/`cargo clippy` only cover the `tks` package. For the tierfall crate
+  run `cargo test -p tierfall` and
+  `cargo clippy -p tierfall --all-targets --all-features -- -D warnings`. Its live provider
+  tests are opt-in: `TIERFALL_LIVE=1 cargo test -p tierfall --test live -- --nocapture`.
 - Keep intentional Markdown exceptions narrow and document them with targeted configuration or inline suppression.
 
 ## Dependencies

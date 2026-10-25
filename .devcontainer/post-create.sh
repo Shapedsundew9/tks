@@ -6,20 +6,35 @@ set -e
 
 echo "Configuring Rust toolchain..."
 if command -v rustup >/dev/null 2>&1; then
+    rust_components=cargo,rustc,rust-std,rustfmt,clippy,rust-analyzer,rust-src
+    reinstall_stable=false
     if rustup_output=$(rustup toolchain install stable --profile minimal \
-        --component rustfmt,clippy,rust-analyzer,rust-src 2>&1); then
+        --component "$rust_components" 2>&1); then
         printf '%s\n' "$rustup_output"
+        if rustup_output=$({
+            rustup run stable cargo --version && rustup run stable rustc --version
+        } 2>&1); then
+            printf '%s\n' "$rustup_output"
+        else
+            printf '%s\n' "$rustup_output" >&2
+            reinstall_stable=true
+        fi
     else
         printf '%s\n' "$rustup_output" >&2
         if [[ "$rustup_output" != *"failed to install component:"* ||
               "$rustup_output" != *"detected conflict:"* ]]; then
             exit 1
         fi
+        reinstall_stable=true
+    fi
 
-        echo "Repairing conflicting stable toolchain files by reinstalling stable..." >&2
+    if [[ "$reinstall_stable" == true ]]; then
+        echo "Repairing conflicting or incomplete stable toolchain files by reinstalling stable..." >&2
         rustup toolchain uninstall stable
         rustup toolchain install stable --profile minimal \
-            --component rustfmt,clippy,rust-analyzer,rust-src
+            --component "$rust_components"
+        rustup run stable cargo --version
+        rustup run stable rustc --version
     fi
     rustup default stable
 fi

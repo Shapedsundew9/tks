@@ -36,6 +36,16 @@ if [[ "$1 $2" == "toolchain install" ]]; then
 elif [[ "$1 $2" == "toolchain uninstall" && "$SCENARIO" == uninstall-failure ]]; then
     echo "error: permission denied" >&2
     exit 1
+elif [[ "$1 $2" == "toolchain uninstall" ]]; then
+    touch "$TEST_ROOT/reinstalled"
+elif [[ "$1 $2" == "run stable" ]]; then
+    if [[ "$SCENARIO" == broken-after-reinstall ||
+          ( "$SCENARIO" == missing-cargo && "$3" == cargo ||
+            "$SCENARIO" == missing-rustc && "$3" == rustc ) &&
+          ! -f "$TEST_ROOT/reinstalled" ]]; then
+        echo "error: the '$3' binary, normally provided by the '$3' component, is not applicable to the 'stable-x86_64-unknown-linux-gnu' toolchain" >&2
+        exit 1
+    fi
 fi
 """
             )
@@ -71,9 +81,11 @@ fi
         result, commands = self.run_setup("healthy")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            commands[:3],
+            commands[:5],
             [
-                "toolchain install stable --profile minimal --component rustfmt,clippy,rust-analyzer,rust-src",
+                "toolchain install stable --profile minimal --component cargo,rustc,rust-std,rustfmt,clippy,rust-analyzer,rust-src",
+                "run stable cargo --version",
+                "run stable rustc --version",
                 "default stable",
                 "cargo check",
             ],
@@ -85,9 +97,46 @@ fi
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(commands[1], "toolchain uninstall stable")
         self.assertEqual(commands[0], commands[2])
-        self.assertEqual(commands[3:5], ["default stable", "cargo check"])
+        self.assertEqual(
+            commands[3:7],
+            [
+                "run stable cargo --version",
+                "run stable rustc --version",
+                "default stable",
+                "cargo check",
+            ],
+        )
         self.assertIn("detected conflict:", result.stderr)
-        self.assertIn("Repairing conflicting stable", result.stderr)
+        self.assertIn("Repairing conflicting or incomplete stable", result.stderr)
+
+    def test_missing_binary_reinstalls_stable_and_continues(self):
+        for scenario in ("missing-cargo", "missing-rustc"):
+            with self.subTest(scenario=scenario):
+                result, commands = self.run_setup(scenario)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                uninstall = commands.index("toolchain uninstall stable")
+                self.assertEqual(commands[0], commands[uninstall + 1])
+                self.assertEqual(
+                    commands[uninstall + 2:uninstall + 6],
+                    [
+                        "run stable cargo --version",
+                        "run stable rustc --version",
+                        "default stable",
+                        "cargo check",
+                    ],
+                )
+                self.assertEqual(commands.count("toolchain uninstall stable"), 1)
+                self.assertIn("is not applicable", result.stderr)
+                self.assertIn("Repairing conflicting or incomplete stable", result.stderr)
+
+    def test_broken_binary_after_reinstall_stops_setup(self):
+        result, commands = self.run_setup("broken-after-reinstall")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(commands.count("toolchain uninstall stable"), 1)
+        self.assertEqual(commands[-1], "run stable cargo --version")
+        self.assertNotIn("default stable", commands)
+        self.assertNotIn("cargo check", commands)
+        self.assertIn("is not applicable", result.stderr)
 
     def test_network_failure_does_not_reinstall_or_continue(self):
         result, commands = self.run_setup("network")

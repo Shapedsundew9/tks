@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "crates/tierfall"]
+resolver = "3"
+
 [package]
 name = "tks"
 version = "0.1.0"

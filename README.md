@@ -69,10 +69,13 @@ http://localhost:8080/explorer
 
 ## Testing & Verification
 
-The devcontainer post-create script installs stable Rust with `rustfmt`, Clippy,
-`rust-analyzer`, and `rust-src`. If inherited toolchain files conflict with
-rustup's component metadata, setup reports the conflict and reinstalls only the
-`stable` toolchain. Other installation failures stop setup without reinstalling.
+The devcontainer post-create script explicitly installs Cargo, rustc, and the
+standard library alongside `rustfmt`, Clippy, `rust-analyzer`, and `rust-src`.
+It checks that Cargo and rustc run before checking the project. If inherited
+toolchain files conflict with rustup's component metadata, or the installed
+Cargo or rustc cannot run, setup reports the error and reinstalls only the
+`stable` toolchain, then verifies it again. Other installation failures stop
+setup without reinstalling.
 To retry a failed post-create command from the repository root, run:
 
 ```bash
@@ -210,6 +213,26 @@ This checks:
 * model presence
 * OpenAI-compatible `/v1/chat/completions`
 * VRAM residency signal from `/api/ps`
+
+## Free-tier LLM router (`tierfall`)
+
+The workspace also contains [`crates/tierfall`](crates/tierfall/README.md). It is a Rust
+library and an OpenAI-compatible proxy that put the free-tier Gemini, Groq and OpenRouter
+accounts forwarded into the devcontainer behind a single endpoint. When an account's
+per-minute or daily quota runs out, it falls back to the next account or model, with the
+local Ollama service as the last resort. Zero-config use:
+
+```bash
+cargo run -p tierfall -- status          # detected accounts, ranked models, quota state
+cargo run -p tierfall -- chat "hello"    # one-off prompt via the `auto` route
+cargo run -p tierfall -- serve           # OpenAI-compatible API on http://127.0.0.1:4141/v1
+```
+
+Host variables `GEMINI_API_KEY_SS`, `GEMINI_API_KEY_AM`, `GEMINI_API_KEY_JB`,
+`GROQ_API_KEY` and `OPENROUTER_API_KEY` are forwarded by
+[devcontainer.json](.devcontainer/devcontainer.json). Rebuild the container after setting
+them. See the [crate README](crates/tierfall/README.md) for routing, configuration and the
+proxy API.
 
 ## License
 
