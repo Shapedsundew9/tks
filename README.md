@@ -262,6 +262,92 @@ Host variables `GEMINI_API_KEY_SS`, `GEMINI_API_KEY_AM`, `GEMINI_API_KEY_JB`,
 them. See the [crate README](crates/tierfall/README.md) for routing, configuration and the
 proxy API.
 
+### TKS elicitation facilitator
+
+`tks serve` now defaults to the embedded Tierfall facilitator and the `auto` route.
+No separate Tierfall proxy is needed. The daemon initializes one shared router so
+discovery, quota state, and cooldowns are reused across proposals. The UI supports
+both Socratic questions and inspiration, and shows the actual serving provider,
+model, elapsed time, and attempt count (in the model label's tooltip).
+
+**Hosted-data boundary:** elicitation context (including the session title,
+selected transcript turns, gap questions, and explored ideas) is sent to hosted
+providers. Use only non-sensitive content with hosted routing. The new Tierfall
+adapter logs operational metadata, not prompt/transcript bodies. Select direct
+Ollama or disable assistance for local-only sessions:
+
+```bash
+cargo run --bin tks -- serve                            # Tierfall, route auto
+cargo run --bin tks -- serve --facilitator-route fast   # latency-first alternative
+cargo run --bin tks -- serve --facilitator ollama       # direct local generation
+cargo run --bin tks -- serve --facilitator none         # manual elicitation
+```
+
+`TKS_ELICITATION_FACILITATOR` overrides the provider default;
+`TKS_ELICITATION_ROUTE` overrides the route default. Explicit CLI arguments take
+precedence over those environment variables. Invalid providers, unavailable routes,
+and invalid Tierfall configuration fail explicitly at startup; migration-only
+startup does not initialize model clients. Without hosted credentials, Tierfall
+can use its normal Ollama fallback; exhausted providers produce an elicitation
+error, not a fabricated proposal.
+
+Tierfall reads `TIERFALL_CONFIG` or discovers its standard config file and uses
+the existing `GEMINI_API_KEY*`, `GROQ_API_KEY*`, and `OPENROUTER_API_KEY*`
+accounts. Its quality-ranked `auto` chain uses free-tier models before local
+Ollama. This is **not a billing cap**: use free-tier-only provider accounts and
+avoid paid routes in custom configuration. Access to any particular frontier model
+depends on the provider's current free offering and your remaining allowance.
+
+For Tierfall's local fallback, use `OLLAMA_HOST`, and
+`TIERFALL_OLLAMA_MODEL` (falling back to `TKS_LLM_MODEL`, then `qwen3:8b`),
+or explicit Tierfall account configuration. The `--ollama-url` and
+`--facilitator-model` options apply only to direct `--facilitator ollama` mode.
+The Tierfall route is deliberately separate from the local model identifier.
+
+### Synthetic facilitator comparison
+
+This comparison exercises the production facilitator adapters, independently of
+the extraction/golden-replay evaluator. It requires an explicit live opt-in and
+uses five fixed synthetic scenarios, never repository files or real transcripts:
+
+```bash
+cargo run --bin elicitation_facilitator_eval -- --live \
+  --repetitions 1 --timeout-secs 180 --output target/facilitator-comparison.json
+```
+
+The JSON report includes proposals, actual serving models/accounts, attempts,
+latency, optional token usage, neutrality flags for Socratic responses, and errors.
+Each backend runs serially on the same scenarios. Repetitions are bounded to 1–10;
+per-proposal timeouts include fallback time. Successful latency p50/p95 uses
+nearest-rank percentiles and excludes initialization and failed samples. Local
+fallbacks are counted separately and must not be interpreted as hosted-model wins.
+Missing token usage is unknown, not zero. Failed samples leave a partial report
+and a nonzero exit status.
+
+The comparison's overall proposal deadline can expire before Tierfall finishes
+its fallback chain. Tierfall's default per-target timeout is 120 seconds; tune
+`router.request_timeout_secs` in its config if faster failover is needed. An
+overall comparison timeout is not proof that every provider was exhausted, and
+cancelling an in-flight attempt may prevent its quota/cooldown result being learned.
+
+Review proposal text against the included grounding, neutrality, novelty, scope,
+and mode-compliance rubric. Neutrality flags are diagnostics, not a quality score;
+a small run is exploratory rather than a statistically reliable benchmark.
+
+Focused offline checks:
+
+```bash
+cargo test --test facilitator_tierfall --test elicitation_api --bin elicitation_facilitator_eval
+node scripts/elicitation/test_facilitator_ui.js
+```
+
+The browser check uses the existing Playwright installation under
+`scripts/elicitation/gate` and mocked capabilities/events, with no model calls.
+
+The TKS library dependency resolves locally within this workspace. Registry
+packaging with `cargo package` requires `tierfall` version `0.1.0` to be available
+in the target registry first; this integration does not publish either crate.
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

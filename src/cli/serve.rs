@@ -33,9 +33,13 @@ pub struct ServeArgs {
     #[arg(long)]
     pub git_dir: Option<PathBuf>,
 
-    /// Facilitator provider for elicitation ('none' or 'ollama', default: 'none').
-    #[arg(long, default_value = "none", env = "TKS_ELICITATION_FACILITATOR")]
-    pub facilitator: String,
+    /// Elicitation provider: tierfall (hosted free-tier routing), ollama, or none.
+    #[arg(long, default_value = "tierfall", env = "TKS_ELICITATION_FACILITATOR")]
+    pub facilitator: FacilitatorProviderKind,
+
+    /// Tierfall route, separate from the direct Ollama model.
+    #[arg(long, default_value = "auto", env = "TKS_ELICITATION_ROUTE")]
+    pub facilitator_route: String,
 
     /// Ollama endpoint URL for facilitator offload (default: http://localhost:11434).
     #[arg(long, default_value = "http://localhost:11434", env = "OLLAMA_HOST")]
@@ -61,7 +65,8 @@ impl Default for ServeArgs {
             migrate_only: false,
             database_url: None,
             git_dir: None,
-            facilitator: "none".to_string(),
+            facilitator: FacilitatorProviderKind::Tierfall,
+            facilitator_route: "auto".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             facilitator_model: "qwen3:8b".to_string(),
             asr_assets_dir: None,
@@ -148,12 +153,10 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         crate::storage::start_pg_listener(&database_url, event_bus.clone(), cancel_token.clone());
 
     let idle_expiry = parse_idle_expiry(&args.elicitation_idle_expiry);
-    let facilitator_provider = args
-        .facilitator
-        .parse::<FacilitatorProviderKind>()
-        .unwrap_or(FacilitatorProviderKind::None);
+    let facilitator_provider = args.facilitator;
     let elicitation_cfg = ElicitationConfig {
         facilitator_provider,
+        facilitator_route: args.facilitator_route,
         ollama_url: crate::elicitation::resolve_ollama_url(&args.ollama_url),
         facilitator_model: if args.facilitator_model.trim().is_empty() {
             "qwen3:8b".to_string()
@@ -163,7 +166,8 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         asr_assets_dir: args.asr_assets_dir,
         idle_expiry,
     };
-    let elicitation_store = ElicitationStore::new(elicitation_cfg);
+    let mut elicitation_store = ElicitationStore::new(elicitation_cfg);
+    elicitation_store.initialize_facilitator().await?;
 
     // Spawn periodic background sweep for expired draft sessions (every 5 minutes)
     let sweep_store = elicitation_store.clone();
@@ -215,4 +219,40 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
     run_server(addr, state, cancel_token).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::{CommandFactory, Parser};
+
+    #[derive(Parser)]
+    struct Command {
+        #[command(flatten)]
+        serve: ServeArgs,
+    }
+
+    #[test]
+    fn facilitator_defaults_and_overrides() {
+        assert_eq!(
+            ServeArgs::default().facilitator,
+            FacilitatorProviderKind::Tierfall
+        );
+        assert_eq!(ServeArgs::default().facilitator_route, "auto");
+        let command = Command::command();
+        let provider_arg = command
+            .get_arguments()
+            .find(|arg| arg.get_id() == "facilitator")
+            .unwrap();
+        assert_eq!(provider_arg.get_default_values(), &["tierfall"]);
+        for (value, kind) in [
+            ("tierfall", FacilitatorProviderKind::Tierfall),
+            ("ollama", FacilitatorProviderKind::Ollama),
+            ("none", FacilitatorProviderKind::None),
+        ] {
+            let command = Command::try_parse_from(["serve", "--facilitator", value]).unwrap();
+            assert_eq!(command.serve.facilitator, kind);
+        }
+        assert!(Command::try_parse_from(["serve", "--facilitator", "typo"]).is_err());
+    }
 }

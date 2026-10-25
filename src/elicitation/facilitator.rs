@@ -1,4 +1,4 @@
-//! Socratic facilitator conversation provider trait and Ollama offload (D-130, D-EA-6, §6.4).
+//! Socratic facilitator providers using direct Ollama or Tierfall routing.
 
 use serde_json::Value;
 use std::time::Duration;
@@ -13,6 +13,92 @@ pub struct FacilitatorContext {
     pub gap_questions: Vec<String>,
     pub explored_items: Vec<String>,
     pub turns: Vec<(String, String)>, // (role, text)
+}
+
+/// Operational metadata, without prompts or credentials.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GenerationMetadata {
+    pub provider: String,
+    pub account: Option<String>,
+    pub model: String,
+    pub attempts: u32,
+    pub duration_ms: u64,
+    pub usage: Option<tierfall::Usage>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FacilitatorProposal {
+    pub text: String,
+    pub generation: GenerationMetadata,
+}
+
+fn elapsed_ms(start: std::time::Instant) -> u64 {
+    u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// Shares discovery, cooldowns, and quota state across all proposals.
+#[derive(Debug, Clone)]
+pub struct TierfallFacilitatorProvider {
+    pub client: tierfall::Tierfall,
+    pub route: String,
+}
+
+impl FacilitatorProvider for TierfallFacilitatorProvider {
+    fn propose(
+        &self,
+        context: FacilitatorContext,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FacilitatorProposal, String>> + Send>,
+    > {
+        let client = self.client.clone();
+        let route = self.route.clone();
+        Box::pin(async move {
+            let start = std::time::Instant::now();
+            let prompt = build_facilitator_user_prompt(&context);
+            let request = tierfall::ChatRequest::new(&route)
+                .system(context.system_prompt)
+                .user(prompt);
+            // Upstream error bodies can contain echoed prompts; keep them out of logs and SSE.
+            let reply = client.chat(request).await.map_err(|error| {
+                let message = match error {
+                    tierfall::Error::AllExhausted { .. } | tierfall::Error::Upstream { .. } => format!("Tierfall: {error}"),
+                    tierfall::Error::Json(_) => "Tierfall returned invalid completion JSON".to_string(),
+                    tierfall::Error::Config(_) | tierfall::Error::InvalidRequest(_) |
+                    tierfall::Error::UnknownModel(_) => format!("Tierfall: {error}"),
+                    tierfall::Error::Http(error) => format!("Tierfall HTTP error: {}", error.without_url()),
+                    tierfall::Error::Io(error) => format!("Tierfall I/O error: {}", error.kind()),
+                    tierfall::Error::Stream(_) => "Tierfall returned an unexpected streaming error".to_string(),
+                };
+                tracing::warn!(target: "tks::llm", route, duration_ms = elapsed_ms(start), "{message}");
+                message
+            })?;
+            let text = reply
+                .text()
+                .filter(|text| !text.trim().is_empty())
+                .ok_or_else(|| {
+                    tracing::warn!(target: "tks::llm", route, "Tierfall response missing or empty assistant text");
+                    "Tierfall response missing or empty assistant text".to_string()
+                })?;
+            let served = reply
+                .served_by
+                .ok_or_else(|| "Tierfall response missing serving metadata".to_string())?;
+            let generation = GenerationMetadata {
+                provider: served.provider.to_string(),
+                account: Some(served.account),
+                model: served.model,
+                attempts: served.attempts,
+                duration_ms: elapsed_ms(start),
+                usage: reply.usage,
+            };
+            tracing::info!(target: "tks::llm", route, provider = generation.provider,
+                model = generation.model, attempts = generation.attempts,
+                duration_ms = generation.duration_ms, "Facilitator proposal completed");
+            Ok(FacilitatorProposal {
+                text: text.trim().to_string(),
+                generation,
+            })
+        })
+    }
 }
 
 /// Extracts concise idea titles or questions from a generated facilitator proposal
@@ -189,7 +275,9 @@ pub trait FacilitatorProvider: Send + Sync {
     fn propose(
         &self,
         context: FacilitatorContext,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>;
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FacilitatorProposal, String>> + Send>,
+    >;
 }
 
 /// No-op provider when facilitator assistance is disabled (`none`).
@@ -200,7 +288,9 @@ impl FacilitatorProvider for NoneFacilitatorProvider {
     fn propose(
         &self,
         _context: FacilitatorContext,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FacilitatorProposal, String>> + Send>,
+    > {
         Box::pin(async { Err("facilitator provider is configured to 'none'".to_string()) })
     }
 }
@@ -349,7 +439,9 @@ impl FacilitatorProvider for OllamaFacilitatorProvider {
     fn propose(
         &self,
         context: FacilitatorContext,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FacilitatorProposal, String>> + Send>,
+    > {
         let client = self.client.clone();
         let base_url = resolve_ollama_url(&self.base_url);
         let url = format!("{base_url}/api/chat");
@@ -467,7 +559,31 @@ impl FacilitatorProvider for OllamaFacilitatorProvider {
                 Ok(text),
             );
 
-            Ok(text.to_string())
+            let prompt_tokens = json.get("prompt_eval_count").and_then(Value::as_u64);
+            let completion_tokens = json.get("eval_count").and_then(Value::as_u64);
+            Ok(FacilitatorProposal {
+                text: text.to_string(),
+                generation: GenerationMetadata {
+                    provider: "ollama".to_string(),
+                    account: None,
+                    model: json
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .unwrap_or(&model)
+                        .to_string(),
+                    attempts: 1,
+                    duration_ms: elapsed_ms(start),
+                    usage: if prompt_tokens.is_some() || completion_tokens.is_some() {
+                        Some(tierfall::Usage {
+                            prompt_tokens,
+                            completion_tokens,
+                            ..Default::default()
+                        })
+                    } else {
+                        None
+                    },
+                },
+            })
         })
     }
 }

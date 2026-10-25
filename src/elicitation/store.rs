@@ -51,6 +51,7 @@ pub enum ElicitationEvent {
         mode: String,
         text: String,
         flags: Vec<super::neutrality::NeutralityFlag>,
+        generation: super::facilitator::GenerationMetadata,
     },
     #[serde(rename = "facilitator_error")]
     FacilitatorError { error: String },
@@ -131,17 +132,47 @@ pub struct ElicitationStore {
     sessions: Arc<RwLock<HashMap<Uuid, ElicitationSession>>>,
     event_txs: Arc<RwLock<HashMap<Uuid, broadcast::Sender<ElicitationEvent>>>>,
     pub config: ElicitationConfig,
+    pub facilitator: Option<Arc<dyn super::FacilitatorProvider>>,
 }
 
 impl ElicitationStore {
     /// Creates a new `ElicitationStore` with the given configuration.
     #[must_use]
     pub fn new(config: ElicitationConfig) -> Self {
+        let facilitator = if config.facilitator_provider == super::FacilitatorProviderKind::Ollama {
+            Some(Arc::new(super::OllamaFacilitatorProvider::new(
+                config.ollama_url.clone(),
+                config.facilitator_model.clone(),
+            )) as Arc<dyn super::FacilitatorProvider>)
+        } else {
+            None
+        };
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             event_txs: Arc::new(RwLock::new(HashMap::new())),
             config,
+            facilitator,
         }
+    }
+
+    /// Initializes hosted routing once, before exposing the gateway.
+    pub async fn initialize_facilitator(&mut self) -> tierfall::Result<()> {
+        if self.config.facilitator_provider == super::FacilitatorProviderKind::Tierfall {
+            let client = tierfall::Tierfall::from_env().await?;
+            self.set_tierfall(client)?;
+        }
+        Ok(())
+    }
+
+    /// Injects a router, including isolated stub routers in tests.
+    pub fn set_tierfall(&mut self, client: tierfall::Tierfall) -> tierfall::Result<()> {
+        client.resolve(&self.config.facilitator_route)?;
+        self.config.facilitator_provider = super::FacilitatorProviderKind::Tierfall;
+        self.facilitator = Some(Arc::new(super::TierfallFacilitatorProvider {
+            client,
+            route: self.config.facilitator_route.clone(),
+        }));
+        Ok(())
     }
 
     /// Creates a new elicitation draft session.

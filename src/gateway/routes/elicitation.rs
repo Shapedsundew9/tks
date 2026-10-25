@@ -12,9 +12,7 @@ use axum::response::{IntoResponse, Response};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::elicitation::facilitator::{
-    FacilitatorContext, FacilitatorProvider, OllamaFacilitatorProvider,
-};
+use crate::elicitation::facilitator::FacilitatorContext;
 use crate::elicitation::session::SessionState;
 use crate::elicitation::store::{
     AddTurnRequest, CreateSessionRequest, ElicitationError, ElicitationEvent, PatchTurnRequest,
@@ -41,6 +39,13 @@ pub async fn get_capabilities(State(state): State<AppState>) -> impl IntoRespons
             serde_json::json!({
                 "provider": "ollama",
                 "model": cfg.facilitator_model
+            })
+        }
+        crate::elicitation::FacilitatorProviderKind::Tierfall => {
+            serde_json::json!({
+                "provider": "tierfall",
+                "route": cfg.facilitator_route,
+                "available": state.elicitation.facilitator.is_some(),
             })
         }
     };
@@ -339,14 +344,22 @@ pub async fn request_facilitator_proposal(
         turns,
     };
 
-    let provider =
-        OllamaFacilitatorProvider::new(cfg.ollama_url.clone(), cfg.facilitator_model.clone());
+    let provider = state.elicitation.facilitator.clone().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "ERR_FACILITATOR_UNAVAILABLE",
+                "message": "Facilitator has not been initialized"
+            })),
+        )
+    })?;
     let store = state.elicitation.clone();
 
     // Spawn background task so gateway 30s TimeoutLayer does not terminate generation
     tokio::spawn(async move {
         match provider.propose(context).await {
-            Ok(proposal_text) => {
+            Ok(proposal) => {
+                let proposal_text = proposal.text;
                 let extracted =
                     crate::elicitation::extract_proposal_items(&proposal_text, is_inspiration);
                 store.record_explored_items(elicitation_id, extracted).await;
@@ -364,6 +377,7 @@ pub async fn request_facilitator_proposal(
                             mode,
                             text: proposal_text,
                             flags,
+                            generation: proposal.generation,
                         },
                     )
                     .await;

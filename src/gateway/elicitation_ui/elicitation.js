@@ -240,16 +240,22 @@
       const caps = await resp.json();
 
       // Facilitator status
-      if (caps.facilitator && caps.facilitator.provider === 'ollama') {
-        const modelName = caps.facilitator.model || 'qwen3:8b';
+      if (caps.facilitator && (
+        caps.facilitator.provider === 'ollama' ||
+        (caps.facilitator.provider === 'tierfall' && caps.facilitator.available)
+      )) {
+        const isTierfall = caps.facilitator.provider === 'tierfall';
+        const modelName = isTierfall ? caps.facilitator.route : caps.facilitator.model;
         facilitatorDot.className = 'dot green';
-        facilitatorText.textContent = `Facilitator: Ollama (${modelName})`;
+        facilitatorText.textContent = `Facilitator: ${isTierfall ? 'Tierfall (hosted routing)' : 'Ollama'} (${modelName})`;
         sidecarModelTag.textContent = modelName;
         autoProposeToggle.checked = true;
+        autoProposeLabel.classList.remove('hidden');
       } else {
         facilitatorDot.className = 'dot amber';
-        facilitatorText.textContent = 'Facilitator: None (Manual)';
-        sidecarModelTag.textContent = 'Manual';
+        const unavailable = caps.facilitator && caps.facilitator.provider === 'tierfall';
+        facilitatorText.textContent = unavailable ? 'Facilitator: Tierfall (Unavailable)' : 'Facilitator: None (Manual)';
+        sidecarModelTag.textContent = unavailable ? 'Unavailable' : 'Manual';
         autoProposeToggle.checked = false;
         autoProposeLabel.classList.add('hidden');
       }
@@ -683,6 +689,11 @@
     sseSource.addEventListener('facilitator_proposal', (e) => {
       const raw = JSON.parse(e.data);
       const data = raw.data || raw;
+      if (data.generation) {
+        const g = data.generation;
+        sidecarModelTag.textContent = `${g.provider} / ${g.model} · ${(g.duration_ms / 1000).toFixed(1)}s`;
+        sidecarModelTag.title = `${g.account || 'direct'}; ${g.attempts} upstream attempt(s)`;
+      }
       showProposal(data);
     });
 

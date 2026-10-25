@@ -12,7 +12,8 @@ pub mod transcript;
 pub use assets::{AsrFileEntry, AsrLockManifest};
 pub use config::{ElicitationConfig, FacilitatorProviderKind};
 pub use facilitator::{
-    FacilitatorContext, FacilitatorProvider, NoneFacilitatorProvider, OllamaFacilitatorProvider,
+    FacilitatorContext, FacilitatorProposal, FacilitatorProvider, GenerationMetadata,
+    NoneFacilitatorProvider, OllamaFacilitatorProvider, TierfallFacilitatorProvider,
     build_facilitator_user_prompt, extract_proposal_items, resolve_ollama_url,
 };
 pub use neutrality::{NeutralityFlag, NeutralityFlagCategory, lint_neutrality};

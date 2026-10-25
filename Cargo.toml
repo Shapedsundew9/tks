@@ -16,6 +16,7 @@ readme = "README.md"
 default-run = "tks"
 
 [dependencies]
+tierfall = { version = "0.1.0", path = "crates/tierfall", default-features = false }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 deadpool-postgres = "0.14"
@@ -79,6 +80,10 @@ required-features = ["vector-spike"]
 [[bin]]
 name = "elicitation_eval"
 path = "scripts/elicitation_eval/main.rs"
+
+[[bin]]
+name = "elicitation_facilitator_eval"
+path = "scripts/elicitation_facilitator_eval/main.rs"
 
 [[bench]]
 name = "ast_decomposition_bench"

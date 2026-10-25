@@ -9,6 +9,7 @@ pub enum FacilitatorProviderKind {
     #[default]
     None,
     Ollama,
+    Tierfall,
 }
 
 impl FacilitatorProviderKind {
@@ -17,6 +18,7 @@ impl FacilitatorProviderKind {
         match self {
             Self::None => "none",
             Self::Ollama => "ollama",
+            Self::Tierfall => "tierfall",
         }
     }
 }
@@ -28,8 +30,9 @@ impl std::str::FromStr for FacilitatorProviderKind {
         match s.to_ascii_lowercase().as_str() {
             "none" => Ok(Self::None),
             "ollama" => Ok(Self::Ollama),
+            "tierfall" => Ok(Self::Tierfall),
             other => Err(format!(
-                "invalid facilitator provider '{other}'; expected 'none' or 'ollama'"
+                "invalid facilitator provider '{other}'; expected 'none', 'ollama', or 'tierfall'"
             )),
         }
     }
@@ -41,6 +44,7 @@ pub struct ElicitationConfig {
     pub facilitator_provider: FacilitatorProviderKind,
     pub ollama_url: String,
     pub facilitator_model: String,
+    pub facilitator_route: String,
     pub asr_assets_dir: Option<PathBuf>,
     pub idle_expiry: Duration,
 }
@@ -51,6 +55,7 @@ impl Default for ElicitationConfig {
             facilitator_provider: FacilitatorProviderKind::None,
             ollama_url: crate::elicitation::facilitator::resolve_ollama_url(""),
             facilitator_model: "qwen3:8b".to_string(),
+            facilitator_route: "auto".to_string(),
             asr_assets_dir: None,
             idle_expiry: Duration::from_secs(24 * 3600),
         }

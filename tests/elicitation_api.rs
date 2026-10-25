@@ -88,6 +88,7 @@ async fn setup_test_context() -> TestContext {
         facilitator_provider: FacilitatorProviderKind::None,
         ollama_url: "http://localhost:11434".to_string(),
         facilitator_model: "qwen3:8b".to_string(),
+        facilitator_route: "auto".to_string(),
         asr_assets_dir: None,
         idle_expiry: Duration::from_secs(24 * 3600),
     };
@@ -959,6 +960,7 @@ async fn test_asr_asset_serving_and_whitelisting() {
         facilitator_provider: FacilitatorProviderKind::None,
         ollama_url: "http://localhost:11434".to_string(),
         facilitator_model: "qwen3:8b".to_string(),
+        facilitator_route: "auto".to_string(),
         asr_assets_dir: Some(asr_dir),
         idle_expiry: Duration::from_secs(24 * 3600),
     };
@@ -1118,6 +1120,7 @@ async fn test_facilitator_proposal_with_stub_ollama() {
         facilitator_provider: FacilitatorProviderKind::Ollama,
         ollama_url: stub_url.clone(),
         facilitator_model: "qwen3:8b".to_string(),
+        facilitator_route: "auto".to_string(),
         asr_assets_dir: None,
         idle_expiry: Duration::from_secs(24 * 3600),
     };
@@ -1211,7 +1214,10 @@ async fn test_facilitator_proposal_with_stub_ollama() {
             mode: _,
             text,
             flags,
+            generation,
         } => {
+            assert_eq!(generation.provider, "ollama");
+            assert_eq!(generation.attempts, 1);
             assert_eq!(
                 text,
                 "What is the primary constraint that limits cross-team deployments?"
