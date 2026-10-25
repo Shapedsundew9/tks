@@ -75,7 +75,6 @@
 	"remoteEnv": {
 		"DATABASE_URL": "${localEnv:TKS_DATABASE_URL:postgresql://postgres:postgres@postgres:5432/postgres}",
 		"GITHUB_TOKEN": "${localEnv:COPILOT_GITHUB_TOKEN}",
-		"GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
 		"ARC_AGI_API": "${localEnv:ARC_AGI_API}",
 		"NEO4J_USERNAME": "${localEnv:NEO4J_USERNAME:neo4j}",
 		"NEO4J_PASSWORD": "${localEnv:NEO4J_PASSWORD:password}",
@@ -99,6 +98,10 @@
 		"OLLAMA_MAX_LOADED_MODELS": "1",
 		"OLLAMA_FLASH_ATTENTION": "1",
 		"BLENDERMCP_POLYPIZZA_API_KEY": "${localEnv:BLENDERMCP_POLYPIZZA_API_KEY}",
-		"BLENDERMCP_SKETCHFAB_API_KEY": "${localEnv:BLENDERMCP_SKETCHFAB_API_KEY}"
+		"BLENDERMCP_SKETCHFAB_API_KEY": "${localEnv:BLENDERMCP_SKETCHFAB_API_KEY}",
+		"GEMINI_API_KEY_SS": "${localEnv:GEMINI_API_KEY_SS}",
+		"GEMINI_API_KEY_AM": "${localEnv:GEMINI_API_KEY_AM}",
+		"GEMINI_API_KEY_JB": "${localEnv:GEMINI_API_KEY_JB}",
+		"GROQ_API_KEY": "${localEnv:GROQ_API_KEY}"
 	}
 }
