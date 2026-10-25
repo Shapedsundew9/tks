@@ -82,6 +82,22 @@ To retry a failed post-create command from the repository root, run:
 bash .devcontainer/post-create.sh
 ```
 
+Post-create also installs the browser gate's npm dependencies and the matching
+Playwright Chromium browser, including its Linux system libraries, so container
+rebuilds restore browser test prerequisites automatically. Installation failures
+stop setup. The browser is cached under the container user's home directory;
+no host browser installation is required. To retry only this step:
+
+```bash
+cd scripts/elicitation/gate
+npm install --no-package-lock
+npx --no-install playwright install --with-deps chromium
+```
+
+Speech-model assets and test audio are separate prerequisites, not downloaded by
+this step. Set `AUDIO_CLIP` to the test WAV's location when it differs from the
+browser tests' default path.
+
 For the optional GPU-accelerated Blender container, its Antigravity MCP
 integration, pinned community extensions, asset sources, and the agent skills in
 `.agents/skills/`, see [Blender development setup](docs/blender-development.md).
@@ -103,6 +119,18 @@ Check code formatting:
 ```bash
 cargo fmt --check
 ```
+
+Both workspace packages use line-table-only debug information for development
+and tests (the test profile inherits the development profile). This preserves
+file/line backtraces while reducing artifact sizes, but omits detailed local
+variable and type information for interactive debugging. Incremental compilation
+remains enabled for fast rebuilds. For a full-debug test run, use
+`CARGO_PROFILE_TEST_DEBUG=2 cargo test --workspace`.
+
+Cargo can retain artifacts from older compiler, dependency, and feature
+configurations. Run `cargo clean` from the repository root to remove accumulated
+build output; the next build will be slower. This does not remove the code index,
+downloaded model caches, or source files.
 
 ## Substrate Storage & Database Management
 

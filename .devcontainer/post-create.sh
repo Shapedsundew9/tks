@@ -43,6 +43,13 @@ if [[ -f Cargo.toml ]]; then
     cargo check
 fi
 
+echo "Installing Playwright Chromium and browser system dependencies..."
+(
+    cd scripts/elicitation/gate
+    npm install --no-package-lock
+    npx --no-install playwright install --with-deps chromium
+)
+
 if [[ -x .shared/tools/scripts/configure-subtree.sh ]]; then
     .shared/tools/scripts/configure-subtree.sh
 fi

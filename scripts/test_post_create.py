@@ -57,7 +57,23 @@ fi
                     'echo 1\n'
                 )
                 stub.chmod(0o755)
+            for command in ("npm", "npx"):
+                stub = binaries / command
+                stub.write_text(
+                    '#!/bin/bash\n'
+                    'printf "%s\\n" "$(basename "$0") $*" >> "$TEST_ROOT/commands"\n'
+                    'if [[ "$PWD" != "$TEST_ROOT/scripts/elicitation/gate" ]]; then\n'
+                    '    echo "Incorrect browser setup directory" >&2\n'
+                    '    exit 1\n'
+                    'fi\n'
+                    'if [[ "$SCENARIO" == "$(basename "$0")-failure" ]]; then\n'
+                    '    echo "Browser dependency installation failed" >&2\n'
+                    '    exit 1\n'
+                    'fi\n'
+                )
+                stub.chmod(0o755)
             (root / "Cargo.toml").touch()
+            (root / "scripts/elicitation/gate").mkdir(parents=True)
             for script in (".shared/devcontainer/post-create.sh", "scripts/blender/setup-mcp.sh"):
                 path = root / script
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,6 +107,29 @@ fi
             ],
         )
         self.assertNotIn("toolchain uninstall stable", commands)
+
+    def test_browser_setup_installs_matching_chromium_and_system_dependencies(self):
+        result, commands = self.run_setup("healthy")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            commands[5:7],
+            [
+                "npm install --no-package-lock",
+                "npx --no-install playwright install --with-deps chromium",
+            ],
+        )
+
+    def test_browser_installation_failure_stops_setup(self):
+        for scenario, last_command in (
+            ("npm-failure", "npm install --no-package-lock"),
+            ("npx-failure", "npx --no-install playwright install --with-deps chromium"),
+        ):
+            with self.subTest(scenario=scenario):
+                result, commands = self.run_setup(scenario)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(commands[-1], last_command)
+                self.assertFalse(any(command.startswith("psql ") for command in commands))
+                self.assertIn("Browser dependency installation failed", result.stderr)
 
     def test_conflict_reinstalls_stable_and_continues(self):
         result, commands = self.run_setup("conflict")

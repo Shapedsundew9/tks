@@ -2,6 +2,9 @@
 members = [".", "crates/tierfall"]
 resolver = "3"
 
+[profile.dev]
+debug = "line-tables-only"
+
 [package]
 name = "tks"
 version = "0.1.0"
