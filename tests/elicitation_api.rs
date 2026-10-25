@@ -89,6 +89,8 @@ async fn setup_test_context() -> TestContext {
         ollama_url: "http://localhost:11434".to_string(),
         facilitator_model: "qwen3:8b".to_string(),
         facilitator_route: "auto".to_string(),
+        cli_tool: "agy".to_string(),
+        cli_model: None,
         asr_assets_dir: None,
         idle_expiry: Duration::from_secs(24 * 3600),
     };
@@ -961,6 +963,8 @@ async fn test_asr_asset_serving_and_whitelisting() {
         ollama_url: "http://localhost:11434".to_string(),
         facilitator_model: "qwen3:8b".to_string(),
         facilitator_route: "auto".to_string(),
+        cli_tool: "agy".to_string(),
+        cli_model: None,
         asr_assets_dir: Some(asr_dir),
         idle_expiry: Duration::from_secs(24 * 3600),
     };
@@ -1121,6 +1125,8 @@ async fn test_facilitator_proposal_with_stub_ollama() {
         ollama_url: stub_url.clone(),
         facilitator_model: "qwen3:8b".to_string(),
         facilitator_route: "auto".to_string(),
+        cli_tool: "agy".to_string(),
+        cli_model: None,
         asr_assets_dir: None,
         idle_expiry: Duration::from_secs(24 * 3600),
     };

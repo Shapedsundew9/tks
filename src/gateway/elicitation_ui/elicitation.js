@@ -103,8 +103,15 @@
   // Capability banner elements
   const asrDot = document.getElementById('asr-dot');
   const asrText = document.getElementById('asr-text');
+  const capFacilitator = document.getElementById('cap-facilitator');
+  const facilitatorTrigger = document.getElementById('facilitator-trigger');
   const facilitatorDot = document.getElementById('facilitator-dot');
   const facilitatorText = document.getElementById('facilitator-text');
+  const facilitatorMenu = document.getElementById('facilitator-menu');
+  const facilitatorOptionsList = document.getElementById('facilitator-options-list');
+  const cliConfigSection = document.getElementById('cli-config-section');
+  const cliToolSelect = document.getElementById('cli-tool-select');
+  const cliModelSelect = document.getElementById('cli-model-select');
 
   // Toast helper
   function showToast(message, type = 'error') {
@@ -221,6 +228,306 @@
     }
   }
 
+  // Apply Facilitator and Inspiration Backend capabilities to UI
+  function applyFacilitatorCapabilities(caps) {
+    if (!caps) return;
+
+    // Support both new `caps.backends` structure and fallback to legacy `caps.facilitator`
+    let backends = caps.backends;
+    if (!backends) {
+      const f = caps.facilitator || { provider: 'none' };
+      const provider = f.provider || 'none';
+      const isAvail = Boolean(f.available ?? (provider === 'ollama' || provider === 'none'));
+      backends = {
+        active: provider,
+        tierfall: {
+          available: provider === 'tierfall' ? isAvail : false,
+          status: (provider === 'tierfall' && isAvail) ? 'green' : (provider === 'tierfall' ? 'red' : 'amber'),
+          route: f.route || 'auto',
+          label: 'Tierfall (Hosted + Fallback)',
+          message: (provider === 'tierfall' && isAvail) ? 'Ready' : 'Unavailable',
+        },
+        ollama: {
+          available: provider === 'ollama' ? isAvail : false,
+          status: (provider === 'ollama' && isAvail) ? 'green' : 'red',
+          model: f.model || 'qwen3:8b',
+          models: f.model ? [f.model] : [],
+          label: 'Ollama (Local LLM)',
+          message: (provider === 'ollama' && isAvail) ? 'Ready' : 'Offline',
+        },
+        cli: {
+          available: provider === 'cli' ? isAvail : false,
+          status: (provider === 'cli' && isAvail) ? 'green' : 'amber',
+          active_tool: f.tool || 'agy',
+          active_model: f.model || '',
+          label: 'CLI (agy)',
+          tools: [],
+        },
+        none: {
+          available: true,
+          status: 'amber',
+          label: 'None (Manual)',
+        },
+      };
+    }
+
+    const tf = backends.tierfall || { available: false, status: 'amber', route: 'auto', label: 'Tierfall (Hosted + Fallback)' };
+    const ol = backends.ollama || { available: false, status: 'red', model: 'qwen3:8b', label: 'Ollama (Local LLM)' };
+    const cli = backends.cli || { available: false, status: 'amber', active_tool: 'agy', active_model: '', label: 'CLI (agy)', tools: [] };
+    const none = backends.none || { available: true, status: 'amber', label: 'None (Manual)' };
+
+    const active = backends.active || (caps.facilitator && caps.facilitator.provider) || 'none';
+    const activeBackend = backends[active] || none;
+    const activeBackendAvailable = Boolean(activeBackend && activeBackend.available);
+
+    // Resolve CLI Tool and Model details
+    const cliTools = cli.tools || [];
+    const cliTool = cli.active_tool || (cliTools[0] && cliTools[0].id) || 'agy';
+    const primaryTool = cliTools.find((t) => t.id === cliTool) || cliTools[0] || { id: cliTool, models: [] };
+
+    let modelLabelOrId = cli.active_model || primaryTool.default_model || '';
+    if (primaryTool.models && primaryTool.models.length > 0) {
+      const match = primaryTool.models.find((m) => m.id === modelLabelOrId);
+      if (match && match.label) {
+        modelLabelOrId = match.label;
+      }
+    }
+    if (!modelLabelOrId) {
+      modelLabelOrId = 'auto';
+    }
+
+    // Helper for status dot
+    const getDot = (backend, fallback) => backend.status || (backend.available ? 'green' : fallback);
+    const tfDot = getDot(tf, 'amber');
+    const olDot = getDot(ol, 'red');
+    const cliDot = getDot(cli, 'amber');
+
+    // Update banner indicator (#facilitator-dot, #facilitator-text, #sidecar-model-tag)
+    switch (active) {
+      case 'tierfall':
+        facilitatorDot.className = `dot ${tfDot}`;
+        facilitatorText.textContent = `Facilitator: Tierfall (${tf.route || 'auto'})`;
+        sidecarModelTag.textContent = tf.available ? (tf.route || 'auto') : 'Unavailable';
+        break;
+      case 'ollama':
+        facilitatorDot.className = `dot ${olDot}`;
+        facilitatorText.textContent = `Facilitator: Ollama (${ol.model || 'local'})`;
+        sidecarModelTag.textContent = ol.available ? (ol.model || 'local') : 'Unavailable';
+        break;
+      case 'cli':
+        facilitatorDot.className = `dot ${cliDot}`;
+        facilitatorText.textContent = `Facilitator: CLI · ${cliTool} (${modelLabelOrId})`;
+        sidecarModelTag.textContent = cli.available ? modelLabelOrId : 'Unavailable';
+        break;
+      case 'none':
+      default:
+        facilitatorDot.className = 'dot amber';
+        facilitatorText.textContent = 'Facilitator: None (Manual)';
+        sidecarModelTag.textContent = 'Manual';
+        break;
+    }
+
+    // Enable/disable automated proposals and opening questions
+    const isAutoProposeActive = (active !== 'none' && activeBackendAvailable);
+    autoProposeToggle.checked = isAutoProposeActive;
+    if (isAutoProposeActive) {
+      autoProposeLabel.classList.remove('hidden');
+    } else {
+      autoProposeLabel.classList.add('hidden');
+    }
+
+    if (currentSession && currentSession.state === 'open' && (!currentSession.turns || currentSession.turns.length === 0)) {
+      if (autoProposeToggle.checked) {
+        btnAskOpening.classList.remove('hidden');
+      } else {
+        btnAskOpening.classList.add('hidden');
+      }
+    }
+
+    // Populate #facilitator-options-list
+    if (facilitatorOptionsList) {
+      const optionsConfig = [
+        {
+          id: 'tierfall',
+          label: tf.label || 'Tierfall (Hosted + Fallback)',
+          sub: tf.message || (tf.available ? `Route: ${tf.route || 'auto'}` : 'Unavailable'),
+          dot: tfDot,
+          available: Boolean(tf.available),
+        },
+        {
+          id: 'ollama',
+          label: ol.label || 'Ollama (Local LLM)',
+          sub: ol.message || (ol.available ? `Model: ${ol.model || 'qwen3:8b'}` : 'Offline / Unavailable'),
+          dot: olDot,
+          available: Boolean(ol.available),
+        },
+        {
+          id: 'cli',
+          label: cli.label || `CLI (${cliTool})`,
+          sub: cli.available
+            ? `Tool: ${cliTool} · ${modelLabelOrId}`
+            : (cli.message || 'CLI unavailable'),
+          dot: cliDot,
+          available: Boolean(cli.available),
+        },
+        {
+          id: 'none',
+          label: none.label || 'None (Manual)',
+          sub: 'Manual mode (no AI facilitation)',
+          dot: 'amber',
+          available: true,
+        },
+      ];
+
+      facilitatorOptionsList.innerHTML = '';
+      optionsConfig.forEach((opt) => {
+        const item = document.createElement('div');
+        item.className = 'cap-option';
+        if (!opt.available) {
+          item.classList.add('disabled');
+          item.setAttribute('aria-disabled', 'true');
+        }
+        if (active === opt.id) {
+          item.classList.add('active');
+        }
+
+        const mainDiv = document.createElement('div');
+        mainDiv.className = 'cap-option-main';
+
+        const dotSpan = document.createElement('span');
+        dotSpan.className = `dot ${opt.dot}`;
+
+        const textDiv = document.createElement('div');
+        textDiv.className = 'cap-option-text';
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'cap-option-label';
+        labelSpan.textContent = opt.label;
+
+        const subSpan = document.createElement('span');
+        subSpan.className = 'cap-option-sub';
+        subSpan.textContent = opt.sub;
+
+        textDiv.appendChild(labelSpan);
+        textDiv.appendChild(subSpan);
+        mainDiv.appendChild(dotSpan);
+        mainDiv.appendChild(textDiv);
+        item.appendChild(mainDiv);
+
+        if (active === opt.id) {
+          const checkSpan = document.createElement('span');
+          checkSpan.className = 'cap-option-check';
+          checkSpan.textContent = '✓';
+          item.appendChild(checkSpan);
+        }
+
+        if (opt.available) {
+          item.addEventListener('click', () => {
+            if (facilitatorMenu) {
+              facilitatorMenu.classList.add('hidden');
+            }
+            if (facilitatorTrigger) {
+              facilitatorTrigger.setAttribute('aria-expanded', 'false');
+            }
+
+            const payload = { provider: opt.id };
+            if (opt.id === 'cli') {
+              payload.cli_tool = cliTool;
+              const selectedModel = cliModelSelect ? cliModelSelect.value : (cli.active_model || undefined);
+              if (selectedModel) {
+                payload.cli_model = selectedModel;
+              }
+            }
+            selectFacilitatorBackend(payload);
+          });
+        }
+
+        facilitatorOptionsList.appendChild(item);
+      });
+    }
+
+    // Populate CLI Configuration subsection
+    if (cliConfigSection && cliToolSelect && cliModelSelect) {
+      if (cliTools.length > 0) {
+        cliConfigSection.classList.remove('hidden');
+
+        // Populate CLI Tools
+        cliToolSelect.innerHTML = '';
+        cliTools.forEach((t) => {
+          const opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = t.label || t.id;
+          if (t.id === cliTool) {
+            opt.selected = true;
+          }
+          cliToolSelect.appendChild(opt);
+        });
+
+        // Populate CLI Models
+        cliModelSelect.innerHTML = '';
+        const models = primaryTool.models || [];
+        const activeModelId = cli.active_model || primaryTool.default_model || (models[0] && models[0].id) || '';
+
+        models.forEach((m) => {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          const isDefault = (primaryTool.default_model && m.id === primaryTool.default_model);
+          const baseLabel = m.label || m.id;
+          opt.textContent = isDefault ? `${baseLabel} (Lowest Tier Default)` : baseLabel;
+          if (m.id === activeModelId) {
+            opt.selected = true;
+          }
+          cliModelSelect.appendChild(opt);
+        });
+
+        if (models.length === 0) {
+          const opt = document.createElement('option');
+          opt.value = activeModelId || '';
+          opt.textContent = activeModelId ? `${activeModelId} (configured)` : 'No advertised models';
+          cliModelSelect.appendChild(opt);
+        }
+      } else {
+        cliConfigSection.classList.add('hidden');
+      }
+    }
+  }
+
+  // Switch Facilitator & Inspiration Backend via PUT /api/v1/elicitation/facilitator
+  async function selectFacilitatorBackend(payload) {
+    try {
+      const resp = await fetch('/api/v1/elicitation/facilitator', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.message || `Backend update failed (${resp.status})`);
+      }
+
+      const updatedCaps = await resp.json();
+      applyFacilitatorCapabilities(updatedCaps);
+
+      let successMsg = `Switched backend to ${payload.provider.toUpperCase()}`;
+      if (payload.provider === 'cli') {
+        successMsg = `Facilitator set to CLI (${payload.cli_model || payload.cli_tool || 'agy'})`;
+      } else if (payload.provider === 'tierfall') {
+        successMsg = 'Facilitator set to Tierfall';
+      } else if (payload.provider === 'ollama') {
+        successMsg = 'Facilitator set to Ollama';
+      } else if (payload.provider === 'none') {
+        successMsg = 'Facilitator disabled (Manual mode)';
+      }
+      showToast(successMsg, 'success');
+    } catch (err) {
+      console.error('Failed to select facilitator backend:', err);
+      showToast(`Error switching backend: ${err.message}`, 'error');
+    }
+  }
+
   // Initialize Capabilities & ASR Worker
   async function initCapabilities() {
     try {
@@ -230,26 +537,8 @@
       }
       const caps = await resp.json();
 
-      // Facilitator status
-      if (caps.facilitator && (
-        caps.facilitator.provider === 'ollama' ||
-        (caps.facilitator.provider === 'tierfall' && caps.facilitator.available)
-      )) {
-        const isTierfall = caps.facilitator.provider === 'tierfall';
-        const modelName = isTierfall ? caps.facilitator.route : caps.facilitator.model;
-        facilitatorDot.className = 'dot green';
-        facilitatorText.textContent = `Facilitator: ${isTierfall ? 'Tierfall (hosted routing)' : 'Ollama'} (${modelName})`;
-        sidecarModelTag.textContent = modelName;
-        autoProposeToggle.checked = true;
-        autoProposeLabel.classList.remove('hidden');
-      } else {
-        facilitatorDot.className = 'dot amber';
-        const unavailable = caps.facilitator && caps.facilitator.provider === 'tierfall';
-        facilitatorText.textContent = unavailable ? 'Facilitator: Tierfall (Unavailable)' : 'Facilitator: None (Manual)';
-        sidecarModelTag.textContent = unavailable ? 'Unavailable' : 'Manual';
-        autoProposeToggle.checked = false;
-        autoProposeLabel.classList.add('hidden');
-      }
+      // Facilitator & Inspiration backend capabilities
+      applyFacilitatorCapabilities(caps);
 
       // ASR status
       const simdSupported = checkSimdSupport();
@@ -277,6 +566,8 @@
       asrDot.className = 'dot red';
       asrText.textContent = 'ASR: Offline';
       micStatusLabel.textContent = 'Failed to load capabilities';
+      facilitatorDot.className = 'dot red';
+      facilitatorText.textContent = 'Facilitator: Offline';
       console.warn('Elicitation capabilities query failed:', err);
     }
   }
@@ -1763,6 +2054,69 @@
     const div = document.createElement('div');
     div.textContent = s;
     return div.innerHTML;
+  }
+
+  // Facilitator dropdown interaction
+  if (facilitatorTrigger) {
+    facilitatorTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = facilitatorMenu.classList.contains('hidden');
+      if (isHidden) {
+        facilitatorMenu.classList.remove('hidden');
+        facilitatorTrigger.setAttribute('aria-expanded', 'true');
+      } else {
+        facilitatorMenu.classList.add('hidden');
+        facilitatorTrigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  if (facilitatorMenu) {
+    facilitatorMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (facilitatorMenu && !facilitatorMenu.classList.contains('hidden')) {
+      if (!capFacilitator || !capFacilitator.contains(e.target)) {
+        facilitatorMenu.classList.add('hidden');
+        if (facilitatorTrigger) {
+          facilitatorTrigger.setAttribute('aria-expanded', 'false');
+        }
+      }
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && facilitatorMenu && !facilitatorMenu.classList.contains('hidden')) {
+      facilitatorMenu.classList.add('hidden');
+      if (facilitatorTrigger) {
+        facilitatorTrigger.setAttribute('aria-expanded', 'false');
+      }
+    }
+  });
+
+  if (cliModelSelect) {
+    cliModelSelect.addEventListener('change', (e) => {
+      const chosenModel = e.target.value;
+      const chosenTool = cliToolSelect ? cliToolSelect.value : 'agy';
+      selectFacilitatorBackend({
+        provider: 'cli',
+        cli_tool: chosenTool,
+        cli_model: chosenModel,
+      });
+    });
+  }
+
+  if (cliToolSelect) {
+    cliToolSelect.addEventListener('change', (e) => {
+      const chosenTool = e.target.value;
+      selectFacilitatorBackend({
+        provider: 'cli',
+        cli_tool: chosenTool,
+      });
+    });
   }
 
   // Init

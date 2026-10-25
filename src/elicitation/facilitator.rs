@@ -6,6 +6,7 @@ use std::time::Duration;
 /// Facilitator conversation context assembled for proposal generation.
 #[derive(Debug, Clone, Default)]
 pub struct FacilitatorContext {
+    pub elicitation_id: Option<uuid::Uuid>,
     pub system_prompt: String,
     pub session_title: String,
     pub is_inspiration: bool,
@@ -32,7 +33,7 @@ pub struct FacilitatorProposal {
     pub generation: GenerationMetadata,
 }
 
-fn elapsed_ms(start: std::time::Instant) -> u64 {
+pub(crate) fn elapsed_ms(start: std::time::Instant) -> u64 {
     u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
@@ -380,7 +381,14 @@ pub fn build_facilitator_user_prompt(context: &FacilitatorContext) -> String {
         ));
     }
 
-    let directive = if context.is_inspiration {
+    sections.push(build_facilitator_directive(context));
+    sections.join("\n\n")
+}
+
+/// Assembles the task directive section from the [`FacilitatorContext`].
+#[must_use]
+pub fn build_facilitator_directive(context: &FacilitatorContext) -> String {
+    if context.is_inspiration {
         let body = if let Some(ref topic) = context.focus_topic {
             format!(
                 "The stakeholder specifically wants to explore domain rules, invariants, and edge cases regarding: \"{topic}\".\n\
@@ -426,10 +434,7 @@ pub fn build_facilitator_user_prompt(context: &FacilitatorContext) -> String {
          \n\
          Perform this check silently: respond with ONLY the question itself — no step labels, anchor assessment, or commentary."
             .to_string()
-    };
-
-    sections.push(directive);
-    sections.join("\n\n")
+    }
 }
 
 /// Provider trait for proposing facilitator Socratic questions.
@@ -518,7 +523,63 @@ impl OllamaFacilitatorProvider {
     }
 }
 
-fn log_llm_exchange(
+/// Queries the Ollama tags endpoint to determine reachability and available models.
+pub async fn probe_ollama_status(
+    client: &reqwest::Client,
+    base_url: &str,
+    configured_model: &str,
+) -> serde_json::Value {
+    let resolved = resolve_ollama_url(base_url);
+    let url = format!("{resolved}/api/tags");
+    let resp = tokio::time::timeout(Duration::from_millis(800), client.get(&url).send()).await;
+
+    match resp {
+        Ok(Ok(res)) if res.status().is_success() => {
+            let body = res.json::<serde_json::Value>().await.unwrap_or_default();
+            let models: Vec<String> = body
+                .get("models")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| {
+                            m.get("name")
+                                .or_else(|| m.get("model"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            if models.is_empty() {
+                serde_json::json!({
+                    "available": false,
+                    "status": "amber",
+                    "model": configured_model,
+                    "models": models,
+                    "label": "Ollama (Local LLM)"
+                })
+            } else {
+                serde_json::json!({
+                    "available": true,
+                    "status": "green",
+                    "model": configured_model,
+                    "models": models,
+                    "label": "Ollama (Local LLM)"
+                })
+            }
+        }
+        _ => serde_json::json!({
+            "available": false,
+            "status": "red",
+            "model": configured_model,
+            "models": Vec::<String>::new(),
+            "label": "Ollama (Local LLM)"
+        }),
+    }
+}
+
+pub(crate) fn log_llm_exchange(
     model: &str,
     is_inspiration: bool,
     focus_topic: Option<&str>,
@@ -805,6 +866,7 @@ mod tests {
         );
 
         let ctx = FacilitatorContext {
+            elicitation_id: None,
             system_prompt: "sys".to_string(),
             session_title: "Multiplayer Chess".to_string(),
             is_inspiration: true,

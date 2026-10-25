@@ -33,7 +33,7 @@ pub struct ServeArgs {
     #[arg(long)]
     pub git_dir: Option<PathBuf>,
 
-    /// Elicitation provider: tierfall (hosted free-tier routing), ollama, or none.
+    /// Elicitation provider: tierfall (hosted free-tier routing), ollama, cli, or none.
     #[arg(long, default_value = "tierfall", env = "TKS_ELICITATION_FACILITATOR")]
     pub facilitator: FacilitatorProviderKind,
 
@@ -48,6 +48,14 @@ pub struct ServeArgs {
     /// Ollama model identifier for facilitator offload (default: qwen3:8b).
     #[arg(long, default_value = "qwen3:8b", env = "TKS_LLM_MODEL")]
     pub facilitator_model: String,
+
+    /// CLI facilitator tool identifier (default: agy).
+    #[arg(long, default_value = "agy", env = "TKS_ELICITATION_CLI")]
+    pub facilitator_cli: String,
+
+    /// Optional CLI model identifier override for facilitator offload.
+    #[arg(long, env = "TKS_ELICITATION_CLI_MODEL")]
+    pub facilitator_cli_model: Option<String>,
 
     /// Local directory containing pre-downloaded ASR assets (default: None, ASR disabled).
     #[arg(long, env = "TKS_ASR_ASSETS_DIR")]
@@ -69,6 +77,8 @@ impl Default for ServeArgs {
             facilitator_route: "auto".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             facilitator_model: "qwen3:8b".to_string(),
+            facilitator_cli: "agy".to_string(),
+            facilitator_cli_model: None,
             asr_assets_dir: None,
             elicitation_idle_expiry: "24h".to_string(),
         }
@@ -163,6 +173,8 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         } else {
             args.facilitator_model.trim().to_string()
         },
+        cli_tool: args.facilitator_cli,
+        cli_model: args.facilitator_cli_model,
         asr_assets_dir: args.asr_assets_dir,
         idle_expiry,
     };

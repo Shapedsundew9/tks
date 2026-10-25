@@ -13,7 +13,7 @@ use std::time::Duration;
 use axum::extract::FromRef;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 use deadpool_postgres::Pool;
 use tokio_util::sync::CancellationToken;
@@ -386,6 +386,10 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/elicitation/capabilities",
             get(routes::elicitation::get_capabilities),
+        )
+        .route(
+            "/api/v1/elicitation/facilitator",
+            put(routes::elicitation::put_facilitator_backend),
         )
         .route(
             "/api/v1/elicitation/sessions",

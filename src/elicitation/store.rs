@@ -129,6 +129,16 @@ pub struct PatchTurnRequest {
     pub uncertain_flags: Option<Vec<UncertainFlag>>,
 }
 
+/// Runtime state of the currently active facilitator backend.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ActiveBackendState {
+    pub provider: super::FacilitatorProviderKind,
+    pub cli_tool: String,
+    pub cli_model: Option<String>,
+    pub ollama_model: String,
+    pub tierfall_route: String,
+}
+
 /// Shared in-memory store for draft elicitation sessions.
 #[derive(Clone)]
 pub struct ElicitationStore {
@@ -136,25 +146,50 @@ pub struct ElicitationStore {
     event_txs: Arc<RwLock<HashMap<Uuid, broadcast::Sender<ElicitationEvent>>>>,
     pub config: ElicitationConfig,
     pub facilitator: Option<Arc<dyn super::FacilitatorProvider>>,
+    pub active_backend: Arc<RwLock<ActiveBackendState>>,
+    pub ollama_provider: Arc<super::OllamaFacilitatorProvider>,
+    pub cli_provider: Arc<super::CliFacilitatorProvider>,
+    pub tierfall_provider: Arc<RwLock<Option<Arc<super::TierfallFacilitatorProvider>>>>,
 }
 
 impl ElicitationStore {
     /// Creates a new `ElicitationStore` with the given configuration.
     #[must_use]
     pub fn new(config: ElicitationConfig) -> Self {
-        let facilitator = if config.facilitator_provider == super::FacilitatorProviderKind::Ollama {
-            Some(Arc::new(super::OllamaFacilitatorProvider::new(
-                config.ollama_url.clone(),
-                config.facilitator_model.clone(),
-            )) as Arc<dyn super::FacilitatorProvider>)
-        } else {
-            None
-        };
+        let ollama_provider = Arc::new(super::OllamaFacilitatorProvider::new(
+            config.ollama_url.clone(),
+            config.facilitator_model.clone(),
+        ));
+        let cli_provider = Arc::new(super::CliFacilitatorProvider::new(
+            config.cli_tool.clone(),
+            config.cli_model.clone(),
+        ));
+        let tierfall_provider = Arc::new(RwLock::new(None));
+
+        let facilitator: Option<Arc<dyn super::FacilitatorProvider>> =
+            match config.facilitator_provider {
+                super::FacilitatorProviderKind::Ollama => Some(ollama_provider.clone()),
+                super::FacilitatorProviderKind::Cli => Some(cli_provider.clone()),
+                _ => None,
+            };
+
+        let active_backend = Arc::new(RwLock::new(ActiveBackendState {
+            provider: config.facilitator_provider,
+            cli_tool: config.cli_tool.clone(),
+            cli_model: config.cli_model.clone(),
+            ollama_model: config.facilitator_model.clone(),
+            tierfall_route: config.facilitator_route.clone(),
+        }));
+
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             event_txs: Arc::new(RwLock::new(HashMap::new())),
             config,
             facilitator,
+            active_backend,
+            ollama_provider,
+            cli_provider,
+            tierfall_provider,
         }
     }
 
@@ -163,6 +198,16 @@ impl ElicitationStore {
         if self.config.facilitator_provider == super::FacilitatorProviderKind::Tierfall {
             let client = tierfall::Tierfall::from_env().await?;
             self.set_tierfall(client)?;
+        } else if let Ok(client) = tierfall::Tierfall::from_env().await
+            && client.resolve(&self.config.facilitator_route).is_ok()
+        {
+            let provider = Arc::new(super::TierfallFacilitatorProvider {
+                client,
+                route: self.config.facilitator_route.clone(),
+            });
+            if let Ok(mut tf_guard) = self.tierfall_provider.try_write() {
+                *tf_guard = Some(provider);
+            }
         }
         Ok(())
     }
@@ -171,11 +216,228 @@ impl ElicitationStore {
     pub fn set_tierfall(&mut self, client: tierfall::Tierfall) -> tierfall::Result<()> {
         client.resolve(&self.config.facilitator_route)?;
         self.config.facilitator_provider = super::FacilitatorProviderKind::Tierfall;
-        self.facilitator = Some(Arc::new(super::TierfallFacilitatorProvider {
+        let provider = Arc::new(super::TierfallFacilitatorProvider {
             client,
             route: self.config.facilitator_route.clone(),
-        }));
+        });
+        self.facilitator = Some(provider.clone());
+        if let Ok(mut tf_guard) = self.tierfall_provider.try_write() {
+            *tf_guard = Some(provider);
+        }
+        if let Ok(mut backend_guard) = self.active_backend.try_write() {
+            backend_guard.provider = super::FacilitatorProviderKind::Tierfall;
+        }
         Ok(())
+    }
+
+    /// Returns the currently active facilitator provider kind.
+    pub async fn active_provider_kind(&self) -> super::FacilitatorProviderKind {
+        self.active_backend.read().await.provider
+    }
+
+    /// Resolves the currently active [`FacilitatorProvider`] implementation.
+    pub async fn active_facilitator_provider(&self) -> Option<Arc<dyn super::FacilitatorProvider>> {
+        let backend = self.active_backend.read().await;
+        match backend.provider {
+            super::FacilitatorProviderKind::None => None,
+            super::FacilitatorProviderKind::Ollama => Some(self.ollama_provider.clone()),
+            super::FacilitatorProviderKind::Cli => Some(self.cli_provider.clone()),
+            super::FacilitatorProviderKind::Tierfall => {
+                let tf_guard = self.tierfall_provider.read().await;
+                if let Some(ref tf) = *tf_guard {
+                    Some(tf.clone() as Arc<dyn super::FacilitatorProvider>)
+                } else {
+                    self.facilitator.clone()
+                }
+            }
+        }
+    }
+
+    /// Selects the active facilitator backend at runtime after verifying availability.
+    ///
+    /// # Errors
+    /// Returns an error message if the requested backend cannot be activated.
+    pub async fn select_backend(
+        &self,
+        provider: super::FacilitatorProviderKind,
+        cli_tool: Option<String>,
+        cli_model: Option<String>,
+        ollama_model: Option<String>,
+    ) -> Result<(), String> {
+        match provider {
+            super::FacilitatorProviderKind::Tierfall => {
+                let tf_guard = self.tierfall_provider.read().await;
+                if tf_guard.is_none() && self.facilitator.is_none() {
+                    drop(tf_guard);
+                    if let Ok(client) = tierfall::Tierfall::from_env().await {
+                        let route = self.config.facilitator_route.clone();
+                        if client.resolve(&route).is_ok() {
+                            let p = Arc::new(super::TierfallFacilitatorProvider { client, route });
+                            let mut tf_guard = self.tierfall_provider.write().await;
+                            *tf_guard = Some(p);
+                        } else {
+                            return Err("Tierfall route cannot be resolved".to_string());
+                        }
+                    } else {
+                        return Err(
+                            "Tierfall is not configured or no accounts available".to_string()
+                        );
+                    }
+                }
+            }
+            super::FacilitatorProviderKind::Ollama => {
+                let target_model = ollama_model
+                    .as_deref()
+                    .unwrap_or(&self.config.facilitator_model);
+                let status = super::probe_ollama_status(
+                    &self.ollama_provider.client,
+                    &self.ollama_provider.base_url,
+                    target_model,
+                )
+                .await;
+                if status.get("available") != Some(&serde_json::Value::Bool(true)) {
+                    return Err(
+                        "Ollama service is not reachable or has no models loaded".to_string()
+                    );
+                }
+            }
+            super::FacilitatorProviderKind::Cli => {
+                let tool = cli_tool.as_deref().unwrap_or(&self.config.cli_tool);
+                let tool_status = self.cli_provider.get_tool_status(tool).await;
+                match tool_status {
+                    Some(ref st) if st.available => {
+                        if let Some(ref req_model) = cli_model
+                            && !st.models.iter().any(|m| m.id == *req_model)
+                        {
+                            return Err(format!("Model '{req_model}' is not advertised by {tool}"));
+                        }
+                    }
+                    Some(st) => {
+                        return Err(st
+                            .message
+                            .unwrap_or_else(|| format!("{tool} is not available")));
+                    }
+                    None => {
+                        return Err(format!("Unknown CLI tool: {tool}"));
+                    }
+                }
+            }
+            super::FacilitatorProviderKind::None => {}
+        }
+
+        let mut backend = self.active_backend.write().await;
+        backend.provider = provider;
+        if let Some(tool) = cli_tool {
+            backend.cli_tool = tool;
+        }
+        if cli_model.is_some() {
+            backend.cli_model = cli_model;
+        }
+        if let Some(model) = ollama_model {
+            backend.ollama_model = model;
+        }
+        self.cli_provider
+            .set_target(backend.cli_tool.clone(), backend.cli_model.clone())
+            .await;
+        Ok(())
+    }
+
+    /// Assembles the complete engine capabilities JSON response.
+    pub async fn build_capabilities_json(&self) -> serde_json::Value {
+        let manifest = super::AsrLockManifest::load_default();
+        let asr_available = if let Some(ref dir) = self.config.asr_assets_dir {
+            manifest.is_dir_complete(dir)
+        } else {
+            false
+        };
+
+        let active = self.active_backend.read().await.clone();
+        let tf_guard = self.tierfall_provider.read().await;
+        let tf_available = tf_guard.is_some() || self.facilitator.is_some();
+        drop(tf_guard);
+
+        let cli_tools = self.cli_provider.get_all_tool_statuses().await;
+        let cli_any_available = cli_tools.iter().any(|t| t.available);
+
+        let facilitator_json = match active.provider {
+            super::FacilitatorProviderKind::None => serde_json::json!({ "provider": "none" }),
+            super::FacilitatorProviderKind::Ollama => serde_json::json!({
+                "provider": "ollama",
+                "model": active.ollama_model,
+            }),
+            super::FacilitatorProviderKind::Tierfall => serde_json::json!({
+                "provider": "tierfall",
+                "route": active.tierfall_route,
+                "available": tf_available,
+            }),
+            super::FacilitatorProviderKind::Cli => serde_json::json!({
+                "provider": "cli",
+                "tool": active.cli_tool,
+                "model": active.cli_model,
+                "available": cli_any_available,
+            }),
+        };
+
+        let tf_status = if tf_available { "green" } else { "red" };
+        let tierfall_json = serde_json::json!({
+            "available": tf_available,
+            "status": tf_status,
+            "route": active.tierfall_route,
+            "label": "Tierfall (Hosted + Fallback)",
+        });
+
+        let ollama_status = super::probe_ollama_status(
+            &self.ollama_provider.client,
+            &self.ollama_provider.base_url,
+            &active.ollama_model,
+        )
+        .await;
+
+        let cli_status = if cli_tools.iter().any(|t| t.status == "green") {
+            "green"
+        } else if cli_tools.iter().any(|t| t.status == "amber") {
+            "amber"
+        } else {
+            "red"
+        };
+
+        let active_tool_model = active.cli_model.clone().or_else(|| {
+            cli_tools
+                .iter()
+                .find(|t| t.id == active.cli_tool)
+                .and_then(|t| t.default_model.clone())
+        });
+
+        let cli_json = serde_json::json!({
+            "available": cli_any_available,
+            "status": cli_status,
+            "active_tool": active.cli_tool,
+            "active_model": active_tool_model,
+            "tools": cli_tools,
+        });
+
+        let none_json = serde_json::json!({
+            "available": true,
+            "status": "amber",
+            "label": "None (Manual)",
+        });
+
+        serde_json::json!({
+            "asr": {
+                "available": asr_available,
+                "engine": "sherpa-onnx",
+                "version": manifest.version,
+                "assets_base": "/explorer/asr",
+            },
+            "facilitator": facilitator_json,
+            "backends": {
+                "active": active.provider.as_str(),
+                "tierfall": tierfall_json,
+                "ollama": ollama_status,
+                "cli": cli_json,
+                "none": none_json,
+            }
+        })
     }
 
     /// Creates a new elicitation draft session.
@@ -377,6 +639,7 @@ impl ElicitationStore {
             drop(sessions_guard);
             let mut txs = self.event_txs.write().await;
             txs.remove(&elicitation_id);
+            self.cli_provider.close_session(elicitation_id).await;
             return Err(ElicitationError::NotFound(elicitation_id.to_string()));
         }
 
@@ -662,6 +925,8 @@ impl ElicitationStore {
             let _ = tx.send(ElicitationEvent::SessionClosed { elicitation_id });
         }
 
+        self.cli_provider.close_session(elicitation_id).await;
+
         tracing::info!(elicitation_id = %elicitation_id, "Session closed");
 
         Ok(())
@@ -702,6 +967,9 @@ impl ElicitationStore {
 
         let mut txs = self.event_txs.write().await;
         txs.remove(&elicitation_id);
+        drop(txs);
+
+        self.cli_provider.close_session(elicitation_id).await;
 
         if removed.is_some() {
             tracing::info!(elicitation_id = %elicitation_id, "Session deleted");
@@ -756,6 +1024,11 @@ impl ElicitationStore {
             for id in &to_remove {
                 sessions.remove(id);
                 txs.remove(id);
+            }
+            drop(sessions);
+            drop(txs);
+            for id in &to_remove {
+                self.cli_provider.close_session(*id).await;
             }
             tracing::debug!(
                 expired_count = to_remove.len(),

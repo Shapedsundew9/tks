@@ -22,46 +22,71 @@ use crate::gateway::AppState;
 
 /// GET `/api/v1/elicitation/capabilities`
 pub async fn get_capabilities(State(state): State<AppState>) -> impl IntoResponse {
-    let cfg = &state.elicitation.config;
-    let manifest = crate::elicitation::AsrLockManifest::load_default();
-
-    let asr_available = if let Some(ref dir) = cfg.asr_assets_dir {
-        manifest.is_dir_complete(dir)
-    } else {
-        false
-    };
-
-    let facilitator_json = match cfg.facilitator_provider {
-        crate::elicitation::FacilitatorProviderKind::None => {
-            serde_json::json!({ "provider": "none" })
-        }
-        crate::elicitation::FacilitatorProviderKind::Ollama => {
-            serde_json::json!({
-                "provider": "ollama",
-                "model": cfg.facilitator_model
-            })
-        }
-        crate::elicitation::FacilitatorProviderKind::Tierfall => {
-            serde_json::json!({
-                "provider": "tierfall",
-                "route": cfg.facilitator_route,
-                "available": state.elicitation.facilitator.is_some(),
-            })
-        }
-    };
-
     (
         StatusCode::OK,
-        Json(serde_json::json!({
-            "asr": {
-                "available": asr_available,
-                "engine": "sherpa-onnx",
-                "version": manifest.version,
-                "assets_base": "/explorer/asr"
-            },
-            "facilitator": facilitator_json
-        })),
+        Json(state.elicitation.build_capabilities_json().await),
     )
+}
+
+/// PUT `/api/v1/elicitation/facilitator`
+pub async fn put_facilitator_backend(
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
+) -> Result<Response, (StatusCode, Json<Value>)> {
+    let provider_str = payload
+        .get("provider")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({
+                    "error": "ERR_INVALID_BACKEND",
+                    "message": "Missing 'provider' in request payload"
+                })),
+            )
+        })?;
+
+    let provider = provider_str
+        .parse::<crate::elicitation::FacilitatorProviderKind>()
+        .map_err(|e| {
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({
+                    "error": "ERR_INVALID_BACKEND",
+                    "message": e
+                })),
+            )
+        })?;
+
+    let cli_tool = payload
+        .get("cli_tool")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let cli_model = payload
+        .get("cli_model")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let ollama_model = payload
+        .get("ollama_model")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    state
+        .elicitation
+        .select_backend(provider, cli_tool, cli_model, ollama_model)
+        .await
+        .map_err(|msg| {
+            (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "ERR_BACKEND_UNAVAILABLE",
+                    "message": msg
+                })),
+            )
+        })?;
+
+    let caps = state.elicitation.build_capabilities_json().await;
+    Ok((StatusCode::OK, Json(caps)).into_response())
 }
 
 /// POST `/api/v1/elicitation/sessions`
@@ -283,8 +308,8 @@ pub async fn request_facilitator_proposal(
         ));
     }
 
-    let cfg = &state.elicitation.config;
-    if cfg.facilitator_provider == crate::elicitation::FacilitatorProviderKind::None {
+    let active_kind = state.elicitation.active_provider_kind().await;
+    if active_kind == crate::elicitation::FacilitatorProviderKind::None {
         return Err((
             StatusCode::CONFLICT,
             Json(serde_json::json!({
@@ -335,6 +360,7 @@ pub async fn request_facilitator_proposal(
     turns.reverse();
 
     let context = FacilitatorContext {
+        elicitation_id: Some(elicitation_id),
         system_prompt,
         session_title: session.title.clone(),
         is_inspiration,
@@ -344,15 +370,19 @@ pub async fn request_facilitator_proposal(
         turns,
     };
 
-    let provider = state.elicitation.facilitator.clone().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": "ERR_FACILITATOR_UNAVAILABLE",
-                "message": "Facilitator has not been initialized"
-            })),
-        )
-    })?;
+    let provider = state
+        .elicitation
+        .active_facilitator_provider()
+        .await
+        .ok_or_else(|| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": "ERR_FACILITATOR_UNAVAILABLE",
+                    "message": "Facilitator has not been initialized"
+                })),
+            )
+        })?;
     let store = state.elicitation.clone();
 
     // Spawn background task so gateway 30s TimeoutLayer does not terminate generation

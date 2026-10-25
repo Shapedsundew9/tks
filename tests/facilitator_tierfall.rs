@@ -102,6 +102,7 @@ async fn client(stubs: &[(&Stub, ProviderKind)]) -> Tierfall {
 
 fn context(inspiration: bool) -> FacilitatorContext {
     FacilitatorContext {
+        elicitation_id: None,
         system_prompt: "synthetic system prompt".to_string(),
         session_title: "Synthetic tool library".to_string(),
         is_inspiration: inspiration,

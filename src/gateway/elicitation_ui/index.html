@@ -17,9 +17,27 @@
         <span class="dot amber" id="asr-dot"></span>
         <span id="asr-text">ASR: Checking...</span>
       </div>
-      <div class="cap-item" id="cap-facilitator" title="Socratic Facilitator Offload">
-        <span class="dot amber" id="facilitator-dot"></span>
-        <span id="facilitator-text">Facilitator: Checking...</span>
+      <div class="cap-item cap-dropdown" id="cap-facilitator" title="Socratic Facilitator &amp; Inspiration Backend">
+        <button type="button" class="cap-trigger-btn" id="facilitator-trigger" aria-haspopup="true" aria-expanded="false" title="Switch Facilitator &amp; Inspiration Backend">
+          <span class="dot amber" id="facilitator-dot"></span>
+          <span id="facilitator-text">Facilitator: Checking...</span>
+          <span class="cap-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="cap-menu hidden" id="facilitator-menu" role="dialog" aria-label="Facilitator &amp; Inspiration Backend">
+          <div class="cap-menu-header">Facilitator &amp; Inspiration Backend</div>
+          <div class="cap-options-list" id="facilitator-options-list"></div>
+          <div class="cap-cli-config hidden" id="cli-config-section">
+            <div class="cap-cli-title">CLI Configuration</div>
+            <div class="form-group mb-1">
+              <label for="cli-tool-select" class="cap-cli-label">CLI Tool</label>
+              <select id="cli-tool-select" class="form-control form-control-sm"></select>
+            </div>
+            <div class="form-group mb-0">
+              <label for="cli-model-select" class="cap-cli-label">CLI Model</label>
+              <select id="cli-model-select" class="form-control form-control-sm"></select>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </header>
