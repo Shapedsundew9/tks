@@ -113,6 +113,8 @@ pub struct ElicitationSession {
     pub turns: Vec<ElicitationTurn>,
     #[serde(default)]
     pub imported_gap_questions: Vec<ImportedGapQuestion>,
+    #[serde(default)]
+    pub explored_items: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub last_activity_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,

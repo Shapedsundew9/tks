@@ -1,0 +1,24 @@
+{
+  "id": "B01",
+  "title": "Community Repair Cafe",
+  "slug": "repair-cafe",
+  "stakeholder_name": "Ana",
+  "facilitator_name": "Facilitator",
+  "seed_statement": "We run a small community repair cafe where volunteers fix people's broken household items on Saturdays, but we keep losing track of what came in and who is working on it.",
+  "ground_truth": {
+    "agency": "Ana is the coordinator who logs items. Fixers work on items. Visitors just want status. Fixers only show up occasionally.",
+    "preconditions": "Items must not collect more than a first name and phone number. Electrical items strictly require a safety test signed off by a qualified fixer before return (insurance requirement).",
+    "exceptions": "If parts are needed, items wait. If a part never arrives after two weekends, visitor is notified and offered the item back. Unclaimed items after six weeks are decided case by case by Ana.",
+    "cadence": "Saturday mornings. Logging an item must take under one minute to avoid queue drop-offs.",
+    "accountability": "Every item must have an assigned fixer, an owner, and a status. Electrical safety sign-off must be recorded even if original fixer is absent."
+  },
+  "scripted_responses": [
+    "Mostly the volunteer coordinator, Ana, and the fixers themselves. Visitors just want to know when their toaster or bike is ready.",
+    "Paper tickets get lost. Some items wait three weeks because nobody remembers they need a spare part ordered.",
+    "We must not collect more personal data than a first name and a phone number. Some visitors are wary of giving anything at all.",
+    "Success would be every item having an owner and a status, and no item waiting more than two weekends without someone knowing why.",
+    "Electrical items need a qualified fixer to sign off a safety test before they go back. That is non-negotiable for our insurance.",
+    "Fixers come and go; a third of them only show up once a month, so anything they need to learn has to be obvious on the day.",
+    "We open at ten and the queue is worst in the first hour. Logging an item cannot take longer than a minute or people walk off."
+  ]
+}

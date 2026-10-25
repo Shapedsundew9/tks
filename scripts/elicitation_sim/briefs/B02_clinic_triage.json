@@ -1,0 +1,24 @@
+{
+  "id": "B02",
+  "title": "Rural Walk-in Clinic Triage",
+  "slug": "clinic-triage",
+  "stakeholder_name": "Dr. Sarah",
+  "facilitator_name": "Facilitator",
+  "seed_statement": "We operate two rural walk-in clinics with rotating nurses and visiting physicians, and we need a consistent way to handle patient triage and urgent care handoffs during peak hours.",
+  "ground_truth": {
+    "agency": "Triage nurses perform initial severity classification. Visiting physicians review high-acuity cases before discharge. Clinic administrators handle scheduling and transport.",
+    "preconditions": "All emergency Category 1 presentations must bypass triage and initiate immediate ambulance transfer. Patient consent for emergency care is presumed under standard medical necessity.",
+    "exceptions": "When nurse and physician disagree on acuity, the higher acuity rating governs immediately. If visiting physician is delayed in transit, local nurse practitioner holds emergency stabilization authority.",
+    "cadence": "Walk-in hours 8am to 6pm. Initial triage assessment must be completed within 10 minutes of patient arrival.",
+    "accountability": "Every acuity override requires contemporaneous dual-signoff. Shift changeover requires a formal verbal and written patient handoff protocol."
+  },
+  "scripted_responses": [
+    "The triage nurses and rotating physicians are the main actors. Patients and their families are waiting in the front room.",
+    "Category 1 emergencies bypass our triage entirely and go straight to ambulance dispatch. That is our highest safety priority.",
+    "If a nurse and doctor disagree on urgency, our rule is the higher acuity classification always takes precedence immediately.",
+    "Triage cannot take more than ten minutes per patient or we violate our clinical accreditation standard.",
+    "When a physician is delayed on the highway, the lead nurse practitioner has stabilization authority until arrival.",
+    "At shift change, both incoming and outgoing clinicians must do an in-person bedside review for any patient pending transfer.",
+    "All overrides of a nurse's triage score must be countersigned by the attending physician before patient release."
+  ]
+}

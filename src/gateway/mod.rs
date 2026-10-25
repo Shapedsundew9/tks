@@ -1,6 +1,7 @@
 //! Unified Axum HTTP, REST, and Model Context Protocol (MCP) server gateway (WP-1.5, D-19, D-53).
 
 pub mod auth;
+pub mod elicitation_ui;
 pub mod error;
 pub mod explorer;
 pub mod mcp;
@@ -15,6 +16,7 @@ use axum::response::IntoResponse;
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use deadpool_postgres::Pool;
+use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
@@ -36,6 +38,7 @@ pub struct AppState {
     pub auth: AuthState,
     pub event_bus: crate::storage::GraphEventBus,
     pub elicitation: crate::elicitation::ElicitationStore,
+    pub cancel_token: CancellationToken,
 }
 
 impl AppState {
@@ -52,6 +55,7 @@ impl AppState {
         let elicitation = crate::elicitation::ElicitationStore::new(
             crate::elicitation::ElicitationConfig::default(),
         );
+        let cancel_token = CancellationToken::new();
         Self {
             pool,
             storage,
@@ -60,6 +64,7 @@ impl AppState {
             auth,
             event_bus,
             elicitation,
+            cancel_token,
         }
     }
 
@@ -74,6 +79,13 @@ impl AppState {
     #[must_use]
     pub fn with_elicitation(mut self, elicitation: crate::elicitation::ElicitationStore) -> Self {
         self.elicitation = elicitation;
+        self
+    }
+
+    /// Sets custom `CancellationToken` on `AppState`.
+    #[must_use]
+    pub fn with_cancel_token(mut self, cancel_token: CancellationToken) -> Self {
+        self.cancel_token = cancel_token;
         self
     }
 }
@@ -333,9 +345,44 @@ pub fn create_router(state: AppState) -> Router {
         )
         .layer(CorsLayer::permissive());
 
-    // Elicitation REST and SSE routes (D-130..D-134, D-EA-10, §6.2)
-    // Strictly loopback-guarded, excluded from permissive CORS
+    // Elicitation REST, SSE, UI, and ASR asset routes (D-130..D-134, D-EA-10, §6.2, §6.3, §6.7)
+    // Strictly loopback-guarded, excluded from permissive CORS, with hardened security headers
     let elicitation_routes = Router::new()
+        // Elicitation Studio UI
+        .route(
+            "/explorer/elicitation",
+            get(elicitation_ui::serve_elicitation_index),
+        )
+        .route(
+            "/explorer/elicitation/",
+            get(elicitation_ui::serve_elicitation_index),
+        )
+        .route(
+            "/explorer/elicitation/index.html",
+            get(elicitation_ui::serve_elicitation_index),
+        )
+        .route(
+            "/explorer/elicitation/elicitation.js",
+            get(elicitation_ui::serve_elicitation_js),
+        )
+        .route(
+            "/explorer/elicitation/asr-worker.js",
+            get(elicitation_ui::serve_asr_worker_js),
+        )
+        .route(
+            "/explorer/elicitation/audio-worklet.js",
+            get(elicitation_ui::serve_audio_worklet_js),
+        )
+        .route(
+            "/explorer/elicitation/elicitation.css",
+            get(elicitation_ui::serve_elicitation_css),
+        )
+        // ASR Asset Serving (whitelisted via lock manifest)
+        .route(
+            "/explorer/asr/{version}/{file}",
+            get(elicitation_ui::serve_asr_asset),
+        )
+        // Elicitation REST & SSE API
         .route(
             "/api/v1/elicitation/capabilities",
             get(routes::elicitation::get_capabilities),
@@ -354,7 +401,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/elicitation/sessions/{elicitation_id}/turns/{number}",
-            patch(routes::elicitation::patch_turn),
+            patch(routes::elicitation::patch_turn).delete(routes::elicitation::delete_turn),
         )
         .route(
             "/api/v1/elicitation/sessions/{elicitation_id}/facilitator/proposals",
@@ -376,6 +423,9 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/elicitation/sessions/{elicitation_id}/transcript",
             get(routes::elicitation::get_transcript),
         )
+        .layer(axum::middleware::from_fn(
+            elicitation_ui::elicitation_security_headers_middleware,
+        ))
         .layer(axum::middleware::from_fn(loopback_guard_middleware));
 
     general_routes

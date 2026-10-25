@@ -824,3 +824,637 @@ async fn test_forced_idle_expiry() {
         "Session must return NotFound after forced idle expiry"
     );
 }
+
+#[tokio::test]
+async fn test_elicitation_ui_and_security_headers() {
+    let ctx = setup_test_context().await;
+    let client = reqwest::Client::new();
+
+    // 1. Check index HTML and security headers
+    let resp = client
+        .get(format!("{}/explorer/elicitation", ctx.base_url))
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("content-type").unwrap(),
+        "text/html; charset=utf-8"
+    );
+
+    let csp = resp
+        .headers()
+        .get("content-security-policy")
+        .expect("CSP header missing")
+        .to_str()
+        .unwrap();
+    assert!(csp.contains("default-src 'self'"));
+    assert!(csp.contains("script-src 'self' 'wasm-unsafe-eval'"));
+
+    let perm_policy = resp
+        .headers()
+        .get("permissions-policy")
+        .expect("Permissions-Policy missing")
+        .to_str()
+        .unwrap();
+    assert!(perm_policy.contains("microphone=(self)"));
+
+    assert_eq!(
+        resp.headers().get("referrer-policy").unwrap(),
+        "no-referrer"
+    );
+    assert_eq!(
+        resp.headers().get("x-content-type-options").unwrap(),
+        "nosniff"
+    );
+
+    // 2. Check static script & style assets
+    let js_resp = client
+        .get(format!(
+            "{}/explorer/elicitation/elicitation.js",
+            ctx.base_url
+        ))
+        .send()
+        .await
+        .expect("js request");
+    assert_eq!(js_resp.status(), StatusCode::OK);
+    assert!(
+        js_resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("javascript")
+    );
+
+    let worker_resp = client
+        .get(format!(
+            "{}/explorer/elicitation/asr-worker.js",
+            ctx.base_url
+        ))
+        .send()
+        .await
+        .expect("worker request");
+    assert_eq!(worker_resp.status(), StatusCode::OK);
+
+    let worklet_resp = client
+        .get(format!(
+            "{}/explorer/elicitation/audio-worklet.js",
+            ctx.base_url
+        ))
+        .send()
+        .await
+        .expect("worklet request");
+    assert_eq!(worklet_resp.status(), StatusCode::OK);
+
+    let css_resp = client
+        .get(format!(
+            "{}/explorer/elicitation/elicitation.css",
+            ctx.base_url
+        ))
+        .send()
+        .await
+        .expect("css request");
+    assert_eq!(css_resp.status(), StatusCode::OK);
+    assert!(
+        css_resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("text/css")
+    );
+
+    // 3. Loopback guard verification on UI
+    let non_loopback_resp = client
+        .get(format!("{}/explorer/elicitation", ctx.base_url))
+        .header("Host", "192.168.1.100:8080")
+        .send()
+        .await
+        .expect("non-loopback request");
+    assert_eq!(non_loopback_resp.status(), StatusCode::FORBIDDEN);
+
+    ctx.cancel_token.cancel();
+}
+
+#[tokio::test]
+async fn test_asr_asset_serving_and_whitelisting() {
+    let guard = TEST_MUTEX.lock().await;
+    let database_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test database");
+    let pool = db::create_pool(&database_url).expect("Failed to create connection pool");
+
+    let repo_dir = format!("target/test-elicitation-git-{}", Uuid::new_v4());
+    let (git_write, git_read) =
+        start_git_actor(&repo_dir, 64).expect("Failed to start bare Git actor");
+
+    let storage = StorageRepo::new(pool.clone());
+
+    let asr_dir = std::path::PathBuf::from("scripts/elicitation/gate/public");
+    let elicitation_cfg = ElicitationConfig {
+        facilitator_provider: FacilitatorProviderKind::None,
+        ollama_url: "http://localhost:11434".to_string(),
+        facilitator_model: "qwen3:8b".to_string(),
+        asr_assets_dir: Some(asr_dir),
+        idle_expiry: Duration::from_secs(24 * 3600),
+    };
+    let elicitation_store = ElicitationStore::new(elicitation_cfg);
+
+    let state =
+        AppState::new(pool, storage, git_write, git_read).with_elicitation(elicitation_store);
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+    let state_clone = state.clone();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("Failed to bind ephemeral TCP port");
+    let port = listener.local_addr().unwrap().port();
+    let base_url = format!("http://127.0.0.1:{port}");
+
+    tokio::spawn(async move {
+        let app = create_router(state_clone);
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                cancel_token_clone.cancelled().await;
+            })
+            .await
+            .ok();
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let client = reqwest::Client::new();
+
+    // 1. Capabilities report ASR as available
+    let cap_resp = client
+        .get(format!("{base_url}/api/v1/elicitation/capabilities"))
+        .send()
+        .await
+        .expect("cap request");
+    assert_eq!(cap_resp.status(), StatusCode::OK);
+    let cap_json: serde_json::Value = cap_resp.json().await.expect("valid JSON");
+    assert_eq!(cap_json["asr"]["available"], true);
+    assert_eq!(cap_json["asr"]["version"], "v1.13.7");
+
+    // 2. Allowed JS asset serving
+    let js_resp = client
+        .get(format!(
+            "{base_url}/explorer/asr/v1.13.7/sherpa-onnx-asr.js"
+        ))
+        .send()
+        .await
+        .expect("js request");
+    assert_eq!(js_resp.status(), StatusCode::OK);
+    assert_eq!(
+        js_resp.headers().get("cache-control").unwrap(),
+        "public, max-age=31536000, immutable"
+    );
+    assert!(
+        js_resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("javascript")
+    );
+
+    // 3. Allowed WASM asset serving
+    let wasm_resp = client
+        .get(format!(
+            "{base_url}/explorer/asr/v1.13.7/sherpa-onnx-wasm-main-asr.wasm"
+        ))
+        .send()
+        .await
+        .expect("wasm request");
+    assert_eq!(wasm_resp.status(), StatusCode::OK);
+    assert_eq!(
+        wasm_resp.headers().get("content-type").unwrap(),
+        "application/wasm"
+    );
+
+    // 4. Traversal / unlisted file returns 404
+    let unlisted_resp = client
+        .get(format!("{base_url}/explorer/asr/v1.13.7/unlisted.js"))
+        .send()
+        .await
+        .expect("unlisted request");
+    assert_eq!(unlisted_resp.status(), StatusCode::NOT_FOUND);
+
+    // 5. Wrong version returns 404
+    let wrong_ver_resp = client
+        .get(format!("{base_url}/explorer/asr/v1.0.0/sherpa-onnx-asr.js"))
+        .send()
+        .await
+        .expect("wrong ver request");
+    assert_eq!(wrong_ver_resp.status(), StatusCode::NOT_FOUND);
+
+    cancel_token.cancel();
+    drop(guard);
+}
+
+#[tokio::test]
+async fn test_facilitator_proposal_with_stub_ollama() {
+    let guard = TEST_MUTEX.lock().await;
+
+    // 1. Spin up ephemeral stub Ollama server
+    let last_received_messages = Arc::new(std::sync::Mutex::new(Vec::<serde_json::Value>::new()));
+    let stub_messages = last_received_messages.clone();
+
+    let stub_app = axum::Router::new().route(
+        "/api/chat",
+        axum::routing::post(move |axum::Json(body): axum::Json<serde_json::Value>| {
+            let messages = body.get("messages").and_then(|m| m.as_array()).cloned().unwrap_or_default();
+            *stub_messages.lock().unwrap() = messages;
+
+            async move {
+                axum::Json(json!({
+                    "model": "qwen3:8b",
+                    "message": {
+                        "role": "assistant",
+                        "content": "What is the primary constraint that limits cross-team deployments?"
+                    },
+                    "done": true
+                }))
+            }
+        }),
+    );
+
+    let stub_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind stub listener");
+    let stub_port = stub_listener.local_addr().unwrap().port();
+    let stub_url = format!("http://127.0.0.1:{stub_port}");
+    let stub_cancel = CancellationToken::new();
+    let stub_cancel_clone = stub_cancel.clone();
+
+    tokio::spawn(async move {
+        axum::serve(stub_listener, stub_app)
+            .with_graceful_shutdown(async move {
+                stub_cancel_clone.cancelled().await;
+            })
+            .await
+            .ok();
+    });
+
+    // 2. Setup gateway with FacilitatorProviderKind::Ollama pointing to stub
+    let database_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test database");
+    let pool = db::create_pool(&database_url).expect("Failed to create connection pool");
+
+    let repo_dir = format!("target/test-elicitation-git-{}", Uuid::new_v4());
+    let (git_write, git_read) =
+        start_git_actor(&repo_dir, 64).expect("Failed to start bare Git actor");
+
+    let storage = StorageRepo::new(pool.clone());
+    let elicitation_cfg = ElicitationConfig {
+        facilitator_provider: FacilitatorProviderKind::Ollama,
+        ollama_url: stub_url.clone(),
+        facilitator_model: "qwen3:8b".to_string(),
+        asr_assets_dir: None,
+        idle_expiry: Duration::from_secs(24 * 3600),
+    };
+    let elicitation_store = ElicitationStore::new(elicitation_cfg);
+
+    let state = AppState::new(pool, storage, git_write, git_read)
+        .with_elicitation(elicitation_store.clone());
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+    let state_clone = state.clone();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("Failed to bind ephemeral TCP port");
+    let port = listener.local_addr().unwrap().port();
+    let base_url = format!("http://127.0.0.1:{port}");
+
+    tokio::spawn(async move {
+        let app = create_router(state_clone);
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                cancel_token_clone.cancelled().await;
+            })
+            .await
+            .ok();
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let client = reqwest::Client::new();
+
+    // 3. Create session with stakeholder and facilitator
+    let create_resp = client
+        .post(format!("{base_url}/api/v1/elicitation/sessions"))
+        .json(&json!({
+            "title": "Facilitator Stub Test",
+            "session_id": "facilitator-stub",
+            "stakeholder_name": "Priya",
+            "facilitator_name": "Alex"
+        }))
+        .send()
+        .await
+        .expect("create session");
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+    let session_json: serde_json::Value = create_resp.json().await.expect("valid JSON");
+    let session_id = session_json["elicitation_id"].as_str().unwrap();
+
+    // 4. Submit stakeholder turn
+    let turn_resp = client
+        .post(format!(
+            "{base_url}/api/v1/elicitation/sessions/{session_id}/turns"
+        ))
+        .json(&json!({
+            "role": "stakeholder",
+            "text": "We struggle with coordinating deployments across five independent services.",
+            "input_mode": "typed"
+        }))
+        .send()
+        .await
+        .expect("turn request");
+    assert_eq!(turn_resp.status(), StatusCode::CREATED);
+
+    // 5. Subscribe to session events via store receiver
+    let mut rx = elicitation_store
+        .subscribe_events(Uuid::parse_str(session_id).unwrap())
+        .await
+        .expect("subscribe");
+
+    // 6. Request facilitator proposal
+    let prop_resp = client
+        .post(format!(
+            "{base_url}/api/v1/elicitation/sessions/{session_id}/facilitator/proposals"
+        ))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("proposal request");
+    assert_eq!(prop_resp.status(), StatusCode::ACCEPTED);
+    let prop_json: serde_json::Value = prop_resp.json().await.expect("valid JSON");
+    assert!(prop_json.get("proposal_id").is_some());
+
+    // 7. Receive FacilitatorProposal event
+    let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("timed out waiting for proposal event")
+        .expect("event recv");
+
+    match event {
+        tks::elicitation::ElicitationEvent::FacilitatorProposal {
+            proposal_id: _,
+            mode: _,
+            text,
+            flags,
+        } => {
+            assert_eq!(
+                text,
+                "What is the primary constraint that limits cross-team deployments?"
+            );
+            // Neutral question should have no presupposition flags
+            assert!(!flags.iter().any(|f| f.category == tks::elicitation::NeutralityFlagCategory::Presupposition));
+        }
+        other => panic!("Expected FacilitatorProposal event, got: {other:?}"),
+    }
+
+    // Verify context sent to stub Ollama
+    let sent_msgs = last_received_messages.lock().unwrap().clone();
+    assert!(sent_msgs.len() >= 2);
+    assert_eq!(sent_msgs[0]["role"], "system");
+    assert!(
+        sent_msgs[0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("Socratic facilitator")
+    );
+    assert_eq!(sent_msgs[1]["role"], "user");
+    let user_prompt = sent_msgs[1]["content"].as_str().unwrap();
+    assert!(user_prompt.contains("Facilitator Stub Test"));
+    assert!(user_prompt.contains("[t1] (stakeholder): We struggle with coordinating deployments"));
+
+    // Request a second proposal and verify the first proposal is included in Already Explored
+    let prop_resp2 = client
+        .post(format!(
+            "{base_url}/api/v1/elicitation/sessions/{session_id}/facilitator/proposals"
+        ))
+        .json(&json!({
+            "mode": "inspiration",
+            "excluded_ideas": ["Custom Excluded Idea"]
+        }))
+        .send()
+        .await
+        .expect("second proposal request");
+    assert_eq!(prop_resp2.status(), StatusCode::ACCEPTED);
+
+    let _ = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("timed out waiting for second proposal event")
+        .expect("second event recv");
+
+    let sent_msgs2 = last_received_messages.lock().unwrap().clone();
+    let user_prompt2 = sent_msgs2[1]["content"].as_str().unwrap();
+    assert!(
+        user_prompt2.contains("Already Explored / Excluded Ideas & Questions"),
+        "Second proposal prompt should include Already Explored section: {user_prompt2}"
+    );
+    assert!(
+        user_prompt2.contains("What is the primary constraint that limits cross-team deployments?")
+    );
+    assert!(user_prompt2.contains("Custom Excluded Idea"));
+
+    cancel_token.cancel();
+    stub_cancel.cancel();
+    drop(guard);
+}
+
+#[tokio::test]
+async fn test_delete_turn_renumbers_and_recomputes_source() {
+    let ctx = setup_test_context().await;
+    let client = reqwest::Client::new();
+
+    let create_resp = client
+        .post(format!("{}/api/v1/elicitation/sessions", ctx.base_url))
+        .json(&json!({
+            "title": "Delete Turn Test",
+            "session_id": "delete-turn-test",
+            "stakeholder_name": "Alice",
+            "facilitator_name": "Bob"
+        }))
+        .send()
+        .await
+        .expect("create session");
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+    let session: serde_json::Value = create_resp.json().await.unwrap();
+    let id = session["elicitation_id"].as_str().unwrap();
+
+    // Add 3 turns: t1 (typed), t2 (dictated - mistakes to delete), t3 (typed)
+    for (text, mode) in [
+        ("First valid statement.", "typed"),
+        ("Accidental mic recording to delete.", "dictated"),
+        ("Second valid statement.", "typed"),
+    ] {
+        let r = client
+            .post(format!(
+                "{}/api/v1/elicitation/sessions/{id}/turns",
+                ctx.base_url
+            ))
+            .json(&json!({
+                "role": "stakeholder",
+                "text": text,
+                "input_mode": mode
+            }))
+            .send()
+            .await
+            .expect("add turn");
+        assert_eq!(r.status(), StatusCode::CREATED);
+    }
+
+    // Delete turn 2 (the dictated turn)
+    let del_resp = client
+        .delete(format!(
+            "{}/api/v1/elicitation/sessions/{id}/turns/2",
+            ctx.base_url
+        ))
+        .send()
+        .await
+        .expect("delete turn 2");
+    assert_eq!(del_resp.status(), StatusCode::OK);
+    let del_json: serde_json::Value = del_resp.json().await.unwrap();
+    let turns = del_json["turns"].as_array().unwrap();
+    assert_eq!(turns.len(), 2);
+    assert_eq!(turns[0]["number"], 1);
+    assert_eq!(turns[0]["text"], "First valid statement.");
+    assert_eq!(turns[1]["number"], 2);
+    assert_eq!(turns[1]["text"], "Second valid statement.");
+
+    // Verify session source reverted to "manual" and closing succeeds with contiguous turns
+    let get_resp = client
+        .get(format!("{}/api/v1/elicitation/sessions/{id}", ctx.base_url))
+        .send()
+        .await
+        .unwrap();
+    let updated_session: serde_json::Value = get_resp.json().await.unwrap();
+    assert_eq!(updated_session["source"], "manual");
+
+    let close_resp = client
+        .post(format!(
+            "{}/api/v1/elicitation/sessions/{id}/close",
+            ctx.base_url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(close_resp.status(), StatusCode::OK);
+
+    ctx.cancel_token.cancel();
+}
+
+#[tokio::test]
+async fn test_insert_turn_renumbers_and_out_of_scope_boundary() {
+    let ctx = setup_test_context().await;
+    let client = reqwest::Client::new();
+
+    // Create session
+    let create_resp = client
+        .post(format!("{}/api/v1/elicitation/sessions", ctx.base_url))
+        .json(&json!({
+            "title": "Insert Turn Test",
+            "session_id": "insert-turn-test",
+            "stakeholder_name": "Alice",
+            "facilitator_name": "Bob"
+        }))
+        .send()
+        .await
+        .expect("create session");
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+    let session: serde_json::Value = create_resp.json().await.unwrap();
+    let id = session["elicitation_id"].as_str().unwrap();
+
+    // Add 2 base turns: t1 and t2
+    for text in ["First statement.", "Second statement."] {
+        let r = client
+            .post(format!(
+                "{}/api/v1/elicitation/sessions/{id}/turns",
+                ctx.base_url
+            ))
+            .json(&json!({
+                "role": "stakeholder",
+                "text": text,
+                "input_mode": "typed"
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::CREATED);
+    }
+
+    // Insert a turn between t1 and t2: insert_after_turn = 1
+    let insert_resp = client
+        .post(format!(
+            "{}/api/v1/elicitation/sessions/{id}/turns",
+            ctx.base_url
+        ))
+        .json(&json!({
+            "role": "stakeholder",
+            "text": "Inserted clarification after t1.",
+            "input_mode": "typed",
+            "insert_after_turn": 1
+        }))
+        .send()
+        .await
+        .expect("insert turn");
+    assert_eq!(insert_resp.status(), StatusCode::CREATED);
+    let inserted_turn: serde_json::Value = insert_resp.json().await.unwrap();
+    assert_eq!(inserted_turn["number"], 2);
+    assert_eq!(inserted_turn["text"], "Inserted clarification after t1.");
+
+    // Fetch session and verify re-indexing to 3 turns
+    let get_resp = client
+        .get(format!("{}/api/v1/elicitation/sessions/{id}", ctx.base_url))
+        .send()
+        .await
+        .unwrap();
+    let updated_session: serde_json::Value = get_resp.json().await.unwrap();
+    let turns = updated_session["turns"].as_array().unwrap();
+    assert_eq!(turns.len(), 3);
+    assert_eq!(turns[0]["number"], 1);
+    assert_eq!(turns[0]["text"], "First statement.");
+    assert_eq!(turns[1]["number"], 2);
+    assert_eq!(turns[1]["text"], "Inserted clarification after t1.");
+    assert_eq!(turns[2]["number"], 3);
+    assert_eq!(turns[2]["text"], "Second statement.");
+
+    // Add an Out of Scope turn
+    let scope_resp = client
+        .post(format!(
+            "{}/api/v1/elicitation/sessions/{id}/turns",
+            ctx.base_url
+        ))
+        .json(&json!({
+            "role": "stakeholder",
+            "text": "Out of scope: Dispute resolution arbiter is not considered for this project.",
+            "input_mode": "typed"
+        }))
+        .send()
+        .await
+        .expect("out of scope turn");
+    assert_eq!(scope_resp.status(), StatusCode::CREATED);
+
+    // Verify closing session succeeds with contiguous turns
+    let close_resp = client
+        .post(format!(
+            "{}/api/v1/elicitation/sessions/{id}/close",
+            ctx.base_url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(close_resp.status(), StatusCode::OK);
+
+    ctx.cancel_token.cancel();
+}

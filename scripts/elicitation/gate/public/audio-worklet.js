@@ -7,6 +7,18 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
     this.bufferSize = 1600;
     this.buffer = new Float32Array(this.bufferSize);
     this.bufferIndex = 0;
+
+    this.port.onmessage = (e) => {
+      if (e.data && e.data.type === 'flush') {
+        if (this.bufferIndex > 0) {
+          const tailFrame = this.buffer.slice(0, this.bufferIndex);
+          this.port.postMessage({ type: 'pcm', data: tailFrame }, [tailFrame.buffer]);
+          this.buffer = new Float32Array(this.bufferSize);
+          this.bufferIndex = 0;
+        }
+        this.port.postMessage({ type: 'flushed' });
+      }
+    };
   }
 
   process(inputs, outputs, parameters) {

@@ -154,8 +154,12 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
         .unwrap_or(FacilitatorProviderKind::None);
     let elicitation_cfg = ElicitationConfig {
         facilitator_provider,
-        ollama_url: args.ollama_url,
-        facilitator_model: args.facilitator_model,
+        ollama_url: crate::elicitation::resolve_ollama_url(&args.ollama_url),
+        facilitator_model: if args.facilitator_model.trim().is_empty() {
+            "qwen3:8b".to_string()
+        } else {
+            args.facilitator_model.trim().to_string()
+        },
         asr_assets_dir: args.asr_assets_dir,
         idle_expiry,
     };
@@ -180,7 +184,8 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
 
     let state = AppState::new(pool.clone(), storage, git_write.clone(), git_read)
         .with_event_bus(event_bus)
-        .with_elicitation(elicitation_store);
+        .with_elicitation(elicitation_store)
+        .with_cancel_token(cancel_token.clone());
 
     // Step 5: Start background worker manager (WP-1.4, WP-3.1)
     let worker_token = cancel_token.clone();
@@ -194,6 +199,12 @@ pub async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>
             tracing::info!("Received Ctrl-C signal, coordinating graceful shutdown...");
             eprintln!("\nReceived Ctrl-C signal, shutting down TKS daemon...");
             shutdown_token.cancel();
+
+            // Listen for second Ctrl-C to force immediate termination
+            if let Ok(()) = tokio::signal::ctrl_c().await {
+                eprintln!("\nSecond Ctrl-C received, forcing immediate exit...");
+                std::process::exit(130);
+            }
         }
     });
 

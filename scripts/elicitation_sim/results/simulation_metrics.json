@@ -1,0 +1,190 @@
+[
+  {
+    "brief_id": "B01",
+    "brief_title": "Community Repair Cafe",
+    "total_turns": 6,
+    "facilitator_turns": 3,
+    "stakeholder_turns": 3,
+    "foundation_anchors": {
+      "a1_outcome_turn": 1,
+      "a2_actors_turn": 1,
+      "a3_invariant_turn": 2,
+      "macro_resolution_turn": 2
+    },
+    "axis_coverage": {
+      "agency": {
+        "covered": true,
+        "matched_terms": [
+          "who",
+          "fixer",
+          "responsibility",
+          "sign-off",
+          "volunteer"
+        ]
+      },
+      "preconditions": {
+        "covered": true,
+        "matched_terms": [
+          "must",
+          "require",
+          "safety",
+          "rule"
+        ]
+      },
+      "exceptions": {
+        "covered": true,
+        "matched_terms": [
+          "if",
+          "conflict"
+        ]
+      },
+      "cadence": {
+        "covered": true,
+        "matched_terms": [
+          "saturday",
+          "temporal"
+        ]
+      },
+      "accountability": {
+        "covered": true,
+        "matched_terms": [
+          "record",
+          "sign",
+          "track"
+        ]
+      }
+    },
+    "covered_axes_count": 5,
+    "axis_coverage_pct": 100.0,
+    "bisection_rate": 1.0,
+    "neutrality_score": 1.0,
+    "neutrality_violations": []
+  },
+  {
+    "brief_id": "B02",
+    "brief_title": "Rural Walk-in Clinic Triage",
+    "total_turns": 6,
+    "facilitator_turns": 3,
+    "stakeholder_turns": 3,
+    "foundation_anchors": {
+      "a1_outcome_turn": 1,
+      "a2_actors_turn": 1,
+      "a3_invariant_turn": 3,
+      "macro_resolution_turn": 3
+    },
+    "axis_coverage": {
+      "agency": {
+        "covered": true,
+        "matched_terms": [
+          "nurse",
+          "authority",
+          "responsibility"
+        ]
+      },
+      "preconditions": {
+        "covered": true,
+        "matched_terms": [
+          "require",
+          "rule"
+        ]
+      },
+      "exceptions": {
+        "covered": true,
+        "matched_terms": [
+          "if",
+          "delay",
+          "emergency",
+          "override"
+        ]
+      },
+      "cadence": {
+        "covered": true,
+        "matched_terms": [
+          "minute",
+          "hour",
+          "temporal"
+        ]
+      },
+      "accountability": {
+        "covered": true,
+        "matched_terms": [
+          "sign",
+          "audit",
+          "document",
+          "evidence"
+        ]
+      }
+    },
+    "covered_axes_count": 5,
+    "axis_coverage_pct": 100.0,
+    "bisection_rate": 1.0,
+    "neutrality_score": 1.0,
+    "neutrality_violations": []
+  },
+  {
+    "brief_id": "B03",
+    "brief_title": "Refrigerated Cold-Chain Freight",
+    "total_turns": 6,
+    "facilitator_turns": 3,
+    "stakeholder_turns": 3,
+    "foundation_anchors": {
+      "a1_outcome_turn": 2,
+      "a2_actors_turn": 1,
+      "a3_invariant_turn": 3,
+      "macro_resolution_turn": 3
+    },
+    "axis_coverage": {
+      "agency": {
+        "covered": true,
+        "matched_terms": [
+          "driver",
+          "manager",
+          "authority"
+        ]
+      },
+      "preconditions": {
+        "covered": true,
+        "matched_terms": [
+          "must",
+          "require",
+          "strictly"
+        ]
+      },
+      "exceptions": {
+        "covered": true,
+        "matched_terms": [
+          "if",
+          "when",
+          "delay",
+          "dispute",
+          "excursion"
+        ]
+      },
+      "cadence": {
+        "covered": true,
+        "matched_terms": [
+          "minute",
+          "schedule",
+          "shift",
+          "transit",
+          "temporal"
+        ]
+      },
+      "accountability": {
+        "covered": true,
+        "matched_terms": [
+          "log",
+          "sign",
+          "telemetry",
+          "seal",
+          "serial"
+        ]
+      }
+    },
+    "covered_axes_count": 5,
+    "axis_coverage_pct": 100.0,
+    "bisection_rate": 1.0,
+    "neutrality_score": 1.0,
+    "neutrality_violations": []
+  }
+]

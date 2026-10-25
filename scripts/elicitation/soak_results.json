@@ -1,0 +1,247 @@
+{
+  "turns": [
+    {
+      "turn": 1,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 2,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 3,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 4,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 5,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 6,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 7,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 8,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 9,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 10,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 11,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 12,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 13,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 14,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 15,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 16,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 17,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 18,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 19,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 20,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 21,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 22,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 23,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 24,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 25,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 26,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 27,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 28,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 29,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 30,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 31,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 32,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 33,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 34,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 35,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 36,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 37,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 38,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 39,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 40,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 41,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 42,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 43,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 44,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 45,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 46,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 47,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 48,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 49,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 50,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 51,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 52,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 53,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 54,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 55,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 56,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 57,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 58,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 59,
+      "memoryBytes": 536870912
+    },
+    {
+      "turn": 60,
+      "memoryBytes": 536870912
+    }
+  ],
+  "turn10Bytes": 536870912,
+  "turn60Bytes": 536870912,
+  "growthRate": 0
+}

@@ -31,10 +31,27 @@ pub const MAX_TURNS_PER_SESSION: usize = 1000;
 pub enum ElicitationEvent {
     #[serde(rename = "turn_committed")]
     TurnCommitted(ElicitationTurn),
+    #[serde(rename = "turn_inserted")]
+    TurnInserted {
+        inserted_turn: ElicitationTurn,
+        turns: Vec<ElicitationTurn>,
+        source: String,
+    },
     #[serde(rename = "turn_updated")]
     TurnUpdated(ElicitationTurn),
+    #[serde(rename = "turn_deleted")]
+    TurnDeleted {
+        deleted_number: u32,
+        turns: Vec<ElicitationTurn>,
+        source: String,
+    },
     #[serde(rename = "facilitator_proposal")]
-    FacilitatorProposal { proposal_id: Uuid, text: String },
+    FacilitatorProposal {
+        proposal_id: Uuid,
+        mode: String,
+        text: String,
+        flags: Vec<super::neutrality::NeutralityFlag>,
+    },
     #[serde(rename = "facilitator_error")]
     FacilitatorError { error: String },
     #[serde(rename = "session_closed")]
@@ -93,6 +110,8 @@ pub struct AddTurnRequest {
     pub role: TurnRole,
     pub text: String,
     pub input_mode: InputMode,
+    #[serde(default)]
+    pub insert_after_turn: Option<u32>,
 }
 
 /// Request payload to patch an existing conversational turn.
@@ -279,6 +298,7 @@ impl ElicitationStore {
             ],
             turns: Vec::new(),
             imported_gap_questions,
+            explored_items: Vec::new(),
             created_at: now,
             last_activity_at: now,
             expires_at,
@@ -360,9 +380,19 @@ impl ElicitationStore {
             )));
         }
 
+        let insert_idx = if let Some(after_num) = req.insert_after_turn {
+            if let Some(pos) = session.turns.iter().position(|t| t.number == after_num) {
+                pos + 1
+            } else {
+                session.turns.len()
+            }
+        } else {
+            session.turns.len()
+        };
+
         let now = Utc::now();
-        let number = (session.turns.len() + 1) as u32;
-        let turn = ElicitationTurn {
+        let number = (insert_idx + 1) as u32;
+        let mut turn = ElicitationTurn {
             number,
             role: req.role,
             text: normalized_text,
@@ -372,25 +402,46 @@ impl ElicitationStore {
             edited_at: None,
         };
 
-        session.turns.push(turn.clone());
+        let is_middle_insert = insert_idx < session.turns.len();
+        if is_middle_insert {
+            session.turns.insert(insert_idx, turn.clone());
+            for (idx, t) in session.turns.iter_mut().enumerate() {
+                t.number = (idx + 1) as u32;
+            }
+            turn.number = (insert_idx + 1) as u32;
+        } else {
+            session.turns.push(turn.clone());
+        }
+
         session.last_activity_at = now;
         session.expires_at = now
             + chrono::Duration::from_std(self.config.idle_expiry)
                 .unwrap_or(chrono::Duration::days(1));
-        session.source = session.compute_source().to_string();
+        let computed_source = session.compute_source().to_string();
+        session.source.clone_from(&computed_source);
+        let all_turns = session.turns.clone();
 
         drop(sessions_guard);
 
         let txs = self.event_txs.read().await;
         if let Some(tx) = txs.get(&elicitation_id) {
-            let _ = tx.send(ElicitationEvent::TurnCommitted(turn.clone()));
+            if is_middle_insert {
+                let _ = tx.send(ElicitationEvent::TurnInserted {
+                    inserted_turn: turn.clone(),
+                    turns: all_turns,
+                    source: computed_source,
+                });
+            } else {
+                let _ = tx.send(ElicitationEvent::TurnCommitted(turn.clone()));
+            }
         }
 
         tracing::info!(
             elicitation_id = %elicitation_id,
-            turn_number = number,
+            turn_number = turn.number,
             role = %turn.role,
             input_mode = %turn.input_mode,
+            is_middle_insert = is_middle_insert,
             "Turn committed"
         );
 
@@ -465,6 +516,92 @@ impl ElicitationStore {
         );
 
         Ok(updated_turn)
+    }
+
+    /// Deletes a committed conversational turn and re-numbers remaining turns contiguously (`1..=N`).
+    ///
+    /// # Errors
+    /// Returns [`ElicitationError`] if the session is closed or the turn is missing.
+    pub async fn delete_turn(
+        &self,
+        elicitation_id: Uuid,
+        number: u32,
+    ) -> Result<Vec<ElicitationTurn>, ElicitationError> {
+        let mut sessions_guard = self.sessions.write().await;
+        let session = sessions_guard
+            .get_mut(&elicitation_id)
+            .ok_or_else(|| ElicitationError::NotFound(elicitation_id.to_string()))?;
+
+        if session.state == SessionState::Closed {
+            return Err(ElicitationError::SessionClosed);
+        }
+
+        let pos = session
+            .turns
+            .iter()
+            .position(|t| t.number == number)
+            .ok_or(ElicitationError::TurnNotFound(number))?;
+
+        session.turns.remove(pos);
+
+        for (idx, turn) in session.turns.iter_mut().enumerate() {
+            turn.number = (idx + 1) as u32;
+        }
+
+        let now = Utc::now();
+        session.last_activity_at = now;
+        session.expires_at = now
+            + chrono::Duration::from_std(self.config.idle_expiry)
+                .unwrap_or(chrono::Duration::days(1));
+        let computed_source = session.compute_source().to_string();
+        session.source.clone_from(&computed_source);
+        let remaining_turns = session.turns.clone();
+
+        drop(sessions_guard);
+
+        let txs = self.event_txs.read().await;
+        if let Some(tx) = txs.get(&elicitation_id) {
+            let _ = tx.send(ElicitationEvent::TurnDeleted {
+                deleted_number: number,
+                turns: remaining_turns.clone(),
+                source: computed_source,
+            });
+        }
+
+        tracing::info!(
+            elicitation_id = %elicitation_id,
+            deleted_turn_number = number,
+            remaining_count = remaining_turns.len(),
+            "Turn deleted and remaining turns re-indexed"
+        );
+
+        Ok(remaining_turns)
+    }
+
+    /// Records explored or dismissed idea titles / Socratic questions in the session
+    /// so subsequent LLM calls avoid repeating them.
+    pub async fn record_explored_items(&self, elicitation_id: Uuid, items: Vec<String>) {
+        if items.is_empty() {
+            return;
+        }
+        let mut sessions_guard = self.sessions.write().await;
+        if let Some(session) = sessions_guard.get_mut(&elicitation_id) {
+            for item in items {
+                let cleaned = item.trim().to_string();
+                if !cleaned.is_empty()
+                    && !session
+                        .explored_items
+                        .iter()
+                        .any(|existing| existing.eq_ignore_ascii_case(&cleaned))
+                {
+                    session.explored_items.push(cleaned);
+                }
+            }
+            if session.explored_items.len() > 128 {
+                let excess = session.explored_items.len() - 128;
+                session.explored_items.drain(0..excess);
+            }
+        }
     }
 
     /// Validates and closes a session.

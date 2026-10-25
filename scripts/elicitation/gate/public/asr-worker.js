@@ -38,6 +38,9 @@ self.onmessage = function (e) {
       self.postMessage({ type: 'error', error: 'Recognizer not ready' });
       return;
     }
+    if (recognizerStream && typeof recognizerStream.free === 'function') {
+      recognizerStream.free();
+    }
     recognizerStream = recognizer.createStream();
     self.postMessage({ type: 'stream_started' });
   } else if (type === 'pcm') {
@@ -69,15 +72,21 @@ self.onmessage = function (e) {
     }
 
     const t0 = performance.now();
-    // 250 ms trailing silence flush (4000 samples at 16 kHz)
-    const silence = new Float32Array(4000);
+    // 600 ms trailing silence flush (9600 samples at 16 kHz) + inputFinished()
+    const silence = new Float32Array(9600);
     recognizerStream.acceptWaveform(16000, silence);
+    if (typeof recognizerStream.inputFinished === 'function') {
+      recognizerStream.inputFinished();
+    }
     while (recognizer.isReady(recognizerStream)) {
       recognizer.decode(recognizerStream);
     }
 
     const finalText = recognizer.getResult(recognizerStream).text;
     const flushDuration = performance.now() - t0;
+    if (typeof recognizerStream.free === 'function') {
+      recognizerStream.free();
+    }
     recognizerStream = null;
 
     self.postMessage({

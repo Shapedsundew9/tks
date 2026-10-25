@@ -3,6 +3,12 @@
 Read `.shared/ai/core/service-instructions.md`.
 Read `.shared/ai/core/common-instructions.md`.
 
+## Maturity
+
+- This project is in open development. There is no legacy or backwards compatibility to maintain.
+- Good architecture & design practices are encouraged and expected.
+- Expect frequent changes and iterations as the project evolves.
+
 ## Repository Layout
 
 - Use `codegraph_explore` first to inspect existing Axum routes, state wrappers,

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TKS Intent Elicitation Studio</title>
+  <link rel="stylesheet" href="/explorer/elicitation/elicitation.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>TKS Elicitation Studio</h1>
+      <span class="badge">Track E-A</span>
+    </div>
+    <div class="capability-banner" id="cap-banner">
+      <div class="cap-item" id="cap-asr" title="Sherpa-ONNX WebAssembly Transducer">
+        <span class="dot amber" id="asr-dot"></span>
+        <span id="asr-text">ASR: Checking...</span>
+      </div>
+      <div class="cap-item" id="cap-facilitator" title="Socratic Facilitator Offload">
+        <span class="dot amber" id="facilitator-dot"></span>
+        <span id="facilitator-text">Facilitator: Checking...</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="studio-layout">
+    <!-- Column 1: Left Session Sidebar -->
+    <aside class="sidebar">
+      <!-- Session Setup Card (when no session active) -->
+      <section class="card" id="setup-card">
+        <h2>New Session</h2>
+        <form id="create-session-form">
+          <div class="form-group">
+            <label for="setup-title">Session Title</label>
+            <input type="text" id="setup-title" class="form-control" placeholder="e.g. Distributed Ingestion Gateway" required>
+          </div>
+          <div class="form-group">
+            <label for="setup-slug">Session ID (Slug)</label>
+            <input type="text" id="setup-slug" class="form-control" placeholder="e.g. ingestion-gateway-c1" required>
+          </div>
+          <div class="form-group">
+            <label for="setup-stakeholder">Stakeholder Name</label>
+            <input type="text" id="setup-stakeholder" class="form-control" value="Alice" required>
+          </div>
+          <div class="form-group">
+            <label for="setup-facilitator">Facilitator Name</label>
+            <input type="text" id="setup-facilitator" class="form-control" value="Bob" required>
+          </div>
+          <details class="form-group mt-2">
+            <summary class="summary-title">Cycle-2 Continuation Options</summary>
+            <div class="form-group">
+              <label for="setup-prior-transcript">Prior Transcript (Markdown)</label>
+              <textarea id="setup-prior-transcript" class="form-control" rows="3" placeholder="Paste prior cycle transcript..."></textarea>
+            </div>
+            <div class="form-group">
+              <label for="setup-prior-extraction-id">Prior E-B Extraction Session UUID</label>
+              <input type="text" id="setup-prior-extraction-id" class="form-control" placeholder="e.g. 12345678-1234-5678-1234-567812345678">
+            </div>
+          </details>
+          <button type="submit" class="btn btn-primary w-full mt-2" id="btn-create-session">Start Elicitation Session</button>
+        </form>
+      </section>
+
+      <!-- Active Session Metadata & Controls -->
+      <section class="card hidden" id="session-info-card">
+        <h2>
+          <span>Session Info</span>
+          <span class="badge state-badge-open" id="session-state-badge">Open</span>
+        </h2>
+        <div class="meta-list">
+          <div><strong>ID:</strong> <span id="meta-session-id" class="font-mono">-</span></div>
+          <div><strong>Cycle:</strong> <span id="meta-cycle">-</span></div>
+          <div><strong>Date:</strong> <span id="meta-date">-</span></div>
+          <div><strong>Stakeholder:</strong> <span id="meta-stakeholder">-</span></div>
+          <div><strong>Facilitator:</strong> <span id="meta-facilitator">-</span></div>
+          <div><strong>Source:</strong> <span id="meta-source" class="font-mono">-</span></div>
+        </div>
+
+        <div class="meta-buttons">
+          <button class="btn btn-primary btn-sm" id="btn-close-session">Close Session</button>
+          <button class="btn btn-secondary btn-sm hidden" id="btn-reopen-session">Reopen Session</button>
+          <button class="btn btn-success btn-sm" id="btn-export-transcript" disabled title="Close session first to export canonical transcript">Export Canonical Transcript</button>
+          <button class="btn btn-danger btn-sm" id="btn-delete-session">Discard Session</button>
+        </div>
+      </section>
+
+      <!-- Questions from Previous Cycle Panel -->
+      <section class="card hidden" id="gap-questions-card">
+        <h2>Questions from Previous Cycle</h2>
+        <div class="gap-questions-list" id="gap-questions-list"></div>
+      </section>
+    </aside>
+
+    <!-- Column 2: Center Conversation Timeline & Dock -->
+    <section class="timeline-pane">
+      <div class="timeline-container">
+        <div class="timeline-header">
+          <div class="session-meta">
+            <h3 id="timeline-session-title">No Active Session</h3>
+            <span class="turn-count-badge" id="turn-count-badge">0 turns</span>
+          </div>
+          <div class="session-actions" id="timeline-header-actions">
+            <button class="btn btn-secondary btn-sm hidden" id="btn-ask-opening">Ask Opening Question</button>
+          </div>
+        </div>
+
+        <div class="turns-list" id="turns-list">
+          <div class="empty-state">
+            Create or start a session to begin intent elicitation.
+          </div>
+        </div>
+
+        <div class="retract-hint">
+          Tip: You can edit, flag as uncertain, or delete any recorded statement directly from the timeline.
+        </div>
+      </div>
+
+      <!-- Docked Input & Speech Bar -->
+      <!-- Dynamic Stream Composer -->
+      <div class="chat-dock" id="chat-dock">
+        <div class="chat-dock-header" id="chat-dock-header">
+          <span class="chat-dock-target" id="composer-target-label"><span class="badge">Next Statement</span></span>
+          <button type="button" class="btn btn-secondary btn-xs hidden" id="btn-cancel-inline-insert">✕ Cancel Insertion</button>
+        </div>
+
+        <!-- Live Partial Speech Bar -->
+        <div class="partial-bar" id="partial-bar">
+          <span id="partial-text" class="text-secondary">Push-to-talk: Hold Ctrl+Alt+V or the Mic button to record spoken intent</span>
+        </div>
+
+        <!-- Single Streamlined Input Row -->
+        <div class="chat-input-row">
+          <div class="input-wrapper">
+            <textarea id="draft-box" class="form-control chat-input" rows="1" placeholder="Type intent statement or hold mic to dictate... (Enter to send, Shift+Enter for space)"></textarea>
+          </div>
+
+          <div class="chat-actions">
+            <label class="auto-submit-label" title="When enabled, releasing the mic immediately submits the turn">
+              <input type="checkbox" id="auto-submit-toggle" checked>
+              <span>Auto-send</span>
+            </label>
+            <button class="mic-btn" id="mic-btn" title="Hold Ctrl+Alt+V or press and hold to speak" disabled>🎤</button>
+            <button class="btn btn-primary btn-sm" id="btn-submit-turn" disabled>Send</button>
+          </div>
+        </div>
+
+        <div class="status-subrow">
+          <span class="text-muted text-xs" id="mic-status-label">ASR initializing...</span>
+          <span id="draft-mode-badge" class="hidden">Mode: Typed</span>
+          <select id="composer-role" class="hidden">
+            <option value="stakeholder">Stakeholder</option>
+            <option value="facilitator">Facilitator</option>
+          </select>
+          <button id="btn-clear-draft" class="hidden">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 3: Right Assistant Sidecar Panel -->
+    <aside class="sidecar-pane">
+      <div class="sidecar-header">
+        <div class="sidecar-title-row">
+          <h3>💡 Inspiration Studio</h3>
+          <span class="sidecar-model-tag" id="sidecar-model-tag">Ollama</span>
+        </div>
+        <div class="sidecar-subtitle text-xs text-muted">
+          Continuous gap analysis &amp; unstated requirement proposals
+        </div>
+      </div>
+
+      <!-- Inspiration Section -->
+      <div class="sidecar-section" id="sec-inspiration">
+        <div class="topic-box">
+          <label class="topic-label" for="topic-input">Focus Topic (optional — leave blank to spot gaps)</label>
+          <div class="topic-input-wrapper">
+            <input type="text" id="topic-input" class="form-control" placeholder="All requirements (gap analysis)...">
+            <button type="button" class="btn btn-secondary btn-xs hidden" id="btn-clear-topic" title="Clear focus topic and return to full gap analysis">✕</button>
+            <button type="button" class="mic-topic-btn" id="mic-topic-btn" title="Hold to speak topic query" disabled>🎤</button>
+          </div>
+          <button class="btn btn-secondary btn-sm w-full mt-1" id="btn-brainstorm">Spot Gaps &amp; Brainstorm</button>
+        </div>
+
+        <div class="ideas-deck" id="ideas-deck">
+          <div class="sidecar-placeholder" id="ideas-placeholder">
+            Click Spot Gaps &amp; Brainstorm (or speak a focus topic) to uncover missing or under-elaborated requirements.
+          </div>
+        </div>
+      </div>
+
+      <!-- Facilitator Error Box -->
+      <div class="proposal-box border-error hidden" id="facilitator-error-box">
+        <div class="proposal-box-header text-error">
+          <span>Assistant Offline / Error</span>
+        </div>
+        <div class="proposal-text text-secondary" id="facilitator-error-msg"></div>
+        <div class="proposal-actions mt-1">
+          <button class="btn btn-secondary btn-sm" id="btn-retry-proposal">Retry</button>
+          <button class="btn btn-secondary btn-sm" id="btn-dismiss-facilitator-error">Dismiss</button>
+        </div>
+      </div>
+
+      <!-- Hidden compatibility toggle -->
+      <label class="role-label hidden" id="auto-propose-label">
+        <input type="checkbox" id="auto-propose-toggle" checked>
+      </label>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast-msg"></div>
+
+  <script src="/explorer/elicitation/elicitation.js"></script>
+</body>
+</html>

@@ -25,12 +25,10 @@ use crate::gateway::AppState;
 /// GET `/api/v1/elicitation/capabilities`
 pub async fn get_capabilities(State(state): State<AppState>) -> impl IntoResponse {
     let cfg = &state.elicitation.config;
+    let manifest = crate::elicitation::AsrLockManifest::load_default();
 
     let asr_available = if let Some(ref dir) = cfg.asr_assets_dir {
-        // Check if directory exists and contains model files
-        dir.is_dir()
-            && dir.join("tokens.txt").is_file()
-            && (dir.join("encoder.onnx").is_file() || dir.join("model.onnx").is_file())
+        manifest.is_dir_complete(dir)
     } else {
         false
     };
@@ -53,7 +51,7 @@ pub async fn get_capabilities(State(state): State<AppState>) -> impl IntoRespons
             "asr": {
                 "available": asr_available,
                 "engine": "sherpa-onnx",
-                "version": "1.10.30",
+                "version": manifest.version,
                 "assets_base": "/explorer/asr"
             },
             "facilitator": facilitator_json
@@ -192,11 +190,73 @@ pub async fn patch_turn(
     }
 }
 
+/// DELETE `/api/v1/elicitation/sessions/{elicitation_id}/turns/{number}`
+pub async fn delete_turn(
+    State(state): State<AppState>,
+    Path((elicitation_id, number)): Path<(Uuid, u32)>,
+) -> Result<Response, (StatusCode, Json<Value>)> {
+    match state.elicitation.delete_turn(elicitation_id, number).await {
+        Ok(turns) => Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "deleted": number,
+                "turns": turns
+            })),
+        )
+            .into_response()),
+        Err(ElicitationError::SessionClosed) => Err((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": "ERR_SESSION_CLOSED",
+                "message": "Cannot modify a closed session"
+            })),
+        )),
+        Err(ElicitationError::TurnNotFound(num)) => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "ERR_TURN_NOT_FOUND",
+                "message": format!("Turn t{num} not found")
+            })),
+        )),
+        Err(ElicitationError::NotFound(msg)) => Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "ERR_NOT_FOUND", "message": msg })),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": "ERR_INTERNAL", "message": e.to_string() })),
+        )),
+    }
+}
+
 /// POST `/api/v1/elicitation/sessions/{elicitation_id}/facilitator/proposals`
 pub async fn request_facilitator_proposal(
     State(state): State<AppState>,
     Path(elicitation_id): Path<Uuid>,
+    body: axum::body::Bytes,
 ) -> Result<Response, (StatusCode, Json<Value>)> {
+    let payload: serde_json::Value =
+        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+
+    let client_excluded: Vec<String> = payload
+        .get("excluded_ideas")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::trim))
+                .filter(|s| !s.is_empty())
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if !client_excluded.is_empty() {
+        state
+            .elicitation
+            .record_explored_items(elicitation_id, client_excluded)
+            .await;
+    }
+
     let session = state
         .elicitation
         .get_session(elicitation_id)
@@ -229,10 +289,28 @@ pub async fn request_facilitator_proposal(
         ));
     }
 
+    let mode = payload
+        .get("mode")
+        .and_then(|m| m.as_str())
+        .unwrap_or("socratic")
+        .to_string();
+    let is_inspiration = mode.eq_ignore_ascii_case("inspiration");
+    let topic = payload
+        .get("topic")
+        .and_then(|t| t.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string);
+
     let proposal_id = Uuid::new_v4();
 
     // Assemble context bounded by characters (dropping oldest turns first)
-    let system_prompt = "You are a neutral Socratic facilitator helping a stakeholder articulate their intent. Ask one neutral, open-ended question at a time. Never presuppose solutions or technologies.".to_string();
+    let system_prompt = if is_inspiration {
+        crate::elicitation::INSPIRATION_SYSTEM_PROMPT_V2.to_string()
+    } else {
+        crate::elicitation::FACILITATOR_SYSTEM_PROMPT_V2.to_string()
+    };
+
     let gap_questions: Vec<String> = session
         .imported_gap_questions
         .iter()
@@ -253,7 +331,11 @@ pub async fn request_facilitator_proposal(
 
     let context = FacilitatorContext {
         system_prompt,
+        session_title: session.title.clone(),
+        is_inspiration,
+        focus_topic: topic,
         gap_questions,
+        explored_items: session.explored_items.clone(),
         turns,
     };
 
@@ -265,12 +347,23 @@ pub async fn request_facilitator_proposal(
     tokio::spawn(async move {
         match provider.propose(context).await {
             Ok(proposal_text) => {
+                let extracted =
+                    crate::elicitation::extract_proposal_items(&proposal_text, is_inspiration);
+                store.record_explored_items(elicitation_id, extracted).await;
+
+                let flags = if is_inspiration {
+                    Vec::new()
+                } else {
+                    crate::elicitation::lint_neutrality(&proposal_text)
+                };
                 store
                     .broadcast_event(
                         elicitation_id,
                         ElicitationEvent::FacilitatorProposal {
                             proposal_id,
+                            mode,
                             text: proposal_text,
+                            flags,
                         },
                     )
                     .await;
@@ -312,34 +405,44 @@ pub async fn stream_session_events(
             )
         })?;
 
-    let stream = futures_util::stream::unfold(rx, |mut rx| async move {
+    let cancel = state.cancel_token.clone();
+    let stream = futures_util::stream::unfold((rx, cancel), |(mut rx, cancel)| async move {
         loop {
-            match rx.recv().await {
-                Ok(event) => {
-                    let event_type = match event {
-                        ElicitationEvent::TurnCommitted(_) => "turn_committed",
-                        ElicitationEvent::TurnUpdated(_) => "turn_updated",
-                        ElicitationEvent::FacilitatorProposal { .. } => "facilitator_proposal",
-                        ElicitationEvent::FacilitatorError { .. } => "facilitator_error",
-                        ElicitationEvent::SessionClosed { .. } => "session_closed",
-                    };
-                    match serde_json::to_string(&event) {
-                        Ok(json) => {
-                            let sse_event = Event::default().event(event_type).data(json);
-                            return Some((Ok::<_, Infallible>(sse_event), rx));
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    return None;
+                }
+                msg = rx.recv() => {
+                    match msg {
+                        Ok(event) => {
+                            let event_type = match event {
+                                ElicitationEvent::TurnCommitted(_) => "turn_committed",
+                                ElicitationEvent::TurnInserted { .. } => "turn_inserted",
+                                ElicitationEvent::TurnUpdated(_) => "turn_updated",
+                                ElicitationEvent::TurnDeleted { .. } => "turn_deleted",
+                                ElicitationEvent::FacilitatorProposal { .. } => "facilitator_proposal",
+                                ElicitationEvent::FacilitatorError { .. } => "facilitator_error",
+                                ElicitationEvent::SessionClosed { .. } => "session_closed",
+                            };
+                            match serde_json::to_string(&event) {
+                                Ok(json) => {
+                                    let sse_event = Event::default().event(event_type).data(json);
+                                    return Some((Ok::<_, Infallible>(sse_event), (rx, cancel)));
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to serialize ElicitationEvent for SSE: {e}");
+                                    continue;
+                                }
+                            }
                         }
-                        Err(e) => {
-                            tracing::warn!("Failed to serialize ElicitationEvent for SSE: {e}");
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                            tracing::warn!("SSE subscriber lagged, skipped {skipped} messages");
                             continue;
                         }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            return None;
+                        }
                     }
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    tracing::warn!("SSE subscriber lagged, skipped {skipped} messages");
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    return None;
                 }
             }
         }

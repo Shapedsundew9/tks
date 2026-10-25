@@ -341,25 +341,33 @@ pub async fn stream_explorer_events(
     State(state): State<AppState>,
 ) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.event_bus.subscribe();
-    let stream = futures_util::stream::unfold(rx, |mut rx| async move {
+    let cancel = state.cancel_token.clone();
+    let stream = futures_util::stream::unfold((rx, cancel), |(mut rx, cancel)| async move {
         loop {
-            match rx.recv().await {
-                Ok(event) => match serde_json::to_string(&event) {
-                    Ok(json) => {
-                        let sse_event = Event::default().event("graph_event").data(json);
-                        return Some((Ok::<_, Infallible>(sse_event), rx));
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to serialize GraphChangeEvent for SSE: {e}");
-                        continue;
-                    }
-                },
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    tracing::warn!("SSE subscriber lagged, skipped {skipped} messages");
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+            tokio::select! {
+                _ = cancel.cancelled() => {
                     return None;
+                }
+                msg = rx.recv() => {
+                    match msg {
+                        Ok(event) => match serde_json::to_string(&event) {
+                            Ok(json) => {
+                                let sse_event = Event::default().event("graph_event").data(json);
+                                return Some((Ok::<_, Infallible>(sse_event), (rx, cancel)));
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to serialize GraphChangeEvent for SSE: {e}");
+                                continue;
+                            }
+                        },
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                            tracing::warn!("SSE subscriber lagged, skipped {skipped} messages");
+                            continue;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            return None;
+                        }
+                    }
                 }
             }
         }

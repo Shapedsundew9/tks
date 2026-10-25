@@ -51,8 +51,18 @@ scratchpad/*
 .gemini/
 
 # Shared Blender outputs
-/renders/
-/scenes/
-/.devcontainer/blender/__pycache__/
-/scripts/blender/__pycache__/
-/scripts/blender/tks_bpy/__pycache__/
+renders/
+scenes/
+.devcontainer/blender/__pycache__/
+scripts/blender/__pycache__/
+scripts/blender/tks_bpy/__pycache__/
+
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pyt
+*.pyi

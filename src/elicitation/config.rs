@@ -49,7 +49,7 @@ impl Default for ElicitationConfig {
     fn default() -> Self {
         Self {
             facilitator_provider: FacilitatorProviderKind::None,
-            ollama_url: "http://localhost:11434".to_string(),
+            ollama_url: crate::elicitation::facilitator::resolve_ollama_url(""),
             facilitator_model: "qwen3:8b".to_string(),
             asr_assets_dir: None,
             idle_expiry: Duration::from_secs(24 * 3600),

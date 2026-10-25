@@ -20,10 +20,20 @@ pub async fn run_server(
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("TKS Gateway server listening on http://{addr}");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            cancel_token.cancelled().await;
+    let cancel_token_clone = cancel_token.clone();
+    tokio::select! {
+        res = axum::serve(listener, app).with_graceful_shutdown(async move {
+            cancel_token_clone.cancelled().await;
             tracing::info!("TKS Gateway server received shutdown signal.");
-        })
-        .await
+        }) => {
+            res
+        }
+        _ = async {
+            cancel_token.cancelled().await;
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            tracing::warn!("Graceful shutdown timeout reached (3s); forcing server shutdown.");
+        } => {
+            Ok(())
+        }
+    }
 }

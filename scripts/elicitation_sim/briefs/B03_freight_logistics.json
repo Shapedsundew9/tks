@@ -1,0 +1,24 @@
+{
+  "id": "B03",
+  "title": "Refrigerated Cold-Chain Freight",
+  "slug": "freight-cold-chain",
+  "stakeholder_name": "Elena",
+  "facilitator_name": "Facilitator",
+  "seed_statement": "We manage regional refrigerated freight transport for perishable food suppliers, and we have recurring disputes over temperature excursions and spoilage liability at handover docks.",
+  "ground_truth": {
+    "agency": "Dispatchers assign routes. Drivers monitor telemetry during transit. Receiving dock managers inspect deliveries and sign delivery bills.",
+    "preconditions": "Temperature for refrigerated dairy must never rise above 4 degrees Celsius for more than 45 continuous minutes. Cold-chain seal must remain intact from loading dock to delivery dock.",
+    "exceptions": "If temperature excursion exceeds 45 minutes, receiving manager must reject cargo immediately. If driver contests temperature probe calibration, cargo is placed in dock quarantined cold storage pending joint secondary probe audit within 4 hours.",
+    "cadence": "Transit deliveries occur 24/7. Rejection decision must be registered at delivery dock within 30 minutes of vehicle arrival.",
+    "accountability": "Continuously logged telemetry data and physical seal serial numbers must be countersigned by both carrier driver and receiving manager before release of liability."
+  },
+  "scripted_responses": [
+    "Carrier drivers and receiving dock managers are the ones handling transfers. Food suppliers just hold the contracts.",
+    "Refrigerated dairy cannot exceed 4 degrees Celsius for more than 45 continuous minutes, or health regulations require condemnation.",
+    "If the receiving dock rejects a load, they must register that refusal within 30 minutes of the truck docking.",
+    "When a driver disputes a temperature reading, the cargo enters a quarantine bay and both parties must use a calibrated secondary probe within 4 hours.",
+    "The tamper seal on the trailer door must have matching serial numbers on the bill of lading before anyone breaks it.",
+    "Both the driver and the dock manager must sign the handover report physically or digitally before the vehicle departs.",
+    "If a delivery is rejected after hours, the driver must divert to the nearest certified 24-hour cold storage facility."
+  ]
+}

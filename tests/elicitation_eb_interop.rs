@@ -23,7 +23,11 @@ use tks::elicitation::session::{
 };
 use tks::elicitation::transcript::{render_transcript, validate_transcript_for_close};
 use tks::gateway::AppState;
-use tks::gateway::mcp::tools::handle_open_extraction_session;
+use tks::gateway::auth::AuthenticatedAgent;
+use tks::gateway::mcp::tools::{
+    handle_get_gap_report, handle_open_extraction_session, handle_stage_goals,
+    handle_submit_episodes, handle_submit_goal_candidates,
+};
 use tks::ingest::transcript::ParsedTranscript;
 use tks::storage::StorageRepo;
 use tks::storage::git::start_git_actor;
@@ -97,6 +101,7 @@ fn test_property_transcript_rendering_and_parser_roundtrip() {
             ],
             turns: turns.clone(),
             imported_gap_questions: Vec::new(),
+            explored_items: Vec::new(),
             created_at: Utc::now(),
             last_activity_at: Utc::now(),
             expires_at: Utc::now() + chrono::Duration::days(1),
@@ -159,6 +164,7 @@ fn test_close_validation_refusal_rules() {
         ],
         turns: Vec::new(),
         imported_gap_questions: Vec::new(),
+        explored_items: Vec::new(),
         created_at: Utc::now(),
         last_activity_at: Utc::now(),
         expires_at: Utc::now() + chrono::Duration::days(1),
@@ -263,6 +269,7 @@ async fn test_eb_extraction_roundtrip() {
             },
         ],
         imported_gap_questions: Vec::new(),
+        explored_items: Vec::new(),
         created_at: Utc::now(),
         last_activity_at: Utc::now(),
         expires_at: Utc::now() + chrono::Duration::days(1),
@@ -349,6 +356,7 @@ async fn test_cycle_2_export_preserves_session_id_and_cycle() {
             edited_at: None,
         }],
         imported_gap_questions: Vec::new(),
+        explored_items: Vec::new(),
         created_at: Utc::now(),
         last_activity_at: Utc::now(),
         expires_at: Utc::now() + chrono::Duration::days(1),
@@ -361,4 +369,123 @@ async fn test_cycle_2_export_preserves_session_id_and_cycle() {
 
     assert_eq!(parsed.frontmatter.session_id, "T99-cycle-two");
     assert_eq!(parsed.frontmatter.cycle, 2);
+}
+
+#[tokio::test]
+async fn test_ea7_dogfood_eb_pipeline() {
+    let _guard = TEST_MUTEX.lock().await;
+    let database_url = db::ensure_test_database_ready()
+        .await
+        .expect("Failed to prepare test database");
+    let pool = db::create_pool(&database_url).expect("Failed to create connection pool");
+
+    let repo_dir = format!("target/test-dogfood-git-{}", Uuid::new_v4());
+    let (git_write, git_read) =
+        start_git_actor(&repo_dir, 64).expect("Failed to start test git actor");
+
+    let storage = StorageRepo::new(pool.clone());
+    let state = AppState::new(pool, storage, git_write, git_read);
+
+    let auth = AuthenticatedAgent {
+        agent_id: "test_dogfood_agent".to_string(),
+        actor_type: "HUMAN".to_string(),
+    };
+
+    // 1. Read real dogfood transcript docs/transcripts/ea7-dogfood-c1.md
+    let doc_path = "docs/transcripts/ea7-dogfood-c1.md";
+    let content = tokio::fs::read_to_string(doc_path)
+        .await
+        .expect("Failed to read ea7-dogfood-c1.md");
+
+    let parsed = ParsedTranscript::parse(&content)
+        .expect("ParsedTranscript::parse should accept dogfood transcript");
+    assert_eq!(parsed.frontmatter.session_id, "ea7-dogfood");
+    assert_eq!(parsed.frontmatter.cycle, 1);
+    assert_eq!(parsed.frontmatter.source, "asr");
+    assert_eq!(parsed.turns.len(), 5);
+
+    // 2. Open E-B extraction session
+    let open_res = handle_open_extraction_session(
+        &state,
+        json!({
+            "doc_path": doc_path,
+            "content": content
+        }),
+        Some(&auth),
+    )
+    .await
+    .expect("open_extraction_session should succeed");
+
+    let session_id = open_res["session_id"].as_str().unwrap();
+
+    // 3. Submit episodes covering turns t1 to t5
+    let episodes_arg = json!({
+        "session_id": session_id,
+        "episodes": [
+            {
+                "id": "E1",
+                "turns": ["t1", "t5"],
+                "topic": "Release verification and cascade prevention"
+            }
+        ]
+    });
+    let ep_res = handle_submit_episodes(&state, episodes_arg, Some(&auth))
+        .await
+        .expect("submit_episodes should succeed");
+    assert_eq!(ep_res["episodes_accepted"], 1);
+
+    // 4. Submit goal candidates with verbatim quotes
+    let goals_arg = json!({
+        "session_id": session_id,
+        "goals": [
+            {
+                "id": "G1",
+                "kind": "ACHIEVE",
+                "statement": "Release engineers independently verify that all dependent services are healthy and stable before initiating any production rollout.",
+                "stakeholder": "Priya Sharma",
+                "status": "CONFIRMED",
+                "episode": "E1",
+                "grounding": [
+                    {
+                        "turn": "t5",
+                        "quote": "Release engineers can independently verify that all dependent services are healthy and stable before initiating any production rollout."
+                    }
+                ]
+            },
+            {
+                "id": "G2",
+                "kind": "AVOID",
+                "statement": "Outages cascade across services and cause customer transactions to fail during manual rollbacks.",
+                "stakeholder": "Priya Sharma",
+                "status": "CONFIRMED",
+                "episode": "E1",
+                "grounding": [
+                    {
+                        "turn": "t3",
+                        "quote": "Outages cascade across services and we spend hours manually rolling back changes while customer transactions fail."
+                    }
+                ]
+            }
+        ]
+    });
+
+    let goals_res = handle_submit_goal_candidates(&state, goals_arg, Some(&auth))
+        .await
+        .expect("submit_goal_candidates should succeed");
+    assert_eq!(goals_res["goals_accepted"], 2);
+
+    // 5. Query gap report
+    let gap_res = handle_get_gap_report(&state, json!({ "session_id": session_id }), Some(&auth))
+        .await
+        .expect("get_gap_report should succeed");
+
+    assert!(gap_res.get("gaps").is_some());
+
+    // 6. Stage goals atomically
+    let stage_res = handle_stage_goals(&state, json!({ "session_id": session_id }), Some(&auth))
+        .await
+        .expect("stage_goals should succeed");
+
+    assert_eq!(stage_res["staged_goals_count"], 2);
+    assert_eq!(stage_res["status"], "STAGED");
 }
