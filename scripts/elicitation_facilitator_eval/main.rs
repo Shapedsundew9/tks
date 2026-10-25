@@ -7,8 +7,8 @@ use clap::Parser;
 use serde::Serialize;
 use tks::elicitation::{
     FACILITATOR_SYSTEM_PROMPT_V2, FacilitatorContext, FacilitatorProposal, FacilitatorProvider,
-    INSPIRATION_SYSTEM_PROMPT_V2, OllamaFacilitatorProvider, TierfallFacilitatorProvider,
-    lint_neutrality,
+    INSPIRATION_SYSTEM_PROMPT_V3, OllamaFacilitatorProvider, TierfallFacilitatorProvider,
+    lint_neutrality, parse_inspiration_ideas,
 };
 
 #[derive(Debug, Parser)]
@@ -87,7 +87,7 @@ fn scenarios() -> Vec<(&'static str, FacilitatorContext)> {
             name,
             FacilitatorContext {
                 system_prompt: if inspiration {
-                    INSPIRATION_SYSTEM_PROMPT_V2
+                    INSPIRATION_SYSTEM_PROMPT_V3
                 } else {
                     FACILITATOR_SYSTEM_PROMPT_V2
                 }
@@ -192,6 +192,15 @@ async fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     Err(error) => Err(error),
                 };
                 let (proposal, error) = match result {
+                    Ok(proposal)
+                        if context.is_inspiration
+                            && parse_inspiration_ideas(&proposal.text).is_empty() =>
+                    {
+                        (
+                            Some(proposal),
+                            Some("Inspiration response contained no well-formed ideas".to_string()),
+                        )
+                    }
                     Ok(proposal) => (Some(proposal), None),
                     Err(error) => (None, Some(error)),
                 };

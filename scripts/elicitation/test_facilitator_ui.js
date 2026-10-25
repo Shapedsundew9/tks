@@ -60,6 +60,28 @@ async function main() {
         }));
         assert.equal(await page.locator('#sidecar-model-tag').textContent(), 'ollama / qwen3:8b · 1.3s');
         assert((await page.locator('#sidecar-model-tag').getAttribute('title')).includes('2 upstream'));
+        await page.evaluate(() => window.testEvents.listeners.facilitator_proposal({
+          data: JSON.stringify({ type: 'facilitator_proposal', data: {
+            proposal_id: 'synthetic-ideas', mode: 'inspiration',
+            text: '**Step 1 – Check**\n\n| a | b |\n\n**[Actor] Opponent**: Moves alone.',
+            ideas: [
+              { category: 'Exception Policy', title: 'Occupied Cell Rejection', statement: 'An occupied cell cannot be chosen.' },
+              { category: 'Lifecycle Rule', title: 'Result Before Reset', statement: 'The result is shown before a new game.' },
+            ],
+            flags: [],
+            generation: { provider: 'ollama', account: 'local', model: 'qwen3:8b', attempts: 1, duration_ms: 900 },
+          } }),
+        }));
+        assert.deepEqual(await page.locator('#ideas-deck .idea-title').allTextContents(), ['Occupied Cell Rejection', 'Result Before Reset']);
+        assert.deepEqual(await page.locator('#ideas-deck .idea-gap-badge').allTextContents(), ['Exception Policy', 'Lifecycle Rule']);
+        await page.evaluate(() => window.testEvents.listeners.facilitator_proposal({
+          data: JSON.stringify({ type: 'facilitator_proposal', data: {
+            proposal_id: 'synthetic-text', mode: 'inspiration',
+            text: '**Step 1 – Check**\n\n| a | b |\n\n---\n\n**[Actor] Opponent**: Moves alone.',
+            flags: [],
+          } }),
+        }));
+        assert.deepEqual(await page.locator('#ideas-deck .idea-title').allTextContents(), ['Opponent']);
       }
       assert.deepEqual(errors, []);
       await page.close();

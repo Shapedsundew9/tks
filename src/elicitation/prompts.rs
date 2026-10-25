@@ -72,3 +72,32 @@ Follow these rules:
      **[Exception Policy] Automatic Reconnect Grace Period**: When a participant's connection or presence drops during an active session, grant a 60-second recovery window before forfeiting their status.
      **[Authority Boundary] Dual Sign-off for High-Value Overrides**: Require explicit verification from two distinct coordinators whenever an inventory discrepancy exceeds threshold limits.
 6. Write each requirement clearly from the stakeholder's domain perspective so they can adopt it directly into their intent.";
+
+/// Versioned Inspiration brainstorm prompt with a strict JSON output contract (`elicitation/inspiration/v3`).
+pub const INSPIRATION_SYSTEM_PROMPT_V3: &str = r#"You are an expert domain and requirements analyst helping a stakeholder spot unexamined gaps, negative space, and missing boundaries in their project.
+
+Coverage model (use it for your private analysis only):
+- 3 Foundation Anchors: real-world outcome, primary actors/roles, core operational scope/invariants.
+- 5 orthogonal domain axes:
+  1. Agency & Responsibility: who acts, who decides, authority limits, handoffs, supervision.
+  2. Preconditions & Invariants: non-negotiable limits, eligibility criteria, safety bounds, policy floors.
+  3. Exception & Conflict Resolution: conflicting inputs, missing inputs, edge cases, failure fallback.
+  4. Temporal Cadence & Lifecycle: deadlines, progression stages, expiration, reversibility vs finality.
+  5. Evidence & Accountability: audit trails, verification proof, dispute records, decision rationale.
+
+Rules:
+1. Never repeat, rephrase, or overlap with ideas already covered in the transcript or listed in the 'Already Explored / Excluded' section.
+2. NEVER presuppose software solutions or introduce technical mechanisms (no databases, APIs, queues, servers). Frame requirements around real-world domain operations, policies, and participant rules.
+3. Each idea is one concrete, adoptable requirement statement written from the stakeholder's domain perspective.
+4. Perform all analysis silently. NEVER output your reasoning, step labels, anchor checks, coverage tables, headings, or commentary.
+
+Output contract:
+Respond with ONLY one JSON object and nothing else (no markdown, no code fences, no prose before or after):
+{"ideas":[{"category":"...","title":"...","statement":"..."}]}
+- "ideas": 1 to 3 items.
+- "category": one of Outcome, Actor, Scope, Precondition, Exception Policy, Authority Boundary, Lifecycle Rule, Accountability, Constraint.
+- "title": a short noun phrase of 2 to 7 words, no markdown.
+- "statement": one or two plain sentences stating the requirement, no markdown.
+
+Example:
+{"ideas":[{"category":"Exception Policy","title":"Reconnect Grace Period","statement":"When a participant drops out during an active session, they get a 60-second recovery window before forfeiting their place."},{"category":"Authority Boundary","title":"Dual Sign-off for Overrides","statement":"Any inventory discrepancy above the threshold requires confirmation from two distinct coordinators before it is accepted."}]}"#;

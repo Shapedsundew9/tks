@@ -311,7 +311,7 @@ pub async fn request_facilitator_proposal(
 
     // Assemble context bounded by characters (dropping oldest turns first)
     let system_prompt = if is_inspiration {
-        crate::elicitation::INSPIRATION_SYSTEM_PROMPT_V2.to_string()
+        crate::elicitation::INSPIRATION_SYSTEM_PROMPT_V3.to_string()
     } else {
         crate::elicitation::FACILITATOR_SYSTEM_PROMPT_V2.to_string()
     };
@@ -359,9 +359,38 @@ pub async fn request_facilitator_proposal(
     tokio::spawn(async move {
         match provider.propose(context).await {
             Ok(proposal) => {
-                let proposal_text = proposal.text;
-                let extracted =
-                    crate::elicitation::extract_proposal_items(&proposal_text, is_inspiration);
+                let (proposal_text, ideas) = if is_inspiration {
+                    let ideas = crate::elicitation::parse_inspiration_ideas(&proposal.text);
+                    if ideas.is_empty() {
+                        tracing::warn!(
+                            target: "tks::llm",
+                            response_len = proposal.text.len(),
+                            "Inspiration response contained no well-formed ideas"
+                        );
+                        store
+                            .broadcast_event(
+                                elicitation_id,
+                                ElicitationEvent::FacilitatorError {
+                                    error:
+                                        "The model returned no well-formed ideas; please try again."
+                                            .to_string(),
+                                },
+                            )
+                            .await;
+                        return;
+                    }
+                    (crate::elicitation::render_inspiration_ideas(&ideas), ideas)
+                } else {
+                    (proposal.text, Vec::new())
+                };
+                let extracted = if is_inspiration {
+                    ideas
+                        .iter()
+                        .map(crate::elicitation::InspirationIdea::label)
+                        .collect()
+                } else {
+                    crate::elicitation::extract_proposal_items(&proposal_text, false)
+                };
                 store.record_explored_items(elicitation_id, extracted).await;
 
                 let flags = if is_inspiration {
@@ -376,6 +405,7 @@ pub async fn request_facilitator_proposal(
                             proposal_id,
                             mode,
                             text: proposal_text,
+                            ideas,
                             flags,
                             generation: proposal.generation,
                         },

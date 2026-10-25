@@ -13,13 +13,14 @@ pub use assets::{AsrFileEntry, AsrLockManifest};
 pub use config::{ElicitationConfig, FacilitatorProviderKind};
 pub use facilitator::{
     FacilitatorContext, FacilitatorProposal, FacilitatorProvider, GenerationMetadata,
-    NoneFacilitatorProvider, OllamaFacilitatorProvider, TierfallFacilitatorProvider,
-    build_facilitator_user_prompt, extract_proposal_items, resolve_ollama_url,
+    InspirationIdea, NoneFacilitatorProvider, OllamaFacilitatorProvider,
+    TierfallFacilitatorProvider, build_facilitator_user_prompt, extract_proposal_items,
+    parse_inspiration_ideas, render_inspiration_ideas, resolve_ollama_url,
 };
 pub use neutrality::{NeutralityFlag, NeutralityFlagCategory, lint_neutrality};
 pub use prompts::{
     FACILITATOR_SYSTEM_PROMPT_V1, FACILITATOR_SYSTEM_PROMPT_V2, INSPIRATION_SYSTEM_PROMPT_V1,
-    INSPIRATION_SYSTEM_PROMPT_V2,
+    INSPIRATION_SYSTEM_PROMPT_V2, INSPIRATION_SYSTEM_PROMPT_V3,
 };
 pub use session::{
     ElicitationParticipant, ElicitationSession, ElicitationTurn, ImportedGapQuestion, InputMode,

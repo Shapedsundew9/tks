@@ -1215,6 +1215,7 @@ async fn test_facilitator_proposal_with_stub_ollama() {
             text,
             flags,
             generation,
+            ..
         } => {
             assert_eq!(generation.provider, "ollama");
             assert_eq!(generation.attempts, 1);

@@ -50,6 +50,9 @@ pub enum ElicitationEvent {
         proposal_id: Uuid,
         mode: String,
         text: String,
+        /// Structured ideas for `inspiration` mode (empty for `socratic`).
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        ideas: Vec<super::facilitator::InspirationIdea>,
         flags: Vec<super::neutrality::NeutralityFlag>,
         generation: super::facilitator::GenerationMetadata,
     },

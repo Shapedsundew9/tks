@@ -159,41 +159,32 @@
     return text;
   }
 
-  // Parse structured ideas from inspiration text, including optional [Gap: ...] or [Elaborates ...] tags
+  // Fallback parser for canonical `**[Category] Title**: statement` paragraphs.
+  // Blocks without a bold title and body (headings, tables, rules, prose) are ignored.
   function parseInspirationIdeas(text) {
     if (!text) return [];
     const rawSections = text.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
     const ideas = [];
     for (const sec of rawSections) {
-      const titleMatch = sec.match(/^(?:\d+\.|\*|-)?\s*(?:\*\*(.*?)\*\*|([A-Z][\w\s[\]:-]{2,60}):)\s*([\s\S]*)$/);
-      if (titleMatch) {
-        const rawTitle = (titleMatch[1] || titleMatch[2] || '').trim().replace(/:$/, '');
-        const body = (titleMatch[3] || '').trim().replace(/^:\s*/, '');
-        if (rawTitle && body) {
-          let gap = null;
-          let title = rawTitle;
-          const bracketMatch = rawTitle.match(/^\[([^\]]+)\]\s*(.+)$/);
-          if (bracketMatch) {
-            gap = bracketMatch[1].trim();
-            title = bracketMatch[2].trim();
-          }
-          ideas.push({
-            gap,
-            title,
-            rawTitle,
-            body,
-            fullText: `${title}: ${body}`,
-          });
-          continue;
-        }
+      if (/^(#|\||---)/.test(sec)) continue;
+      const titleMatch = sec.match(/^(?:\d+\.|\*|-)?\s*\*\*(.*?)\*\*\s*:?\s*([\s\S]*)$/);
+      if (!titleMatch) continue;
+      const rawTitle = (titleMatch[1] || '').trim().replace(/:$/, '');
+      const body = (titleMatch[2] || '').trim().replace(/^:\s*/, '');
+      if (!rawTitle || !body) continue;
+      let gap = null;
+      let title = rawTitle;
+      const bracketMatch = rawTitle.match(/^\[([^\]]+)\]\s*(.+)$/);
+      if (bracketMatch) {
+        gap = bracketMatch[1].trim();
+        title = bracketMatch[2].trim();
       }
-      const fallbackTitle = sec.split(/[.\n]/)[0].slice(0, 48).trim();
       ideas.push({
-        gap: null,
-        title: fallbackTitle,
-        rawTitle: fallbackTitle,
-        body: sec,
-        fullText: sec,
+        gap,
+        title,
+        rawTitle,
+        body,
+        fullText: `${title}: ${body}`,
       });
     }
     return ideas;
@@ -1276,11 +1267,30 @@
     }
 
     // 3. Otherwise, it is an inspiration proposal for the Inspiration Studio sidecar
-    renderInspirationIdeas(data.text);
+    renderInspirationIdeas(data);
   }
 
-  function renderInspirationIdeas(text) {
-    const ideas = parseInspirationIdeas(text);
+  function ideasFromProposal(data) {
+    if (Array.isArray(data.ideas) && data.ideas.length > 0) {
+      return data.ideas
+        .filter((i) => i && i.title && i.statement)
+        .map((i) => {
+          const gap = i.category || null;
+          return {
+            gap,
+            title: i.title,
+            rawTitle: gap ? `[${gap}] ${i.title}` : i.title,
+            body: i.statement,
+            fullText: `${i.title}: ${i.statement}`,
+          };
+        });
+    }
+    return parseInspirationIdeas(data.text || '');
+  }
+
+  function renderInspirationIdeas(data) {
+    const text = data.text || '';
+    const ideas = ideasFromProposal(data);
     if (ideas.length === 0) {
       ideasDeck.innerHTML = `<div class="sidecar-placeholder">${escapeHtml(text)}</div>`;
       return;

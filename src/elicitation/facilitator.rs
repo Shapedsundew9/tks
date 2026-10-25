@@ -56,8 +56,8 @@ impl FacilitatorProvider for TierfallFacilitatorProvider {
             let start = std::time::Instant::now();
             let prompt = build_facilitator_user_prompt(&context);
             let request = tierfall::ChatRequest::new(&route)
-                .system(context.system_prompt)
-                .user(prompt);
+                .system(context.system_prompt.clone())
+                .user(prompt.clone());
             // Upstream error bodies can contain echoed prompts; keep them out of logs and SSE.
             let reply = client.chat(request).await.map_err(|error| {
                 let message = match error {
@@ -70,6 +70,8 @@ impl FacilitatorProvider for TierfallFacilitatorProvider {
                     tierfall::Error::Stream(_) => "Tierfall returned an unexpected streaming error".to_string(),
                 };
                 tracing::warn!(target: "tks::llm", route, duration_ms = elapsed_ms(start), "{message}");
+                log_llm_exchange(&route, context.is_inspiration, context.focus_topic.as_deref(),
+                    start.elapsed(), &context.system_prompt, &prompt, Err(&message));
                 message
             })?;
             let text = reply
@@ -82,6 +84,15 @@ impl FacilitatorProvider for TierfallFacilitatorProvider {
             let served = reply
                 .served_by
                 .ok_or_else(|| "Tierfall response missing serving metadata".to_string())?;
+            log_llm_exchange(
+                &format!("{}/{}", served.provider, served.model),
+                context.is_inspiration,
+                context.focus_topic.as_deref(),
+                start.elapsed(),
+                &context.system_prompt,
+                &prompt,
+                Ok(&*text),
+            );
             let generation = GenerationMetadata {
                 provider: served.provider.to_string(),
                 account: Some(served.account),
@@ -101,6 +112,184 @@ impl FacilitatorProvider for TierfallFacilitatorProvider {
     }
 }
 
+/// Maximum number of inspiration ideas surfaced per proposal (prompt contract: 1 to 3).
+pub const MAX_INSPIRATION_IDEAS: usize = 3;
+
+/// One structured Inspiration idea parsed from an LLM response.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InspirationIdea {
+    /// Gap / axis category such as `Exception Policy` (may be empty).
+    #[serde(default, alias = "gap", alias = "axis", alias = "tag")]
+    pub category: String,
+    pub title: String,
+    #[serde(
+        alias = "body",
+        alias = "requirement",
+        alias = "description",
+        alias = "text"
+    )]
+    pub statement: String,
+}
+
+impl InspirationIdea {
+    /// Label used for explored-item memory, e.g. `[Exception Policy] Reconnect Window`.
+    #[must_use]
+    pub fn label(&self) -> String {
+        if self.category.is_empty() {
+            self.title.clone()
+        } else {
+            format!("[{}] {}", self.category, self.title)
+        }
+    }
+
+    fn normalized(self) -> Option<Self> {
+        let category = clean_inline(&self.category);
+        let category = category
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .trim()
+            .to_string();
+        let title = clean_inline(&self.title)
+            .trim_end_matches(':')
+            .trim()
+            .to_string();
+        let statement = clean_inline(&self.statement);
+        (!title.is_empty() && !statement.is_empty()).then_some(Self {
+            category,
+            title,
+            statement,
+        })
+    }
+}
+
+/// Strips inline markdown emphasis and collapses whitespace.
+fn clean_inline(text: &str) -> String {
+    text.replace("**", "")
+        .replace('`', "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Removes `<think>…</think>` blocks emitted by reasoning models.
+fn strip_think_blocks(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("<think>") {
+        out.push_str(&rest[..start]);
+        match rest[start..].find("</think>") {
+            Some(end) => rest = &rest[start + end + "</think>".len()..],
+            None => return out,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn parse_ideas_json(text: &str) -> Option<Vec<InspirationIdea>> {
+    #[derive(serde::Deserialize)]
+    struct Envelope {
+        ideas: Vec<InspirationIdea>,
+    }
+
+    let candidates = [
+        text.find('{').zip(text.rfind('}')),
+        text.find('[').zip(text.rfind(']')),
+    ];
+    for (start, end) in candidates.into_iter().flatten() {
+        if end <= start {
+            continue;
+        }
+        let slice = &text[start..=end];
+        if let Ok(envelope) = serde_json::from_str::<Envelope>(slice) {
+            return Some(envelope.ideas);
+        }
+        if let Ok(ideas) = serde_json::from_str::<Vec<InspirationIdea>>(slice) {
+            return Some(ideas);
+        }
+    }
+    None
+}
+
+/// Parses `**[Category] Title**: statement` lines, ignoring headings, tables, rules and prose.
+fn parse_ideas_markdown(text: &str) -> Vec<InspirationIdea> {
+    let mut ideas: Vec<InspirationIdea> = Vec::new();
+    let mut open = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty()
+            || line.starts_with('#')
+            || line.starts_with('|')
+            || line.starts_with("---")
+            || line.starts_with("```")
+        {
+            open = false;
+            continue;
+        }
+        // Drop list markers such as `1.`, `2)`, `-`, `•`, or `* ` before a bold title.
+        let item = line.trim_start_matches(|c: char| {
+            c.is_ascii_digit() || c.is_whitespace() || matches!(c, '.' | ')' | '-' | '•')
+        });
+        let item = item.strip_prefix("* ").unwrap_or(item).trim_start();
+        if let Some(after) = item.strip_prefix("**")
+            && let Some(end) = after.find("**")
+        {
+            let raw_title = after[..end].trim();
+            let rest = after[end + 2..].trim_start();
+            let (raw_title, statement) = if let Some(stripped) = raw_title.strip_suffix(':') {
+                (stripped, rest)
+            } else if let Some(stripped) = rest.strip_prefix(':') {
+                (raw_title, stripped)
+            } else {
+                open = false;
+                continue;
+            };
+            let (category, title) =
+                match raw_title.strip_prefix('[').and_then(|r| r.split_once(']')) {
+                    Some((cat, title)) => (cat.trim(), title.trim()),
+                    None => ("", raw_title),
+                };
+            ideas.push(InspirationIdea {
+                category: category.to_string(),
+                title: title.to_string(),
+                statement: statement.trim().to_string(),
+            });
+            open = true;
+        } else if open && let Some(last) = ideas.last_mut() {
+            last.statement.push(' ');
+            last.statement.push_str(line);
+        }
+    }
+    ideas
+}
+
+/// Parses structured Inspiration ideas from an LLM response.
+///
+/// Accepts the JSON contract of [`INSPIRATION_SYSTEM_PROMPT_V3`](super::INSPIRATION_SYSTEM_PROMPT_V3)
+/// (optionally fenced or surrounded by prose), falling back to strict
+/// `**[Category] Title**: statement` markdown lines. Analysis scaffolding such as
+/// headings, tables, and horizontal rules is discarded. Returns at most
+/// [`MAX_INSPIRATION_IDEAS`] ideas.
+#[must_use]
+pub fn parse_inspiration_ideas(text: &str) -> Vec<InspirationIdea> {
+    let text = strip_think_blocks(text);
+    let raw = parse_ideas_json(&text).unwrap_or_else(|| parse_ideas_markdown(&text));
+    raw.into_iter()
+        .filter_map(InspirationIdea::normalized)
+        .take(MAX_INSPIRATION_IDEAS)
+        .collect()
+}
+
+/// Renders ideas as canonical `**[Category] Title**: statement` paragraphs.
+#[must_use]
+pub fn render_inspiration_ideas(ideas: &[InspirationIdea]) -> String {
+    ideas
+        .iter()
+        .map(|idea| format!("**{}**: {}", idea.label(), idea.statement))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 /// Extracts concise idea titles or questions from a generated facilitator proposal
 /// so they can be added to the session's `explored_items` memory.
 #[must_use]
@@ -109,42 +298,13 @@ pub fn extract_proposal_items(text: &str, is_inspiration: bool) -> Vec<String> {
     if trimmed.is_empty() {
         return Vec::new();
     }
-
     if !is_inspiration {
         return vec![trimmed.to_string()];
     }
-
-    let mut items = Vec::new();
-    for block in trimmed.split("\n\n") {
-        let block = block.trim();
-        if block.is_empty() {
-            continue;
-        }
-        // Extract bold title `**Title**:` if present, otherwise first sentence/line
-        if let Some(start) = block.find("**")
-            && let Some(end_rel) = block[start + 2..].find("**")
-        {
-            let title = block[start + 2..start + 2 + end_rel]
-                .trim()
-                .trim_end_matches(':')
-                .trim();
-            if !title.is_empty() {
-                items.push(title.to_string());
-                continue;
-            }
-        }
-        let fallback: String = block
-            .lines()
-            .next()
-            .unwrap_or(block)
-            .chars()
-            .take(80)
-            .collect();
-        if !fallback.trim().is_empty() {
-            items.push(fallback.trim().to_string());
-        }
-    }
-    items
+    parse_inspiration_ideas(trimmed)
+        .iter()
+        .map(InspirationIdea::label)
+        .collect()
 }
 
 /// Assembles the structured user analysis prompt from the [`FacilitatorContext`].
@@ -221,21 +381,22 @@ pub fn build_facilitator_user_prompt(context: &FacilitatorContext) -> String {
     }
 
     let directive = if context.is_inspiration {
-        if let Some(ref topic) = context.focus_topic {
+        let body = if let Some(ref topic) = context.focus_topic {
             format!(
-                "Task:\n\
-                 The stakeholder specifically wants to explore domain rules, invariants, and edge cases regarding: \"{topic}\".\n\
-                 Review the established statements above so you understand the full domain context, then propose 1 to 3 concrete, non-overlapping domain requirement statements regarding \"{topic}\" that establish unexamined preconditions, exceptions, or authority boundaries not already stated or listed in the excluded items."
+                "The stakeholder specifically wants to explore domain rules, invariants, and edge cases regarding: \"{topic}\".\n\
+                 Using the established statements above as context, propose 1 to 3 concrete, non-overlapping domain requirement statements regarding \"{topic}\" that establish unexamined preconditions, exceptions, or authority boundaries not already stated or listed in the excluded items."
             )
         } else {
-            "Task:\n\
-             Step 1: Check the 3 Foundation Anchors (Real-world outcome, Primary actors/roles, and Core operational scope/invariants).\n\
-             - If ANY anchor is indeterminate or unstated, propose 1 to 3 concrete domain statements to establish the missing foundational boundaries.\n\
-             - If all 3 anchors are established, audit the 5 orthogonal domain axes (1. Agency & Responsibility, 2. Preconditions & Invariants, 3. Exception & Conflict Resolution, 4. Temporal Cadence & Lifecycle, 5. Evidence & Accountability). Note: any axis addressed or explicitly declared Out of Scope counts as covered. Spot the most important gaps in coverage across the axis with zero or lowest coverage.\n\
-             Step 2: Propose 1 to 3 concrete domain requirement statements that nail down invariants, negative boundaries, or exception policies in that under-explored axis.\n\
+            "Silently check the 3 Foundation Anchors (real-world outcome, primary actors/roles, core operational scope/invariants).\n\
+             - If ANY anchor is indeterminate or unstated, the ideas must establish the missing foundations (categories Outcome, Actor, or Scope).\n\
+             - Otherwise, silently audit the 5 orthogonal domain axes (any axis addressed or explicitly declared Out of Scope counts as covered), spot the most important gaps in coverage on the axis with zero or lowest coverage, and propose ideas that nail down invariants, negative boundaries, or exception policies there.\n\
              Do NOT repeat or rehash what is already covered in the transcript or the excluded list."
                 .to_string()
-        }
+        };
+        format!(
+            "Task:\n{body}\n\n\
+             Do NOT output your analysis, step labels, or tables. Respond with ONLY the JSON object {{\"ideas\":[{{\"category\":…,\"title\":…,\"statement\":…}}]}} defined in the system prompt."
+        )
     } else if let Some(ref topic) = context.focus_topic {
         format!(
             "Task:\n\
@@ -261,7 +422,9 @@ pub fn build_facilitator_user_prompt(context: &FacilitatorContext) -> String {
          Your mode is NEGATIVE-SPACE VOID-FILLING.\n\
          Audit the 5 orthogonal domain axes: (1. Agency & Responsibility, 2. Preconditions & Invariants, 3. Exception & Conflict Resolution, 4. Temporal Cadence & Lifecycle, 5. Evidence & Accountability).\n\
          Identify the axis with zero or lowest coverage. Ask ONE high-entropy bisection question presenting a concrete fork: \"If [Scenario X occurs in the least-covered axis], does the domain rule dictate Option A or Option B?\"\n\
-         Do NOT ask generic boilerplate questions or repeat anything from the Already Explored list."
+         Do NOT ask generic boilerplate questions or repeat anything from the Already Explored list.\n\
+         \n\
+         Perform this check silently: respond with ONLY the question itself — no step labels, anchor assessment, or commentary."
             .to_string()
     };
 
@@ -465,7 +628,7 @@ impl FacilitatorProvider for OllamaFacilitatorProvider {
                 }),
             ];
 
-            let body = serde_json::json!({
+            let mut body = serde_json::json!({
                 "model": model,
                 "messages": messages,
                 "stream": false,
@@ -476,6 +639,9 @@ impl FacilitatorProvider for OllamaFacilitatorProvider {
                     "top_p": 0.9,
                 }
             });
+            if context.is_inspiration {
+                body["format"] = Value::from("json");
+            }
 
             let resp = client.post(&url).json(&body).send().await;
 
@@ -655,6 +821,71 @@ mod tests {
         assert!(prompt.contains("[t1] (stakeholder): Players should be matched by skill."));
         assert!(prompt.contains("How are ratings updated?"));
         assert!(prompt.contains("[Gap: Failure Recovery] Reconnect Window"));
-        assert!(prompt.contains("Spot the most important gaps in coverage"));
+        assert!(prompt.contains("spot the most important gaps in coverage"));
+        assert!(prompt.contains("Respond with ONLY the JSON object"));
+        assert!(!prompt.contains("Step 1"));
+    }
+
+    #[test]
+    fn test_parse_inspiration_ideas_json_contract() {
+        let raw = r#"{"ideas":[{"category":"Exception Policy","title":"Illegal Cell Selection","statement":"An occupied cell cannot be selected; the turn stays with the same player."},{"category":"Lifecycle Rule","title":"Result Before Reset","statement":"The final result is announced before a new game can begin."}]}"#;
+        let ideas = parse_inspiration_ideas(raw);
+        assert_eq!(ideas.len(), 2);
+        assert_eq!(ideas[0].category, "Exception Policy");
+        assert_eq!(ideas[0].title, "Illegal Cell Selection");
+        assert_eq!(
+            ideas[0].label(),
+            "[Exception Policy] Illegal Cell Selection"
+        );
+        assert_eq!(
+            extract_proposal_items(raw, true),
+            vec![
+                "[Exception Policy] Illegal Cell Selection".to_string(),
+                "[Lifecycle Rule] Result Before Reset".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_inspiration_ideas_tolerates_wrappers_and_aliases() {
+        let raw = "<think>{\"draft\": true}</think>Here you go:\n```json\n[{\"gap\":\"[Actor]\",\"title\":\"**Automated Opponent**:\",\"body\":\"The computer  picks its move\\nwithout human help.\"},{\"title\":\"\",\"statement\":\"dropped\"}]\n```";
+        let ideas = parse_inspiration_ideas(raw);
+        assert_eq!(
+            ideas,
+            vec![InspirationIdea {
+                category: "Actor".to_string(),
+                title: "Automated Opponent".to_string(),
+                statement: "The computer picks its move without human help.".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_parse_inspiration_ideas_drops_analysis_scaffolding() {
+        // Shape of a real garbled response: step headings, tables, rules, and prose
+        // interleaved with the actual ideas.
+        let raw = "**Step 1 – Foundation Anchors Check**\n\n\
+            | Anchor | Status | Gap |\n|---|---|---|\n| **Real-world outcome** | Missing | **[Outcome] Game Result**: must be shown. |\n\n\
+            All three foundational anchors are now explicitly defined.\n\n---\n\n\
+            ### Domain Requirement Statements\n\n\
+            1. **[Accountability] Game Move Ledger**: After every turn, a sequential list of moves\n   is displayed.\n\n\
+            - **[Exception Policy] Illegal Cell Selection Rejection**: An occupied cell is refused.\n\
+            **Persistent Final Board:** The final board stays visible.\n\
+            **[Constraint] Extra Idea**: Beyond the cap.";
+        let ideas = parse_inspiration_ideas(raw);
+        assert_eq!(ideas.len(), MAX_INSPIRATION_IDEAS);
+        assert_eq!(ideas[0].label(), "[Accountability] Game Move Ledger");
+        assert_eq!(
+            ideas[0].statement,
+            "After every turn, a sequential list of moves is displayed."
+        );
+        assert_eq!(ideas[1].category, "Exception Policy");
+        assert_eq!(ideas[2].label(), "Persistent Final Board");
+        assert_eq!(ideas[2].statement, "The final board stays visible.");
+        assert!(parse_inspiration_ideas("**Step 1 – Check**\n\nJust prose.").is_empty());
+        assert_eq!(
+            render_inspiration_ideas(&ideas[..1]),
+            "**[Accountability] Game Move Ledger**: After every turn, a sequential list of moves is displayed."
+        );
     }
 }
