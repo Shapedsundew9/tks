@@ -339,10 +339,15 @@ Focused offline checks:
 ```bash
 cargo test --test facilitator_tierfall --test elicitation_api --bin elicitation_facilitator_eval
 node scripts/elicitation/test_facilitator_ui.js
+node --test scripts/elicitation/test_dictation.js
 ```
 
 The browser check uses the existing Playwright installation under
 `scripts/elicitation/gate` and mocked capabilities/events, with no model calls.
+The dictation unit/regression suite also mocks microphone and browser audio APIs
+and checks the ASR worker and audio worklet directly. It covers release outside
+the button, release during initialization, suspended audio contexts, draft
+retention, auto-send, and capture cleanup without ASR assets or a database.
 
 The TKS library dependency resolves locally within this workspace. Registry
 packaging with `cargo package` requires `tierfall` version `0.1.0` to be available

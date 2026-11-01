@@ -11,6 +11,8 @@
   let audioContext = null;
   let audioStream = null;
   let workletNode = null;
+  let isStartingRecording = false;
+  let stopWhenReady = false;
   let isRecording = false;
   let isFlushingRecording = false;
   let stopHangoverTimer = null;
@@ -628,14 +630,13 @@
             partialText.textContent = 'Push-to-talk: Hold Ctrl+Alt+V or Mic button to record spoken intent';
 
             if (cleaned) {
-              if (autoSubmitToggle.checked) {
-                // Power-user mode: auto-commit directly to timeline after full tail flush
+              // Retain the phrase until submission succeeds, including before a session exists.
+              draftBox.value = cleaned;
+              draftHasAsr = true;
+              updateDraftModeUI();
+              if (autoSubmitToggle.checked && currentSession && currentSession.state !== 'closed') {
                 submitStakeholderTurn(cleaned, 'dictated');
               } else {
-                // Review mode: place in draft box
-                draftBox.value = cleaned;
-                draftHasAsr = true;
-                updateDraftModeUI();
                 draftBox.focus();
               }
             }
@@ -656,9 +657,11 @@
 
   // Audio Recording & AudioWorklet lifecycle
   async function startRecording(target = 'main') {
-    if (isRecording || isFlushingRecording || !asrWorker || micBtn.disabled) return;
+    if (isStartingRecording || isRecording || isFlushingRecording || !asrReady || micBtn.disabled) return;
     if (currentSession && currentSession.state === 'closed') return;
 
+    isStartingRecording = true;
+    stopWhenReady = false;
     recordingTarget = target;
 
     try {
@@ -674,6 +677,9 @@
 
       audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
       await audioContext.audioWorklet.addModule('/explorer/elicitation/audio-worklet.js');
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
 
       const sourceNode = audioContext.createMediaStreamSource(audioStream);
       workletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
@@ -690,6 +696,7 @@
       sourceNode.connect(workletNode);
       workletNode.connect(audioContext.destination);
 
+      isStartingRecording = false;
       isRecording = true;
       isFlushingRecording = false;
       if (recordingTarget === 'topic') {
@@ -703,10 +710,15 @@
       }
 
       asrWorker.postMessage({ type: 'start' });
+      if (stopWhenReady) {
+        stopRecording();
+      }
     } catch (err) {
       console.error('getUserMedia failed:', err);
       showToast(`Microphone access error: ${err.message}`);
-      stopRecording(true);
+      isStartingRecording = false;
+      isRecording = false;
+      finalizeAudioTeardownAndStopWorker(true);
     }
   }
 
@@ -747,14 +759,13 @@
     }
   }
 
-  function stopRecording(forceDiscard = false) {
-    if (!isRecording && !isFlushingRecording) return;
-    isRecording = false;
-
-    if (forceDiscard) {
-      finalizeAudioTeardownAndStopWorker(true);
+  function stopRecording() {
+    if (isStartingRecording) {
+      stopWhenReady = true;
       return;
     }
+    if (!isRecording && !isFlushingRecording) return;
+    isRecording = false;
 
     if (isFlushingRecording) return;
     isFlushingRecording = true;
@@ -1788,26 +1799,29 @@
     }
   });
 
+  let pttMouseDown = false;
+
   // Topic Mic Button
   micTopicBtn.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     e.preventDefault();
+    pttMouseDown = true;
     startRecording('topic');
-  });
-
-  micTopicBtn.addEventListener('mouseup', (e) => {
-    e.preventDefault();
-    stopRecording();
   });
 
   // Main Mic Button
   micBtn.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     e.preventDefault();
+    pttMouseDown = true;
     startRecording('main');
   });
 
-  micBtn.addEventListener('mouseup', (e) => {
-    e.preventDefault();
-    stopRecording();
+  window.addEventListener('mouseup', () => {
+    if (pttMouseDown) {
+      pttMouseDown = false;
+      stopRecording();
+    }
   });
 
   // Global Push-to-Talk Keyboard Shortcut (Ctrl+Alt+V)
@@ -1827,6 +1841,12 @@
       pttKeyDown = false;
       stopRecording();
     }
+  });
+
+  window.addEventListener('blur', () => {
+    pttMouseDown = false;
+    pttKeyDown = false;
+    stopRecording();
   });
 
   // Chat Input Field Handling

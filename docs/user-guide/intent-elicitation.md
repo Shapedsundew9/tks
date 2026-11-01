@@ -66,7 +66,7 @@ Dictation operates strictly via **push-to-talk**:
 
 1. **Press and hold** the `Ctrl + Alt + V` keyboard shortcut or click-and-hold the microphone button.
 2. Speak your intent clearly. While talking, the **Live Partial Preview** bar displays real-time streaming hypotheses.
-3. **Release** the shortcut or button to stop. The audio pipeline applies a 250 ms trailing silence flush and appends the final transcribed text into the editable draft box.
+3. **Release** the shortcut or button to stop, even if the pointer has moved outside the button. Releases during microphone initialization are honored once capture is ready; leaving the window also stops recording. The audio pipeline drains 260 ms of trailing capture, flushes the remaining audio buffer, and supplies 600 ms of silence to finalize recognition.
 4. Dictated text is flagged with `Mode: Spoken (Dictated)`.
 
 > [!NOTE]
@@ -74,7 +74,8 @@ Dictation operates strictly via **push-to-talk**:
 
 ### Reviewing and Submitting Turns
 
-- **Draft Editing:** All dictated text arrives in the editable composer box. You can correct words, add punctuation, or append typed text before committing.
+- **Auto-send:** Enabled by default, this commits the recognized phrase directly to an open session. If no session exists yet or submission fails, the phrase remains in the composer instead of being lost.
+- **Draft Editing:** Disable **Auto-send** to review dictated text in the editable composer box. You can correct words, add punctuation, or append typed text before committing.
 - **Keyboard Shortcuts:**
   - `Enter`: Commits and submits the turn.
   - `Shift + Enter`: Inserts a space (newlines are prohibited in turns to maintain canonical single-paragraph utterances).
